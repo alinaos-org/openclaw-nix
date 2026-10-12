@@ -78,9 +78,13 @@ patch and its test) or moved the code (re-port its anchors).
 ## CI and cache
 
 `ci` evaluates every output, then builds the gateway, the hotfix layer, the CLI and the
-plugins and runs the checks. Set the repository variable `CACHIX_CACHE` and the secret
-`CACHIX_AUTH_TOKEN` to push to a Cachix cache, and `BUILD_RUNNER` to use a larger
-runner (the source build peaks around 15 GB).
+plugins and runs the checks; on the free 4-core runner a release builds in about 11
+minutes. Set the repository variable `CACHIX_CACHE` and the secret `CACHIX_AUTH_TOKEN`
+to push the release's pnpm dependency set to a Cachix cache. Its store path depends on
+its hash alone, so a consumer that adds the cache as a substituter fetches it instead
+of resolving it from the npm registry, even when its own `extraSourcePatches` give it a
+different gateway build. `BUILD_RUNNER` selects a larger runner (the source build peaks
+around 15 GB).
 
 ## License
 
