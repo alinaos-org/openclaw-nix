@@ -19,8 +19,12 @@ jobs:
         with:
           # The Nix version consumers build with, so derivations and the cache match.
           install_url: https://releases.nixos.org/nix/nix-2.34.8/install
-      - name: Evaluate every output
-        run: nix flake check --no-build
+      # Not `nix flake check --no-build`: it evaluates read-only, so a source
+      # copy the CLI tool bundle needs is never added to a fresh store.
+      - name: Evaluate every package and check
+        run: |
+          nix eval --json .#packages.x86_64-linux --apply 'builtins.mapAttrs (_: p: p.drvPath)'
+          nix eval --json .#checks.x86_64-linux --apply 'builtins.mapAttrs (_: c: c.drvPath)'
       - name: Formatting
         run: nix build -L .#checks.x86_64-linux.formatting
 
