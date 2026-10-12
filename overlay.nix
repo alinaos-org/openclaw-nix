@@ -1,17 +1,29 @@
 # One OpenClaw release, everywhere. Apply after nix-openclaw's overlay:
 #
-#   openclaw-gateway        the gateway built from source (packages/gateway)
+#   openclaw-gateway        the gateway built from source (packages/gateway),
+#                           plus the consumer's customize layer if any
 #   openclaw                the CLI bundle, wrapping that gateway
 #   openclawRuntimePlugins  every pinned npm plugin, linked to that gateway
-#   openclawNix             release data and builders: hotfix, stateFence,
-#                           mkRuntimePlugin, checkSingleRelease
+#   openclawNix             release data and builders: customize, hotfix,
+#                           stateFence, mkRuntimePlugin, checkSingleRelease
 #
 # Anything a consumer builds against the plugin SDK should link
 # `final.openclaw-gateway` too, so a closure never mixes OpenClaw releases.
-{nix-openclaw}: {
+{
+  nix-openclaw,
+  self,
+}: {
   # Arguments for packages/gateway: extraSourcePatches, extraTests,
-  # extraInstallCommands, localRevision.
+  # extraInstallCommands, localRevision. They make the source build the
+  # consumer's own; prefer `customize` where it can express the change.
   gatewayArgs ? {},
+  # Use this flake's own source build, from its own locked nixpkgs: the one CI
+  # builds and the binary cache serves. Leave this flake's nixpkgs input
+  # unfollowed so the build stays identical.
+  sharedBuild ? false,
+  # Arguments for packages/custom (replaceBundledChannels, extraCommands): the
+  # consumer's changes as a copy layer over the source build.
+  customize ? {},
   # Tools to drop from nix-openclaw's CLI bundle (for example ones the host
   # installs itself, so each exists once on PATH).
   excludeToolNames ? [],
@@ -21,7 +33,18 @@
   pins = builtins.fromJSON (builtins.readFile ./pins/runtime-plugins.json);
   upstreamLocks = import "${nix-openclaw}/nix/generated/openclaw-runtime-plugins";
 
-  gateway = final.callPackage ./packages/gateway ({inherit nix-openclaw;} // gatewayArgs);
+  compiledGateway =
+    if sharedBuild
+    then
+      assert lib.assertMsg (gatewayArgs == {})
+      "openclaw-nix: sharedBuild uses this flake's own gateway build; express gatewayArgs as customize";
+        self.packages.${final.stdenv.hostPlatform.system}.gateway
+    else final.callPackage ./packages/gateway ({inherit nix-openclaw;} // gatewayArgs);
+  customizeGateway = args: final.callPackage ./packages/custom args;
+  gateway =
+    if customize == {}
+    then compiledGateway
+    else customizeGateway ({gateway = compiledGateway;} // customize);
 
   # Plugins nix-openclaw's generated lock set does not describe.
   manualLocks.voyage = {
@@ -61,9 +84,10 @@
     then throw "openclaw-nix: pins/runtime-plugins.json is for ${pins.version}, release.nix is ${release.current}; run scripts/pin-runtime-plugins.py"
     else lib.mapAttrs (id: _: mkRuntimePlugin (pinnedLock id)) pins.plugins;
 
-  # OpenClaw's own packages carry the release in their names. Plugins with an
+  # OpenClaw's own packages carry the release in their names, after any layer
+  # suffixes (openclaw-gateway-custom-fenced-<release>). Plugins with an
   # independent version scheme (third-party npm plugins) are not matched.
-  coreNamePattern = "^/nix/store/[a-z0-9]{32}-openclaw(-gateway(-[a-z]+)?|-runtime-plugin-(${lib.concatStringsSep "|" (lib.attrNames pins.plugins ++ ["acpx" "codex"])}))?-(20[0-9]{2}\\.[0-9]+\\.[0-9]+)";
+  coreNamePattern = "^/nix/store/[a-z0-9]{32}-openclaw(-gateway(-[a-z]+)*|-runtime-plugin-(${lib.concatStringsSep "|" (lib.attrNames pins.plugins ++ ["acpx" "codex"])}))?-(20[0-9]{2}\\.[0-9]+\\.[0-9]+)";
 in {
   openclaw-gateway = gateway;
 
@@ -75,8 +99,11 @@ in {
   openclawRuntimePlugins = (prev.openclawRuntimePlugins or {}) // pinnedPlugins;
 
   openclawNix = {
-    inherit release pins gateway mkRuntimePlugin;
+    inherit release pins gateway compiledGateway mkRuntimePlugin;
     pinnedLock = pinnedLock;
+
+    # A consumer's changes as a copy layer over a gateway tree (packages/custom).
+    customize = customizeGateway;
 
     # The post-build fixes (packages/hotfix) over a gateway tree.
     hotfix = gw: final.callPackage ./packages/hotfix {gateway = gw;};

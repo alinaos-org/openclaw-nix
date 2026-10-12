@@ -41,9 +41,25 @@ CLI tool bundle and runtime-plugin builder, and adds:
 }
 ```
 
-`openclaw-nix.lib.mkOverlay { gatewayArgs = ...; excludeToolNames = [...]; }` customises
-the build; `lib.mkPackageSetOverlay` is the same without nix-openclaw's overlay, for
-consumers that already apply it. `gatewayArgs`:
+`openclaw-nix.lib.mkOverlay { ... }` customises the package set;
+`lib.mkPackageSetOverlay` takes the same arguments without nix-openclaw's overlay, for
+consumers that already apply it.
+
+| Argument | Effect |
+|---|---|
+| `sharedBuild` | Use this flake's own source build, from its own locked nixpkgs: the build CI publishes to the cache. Do not make this flake's `nixpkgs` input follow yours, or the build is yours again. |
+| `customize` | Changes applied to a copy of the finished tree (`packages/custom`), so the source build stays shared: `replaceBundledChannels` and `extraCommands`, below. |
+| `gatewayArgs` | Changes to the source build itself (below); the build is then the consumer's own. Not combinable with `sharedBuild`. |
+| `excludeToolNames` | Tools to drop from nix-openclaw's CLI tool bundle. |
+
+`customize`:
+
+| Argument | Effect |
+|---|---|
+| `replaceBundledChannels` | Channel ids an external plugin with the same id replaces: the bundled plugin trees are removed and their entries dropped from the bundled channel config metadata, so config validation, aliases and discovery defer to the external plugin's schema. Fails when the release no longer bundles the channel. |
+| `extraCommands` | Shell run last on the copy, with `$out`, `$root` (`$out/lib/openclaw`) and `$node` set. |
+
+`gatewayArgs`:
 
 | Argument | Effect |
 |---|---|
@@ -52,9 +68,17 @@ consumers that already apply it. `gatewayArgs`:
 | `extraInstallCommands` | Shell at the end of the install phase (`$out`, `$node`). |
 | `localRevision` | Version suffix, `<release>-nix.N`. |
 
+Control UI changes need neither: OpenClaw's native Control UI plugins (manifest
+`controlUi`, enabled by `gateway.controlUi.experimental.customPlugins`) add session
+actions, pages, panels and replacements without rebuilding the UI.
+
 Builders under `pkgs.openclawNix`:
 
 ```nix
+pkgs.openclawNix.customize {                          # a customize layer
+  gateway = pkgs.openclawNix.compiledGateway;
+  replaceBundledChannels = ["chat"];
+}
 pkgs.openclawNix.hotfix pkgs.openclaw-gateway        # the hotfix layer
 pkgs.openclawNix.stateFence {                         # a fenced entrypoint
   gateway = pkgs.openclawNix.hotfix pkgs.openclaw-gateway;
@@ -79,12 +103,23 @@ patch and its test) or moved the code (re-port its anchors).
 
 `ci` evaluates every output, then builds the gateway, the hotfix layer, the CLI and the
 plugins and runs the checks; on the free 4-core runner a release builds in about 11
-minutes. Set the repository variable `CACHIX_CACHE` and the secret `CACHIX_AUTH_TOKEN`
-to push the release's pnpm dependency set to a Cachix cache. Its store path depends on
-its hash alone, so a consumer that adds the cache as a substituter fetches it instead
-of resolving it from the npm registry, even when its own `extraSourcePatches` give it a
-different gateway build. `BUILD_RUNNER` selects a larger runner (the source build peaks
-around 15 GB).
+minutes. With the repository variable `CACHIX_CACHE` and the secret
+`CACHIX_AUTH_TOKEN` set, it pushes the source build and its pnpm dependency set to that
+Cachix cache, from release pull requests too, so a release is cached before it is
+merged. A consumer that adds the cache as a substituter and sets `sharedBuild`
+downloads the gateway instead of compiling it. The dependency set's store path depends
+on its hash alone, so even a consumer with its own `gatewayArgs` fetches that from the
+cache instead of the npm registry. `BUILD_RUNNER` selects a larger runner (the source
+build peaks around 15 GB).
+
+The public cache is `alinaos-openclaw-nix`:
+
+```nix
+nix.settings = {
+  extra-substituters = ["https://alinaos-openclaw-nix.cachix.org"];
+  extra-trusted-public-keys = ["alinaos-openclaw-nix.cachix.org-1:vLkWgaUe6XR3H+bIMF6QvMvxbrZJLFL9WyaVyrRD8Jo="];
+};
+```
 
 ## License
 

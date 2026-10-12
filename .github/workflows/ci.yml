@@ -50,18 +50,18 @@ jobs:
         with:
           name: ${{ vars.CACHIX_CACHE }}
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-          # Only the dependency set is pushed (below): its store path depends on
-          # its hash alone, so every consumer reuses it, even one that applies
-          # its own source patches and so compiles its own gateway.
+          # Only what consumers reuse is pushed (below), not every build output.
           skipPush: true
       - name: Gateway, hotfix layer, CLI and runtime plugins
         run: nix build -L --max-jobs 1 .#gateway-hotfixed .#openclaw .#runtime-plugins
-      - name: Single release and state fence
-        run: nix build -L .#checks.x86_64-linux.single-release .#checks.x86_64-linux.state-fence
-      # A release pull request pushes it too, so consumers can fetch the new
-      # dependency set while the pull request is still under review.
-      - name: Push the dependency set to the cache
+      - name: Single release, state fence and customize layer
+        run: nix build -L .#checks.x86_64-linux.single-release .#checks.x86_64-linux.state-fence .#checks.x86_64-linux.customize
+      # The source build, for consumers with `sharedBuild`, and its pnpm
+      # dependency set, whose store path depends on its hash alone, so even a
+      # consumer that compiles its own gateway reuses it. A release pull
+      # request pushes them too, so they are cached while it is under review.
+      - name: Push the source build and its dependency set to the cache
         if: vars.CACHIX_CACHE != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         env:
           CACHIX_CACHE: ${{ vars.CACHIX_CACHE }}
-        run: cachix push "$CACHIX_CACHE" "$(nix eval --raw .#gateway.pnpmDeps.outPath)"
+        run: cachix push "$CACHIX_CACHE" "$(nix eval --raw .#gateway.pnpmDeps.outPath)" "$(nix eval --raw .#gateway.outPath)"

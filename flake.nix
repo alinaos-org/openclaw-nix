@@ -20,11 +20,11 @@
     systems = ["x86_64-linux"];
     forAllSystems = lib.genAttrs systems;
 
-    # The package set overlay, parameterised for consumers that patch the
-    # gateway or trim the CLI bundle: (mkOverlay { gatewayArgs = ...; }).
+    # The package set overlay, parameterised for consumers that customise the
+    # gateway or trim the CLI bundle: (mkOverlay { sharedBuild = true; customize = ...; }).
     # mkPackageSetOverlay leaves out nix-openclaw's overlay, for consumers
     # that already apply it.
-    mkPackageSetOverlay = args: import ./overlay.nix {inherit nix-openclaw;} args;
+    mkPackageSetOverlay = args: import ./overlay.nix {inherit nix-openclaw self;} args;
     mkOverlay = args:
       lib.composeManyExtensions [
         nix-openclaw.overlays.default
@@ -81,6 +81,17 @@
             ${fenced}/bin/openclaw --version | grep -F '${pkgs.openclawNix.release.current}'
           touch $out
         '';
+      # The customize layer over the current release: a bundled channel that an
+      # external plugin replaces (this release bundles a "buzz" channel) and a
+      # consumer command.
+      customize = pkgs.openclawNix.customize {
+        gateway = p.gateway;
+        replaceBundledChannels = ["buzz"];
+        extraCommands = ''
+          test -x "$node" && test -f "$root/dist/index.js"
+          touch "$root/.customize-check"
+        '';
+      };
       formatting = pkgs.runCommand "openclaw-nix-formatting" {nativeBuildInputs = [pkgs.alejandra];} ''
         alejandra --check ${self}
         touch $out

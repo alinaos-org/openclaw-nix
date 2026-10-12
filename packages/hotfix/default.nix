@@ -71,6 +71,9 @@ in
             skillDeliveryDescription = ./test-skill-delivery-description.mjs;
           };
           unpatchedGateway = gateway;
+          # A later layer that changes the tree (a plugin graft) can extend this
+          # copy instead of making another one.
+          copyLayerOf = gateway;
         };
       meta = gateway.meta or {};
     }
