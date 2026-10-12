@@ -1,0 +1,61 @@
+name: release-watch
+
+# Daily: when openclaw/openclaw has a newer stable release than release.nix,
+# pin it (release table, plugin pins, pnpm dependency hash) and open a pull
+# request. CI then builds and tests the candidate on the pull request.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Compare with the latest stable release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(gh api repos/openclaw/openclaw/releases/latest --jq '.tag_name | ltrimstr("v")')
+          current=$(nix eval --raw -f release.nix current)
+          echo "latest=$latest current=$current"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$latest" != "$current" ] && ! gh pr list --state open --head "release-$latest" --json number --jq '.[0].number' | grep -q .; then
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Pin the release
+        if: steps.latest.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${{ steps.latest.outputs.latest }}
+          python3 scripts/new-release.py "$v" --skip-pnpm
+          rc=0; python3 scripts/pin-runtime-plugins.py "$v" || rc=$?
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || exit "$rc"
+          echo "PLUGIN_DEPS_CHANGED=$([ "$rc" -eq 2 ] && echo yes || echo no)" >> "$GITHUB_ENV"
+          python3 scripts/new-release.py "$v" --pnpm-only
+      - name: Open the pull request
+        if: steps.latest.outputs.new == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${{ steps.latest.outputs.latest }}
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "release-$v"
+          git commit -am "openclaw: $v"
+          git push origin "release-$v"
+          note=""
+          [ "$PLUGIN_DEPS_CHANGED" = yes ] && note=$'\n\nA runtime plugin changed its dependencies: check that it still builds.'
+          gh pr create --title "openclaw: $v" --body "Pins OpenClaw $v (release table, runtime plugins, pnpm dependency hash). CI builds the gateway and runs the patch tests.$note"
+          # Pull requests opened with GITHUB_TOKEN start no workflows; a
+          # dispatch does, so run CI on the release branch explicitly.
+          gh workflow run ci.yml --ref "release-$v"

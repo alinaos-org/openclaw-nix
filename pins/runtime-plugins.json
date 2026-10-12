@@ -1,0 +1,85 @@
+{
+  "plugins": {
+    "firecrawl": {
+      "bundleDependencies": [
+        "typebox"
+      ],
+      "dependencies": {
+        "typebox": "1.3.34"
+      },
+      "nixHash": "sha256-A3q0gFSlCbepOCzQQVxTjdXeaquNSJ+hncAXVDgZeb4=",
+      "npmIntegrity": "sha512-q2k3mfNaHFMs99PWfN33BFxtkfSnyjpWxNAgOFIcFJmyBjHJPp++q9klhJ79sGJ9ySQDG6JaF+T3d8AGF3R4DA==",
+      "npmShasum": "2b14ed632358cb79ae9631debf94fb8e754df0d4",
+      "package": "@openclaw/firecrawl-plugin",
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/firecrawl-plugin/-/firecrawl-plugin-2026.10.2.tgz"
+    },
+    "kimi": {
+      "bundleDependencies": [],
+      "dependencies": {},
+      "nixHash": "sha256-gIdLkTY+5US3ebQ/5TBTWTZqC01dDzNe+TNOlllBMOQ=",
+      "npmIntegrity": "sha512-gm4NF0bgIgJnUvKQFzqyYAkm5f+AdaxUdGsmNn8J/mifY0/TfkhW4QqWOzO1TPdfF9R0+lg6y936HRez7qxZLw==",
+      "npmShasum": "28936624c15f84525fbafccfa86efcca06a30877",
+      "package": "@openclaw/kimi-provider",
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/kimi-provider/-/kimi-provider-2026.10.2.tgz"
+    },
+    "moonshot": {
+      "bundleDependencies": [],
+      "dependencies": {},
+      "nixHash": "sha256-HW1Bpa+X2tf7Gyv+PVLVgMj408FH3gbakcQGkPt9tVc=",
+      "npmIntegrity": "sha512-18E96vfZl+3M9x9h6cwmzU2OOxXDVy5b4I6v+7g6f4Zg2HKaAi20eahiV5SRO3DxjK6B0zkB146VlNwrIT5/cA==",
+      "npmShasum": "66e9eb92de70f5b948753dde17907ee79d38d5b0",
+      "package": "@openclaw/moonshot-provider",
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/moonshot-provider/-/moonshot-provider-2026.10.2.tgz"
+    },
+    "perplexity": {
+      "bundleDependencies": [],
+      "dependencies": {},
+      "nixHash": "sha256-AhDRnhHijjEisgyEG8rVcSWuBp/cPvWCgSozLd4xZ5U=",
+      "npmIntegrity": "sha512-P0g0E6BDgTKqARNf1Voe0JS0FGuIaWkXVTxHtsufDGpSG//A6V2bTlfBHhpKVr+IVqBjRiRzK80Ii42vRDE7eg==",
+      "npmShasum": "50b358f1cbcf0f3b2d53c4f464f34422aeec7eef",
+      "package": "@openclaw/perplexity-plugin",
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/perplexity-plugin/-/perplexity-plugin-2026.10.2.tgz"
+    },
+    "qwen": {
+      "bundleDependencies": [],
+      "dependencies": {},
+      "nixHash": "sha256-3QWwmgPN87DlKwZLEPgyHCVYM/0ggd037RBrNDw2YJc=",
+      "npmIntegrity": "sha512-wdwgABbKla/pKnY9MgJyMWRZSKWQDFWg13P/o6apywQHp4TOIfWRp6T9GNy/XBWF9k/VwNVkqKX3arVcssNh9w==",
+      "npmShasum": "dbe181f62f6aedbef121d3c0f58fda939f067449",
+      "package": "@openclaw/qwen-provider",
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/qwen-provider/-/qwen-provider-2026.10.2.tgz"
+    },
+    "tavily": {
+      "bundleDependencies": [
+        "typebox"
+      ],
+      "dependencies": {
+        "typebox": "1.3.34"
+      },
+      "nixHash": "sha256-1rXVulfGAr4qVWx/IuY0JuvksYWpiPs8KAvTcA6H9uA=",
+      "npmIntegrity": "sha512-pyuJowWND058yq5JYbJg5s8YKjrGUJ86H8hk258aGhRknCiFM7M16SQMW4BgY/PwA9hGkBX/YLe2ghyBCGPbAw==",
+      "npmShasum": "ffcc4f80af34c34c86c3af11a03dd78a04b9a5fd",
+      "package": "@openclaw/tavily-plugin",
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/tavily-plugin/-/tavily-plugin-2026.10.2.tgz"
+    },
+    "voyage": {
+      "bundleDependencies": [],
+      "dependencies": {},
+      "nixHash": "sha256-7NwmGGJuFlh8DrYae15xxACci/OLD4p2vxKpRzaeNTw=",
+      "npmIntegrity": "sha512-CmmzQRokh7qugpHHWe6HQjfPB9T3S36Mne+r0Hz4NygwEjl3fBXHq7ndXZ9QOjHXkhXRpl2FB4HLdtIyOyfm6w==",
+      "npmShasum": "fe1219fe4536cabefa3c8624bd274bc45cd125a8",
+      "package": "@openclaw/voyage-provider",
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/voyage-provider/-/voyage-provider-2026.10.2.tgz"
+    },
+    "zai": {
+      "bundleDependencies": [],
+      "dependencies": {},
+      "nixHash": "sha256-lJ43NehyyCL/NZkx0OLYrgSg5EBDEIWmtqnPskBXUI0=",
+      "npmIntegrity": "sha512-o6CC8LC+Zv/3qhh5HCJbH/bU0xGntfJ19B1SJqVpuxqz1iGL2x1kWw6qx0PTVvrYTDcER2jDeuIFaOKqGHkfTg==",
+      "npmShasum": "8ad0fa161983152e7ad57dfd49c27183674bfd98",
+      "package": "@openclaw/zai-provider",
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/zai-provider/-/zai-provider-2026.10.2.tgz"
+    }
+  },
+  "version": "2026.10.2"
+}

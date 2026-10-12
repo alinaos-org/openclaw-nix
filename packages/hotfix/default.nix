@@ -1,0 +1,76 @@
+# Post-build fixes for bugs upstream has not fixed yet, applied to a copy of the
+# built gateway tree. A real copy (not symlinks) keeps worker-relative imports
+# and bundled-plugin trust boundaries intact.
+#
+# Each patch-*.mjs checks the exact code it replaces, found exactly once, and a
+# matching test-*.mjs exercises the result; a release that moves or fixes that
+# code fails the build there. Then drop the patch (upstream fixed it) or
+# re-port its anchors (upstream moved it).
+{
+  lib,
+  stdenvNoCC,
+  nodejs_24,
+  gateway,
+  # Bump when the patch set changes for the same gateway.
+  revision ? "hotfix.1",
+}: let
+  inherit (gateway.passthru) upstreamVersion;
+  node = "${nodejs_24}/bin/node";
+  root = "$out/lib/openclaw";
+in
+  assert lib.assertMsg (lib.versionAtLeast upstreamVersion "2026.10.1")
+  "openclaw-nix hotfixes are qualified from 2026.10.1 (got ${upstreamVersion})";
+    stdenvNoCC.mkDerivation {
+      pname = "openclaw-gateway";
+      version = "${gateway.version}-${revision}";
+      dontUnpack = true;
+      phases = ["installPhase"];
+      installPhase = ''
+        cp -a ${gateway}/. "$out"
+        chmod -R u+w "$out"
+
+        # MCP: observe close() rejections so a failed transport close cannot
+        # surface as an unhandled rejection and stop the gateway.
+        ${node} ${./patch-mcp-close-rejection.mjs} "${root}" "${upstreamVersion}"
+
+        # Shutdown: bound the non-restart stop drain and force-exit timer.
+        ${node} ${./patch-stop-budget.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-stop-budget.mjs} "${root}"
+
+        # Cloud workers: make the Nix layout packable as the node bootstrap,
+        # give node enrollment its own gateway URL
+        # (OPENCLAW_CLOUD_WORKER_GATEWAY_URL), allow Nix-store hard links in
+        # shipped skill trees, and clamp skill descriptions to the worker
+        # protocol's 1024-character limit.
+        ${node} ${./patch-node-bootstrap-layout.mjs} "${root}" "${gateway.passthru.upstreamSource}" "${upstreamVersion}"
+        ${node} ${./patch-cloud-worker-gateway-url.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-cloud-worker-gateway-url.mjs} "${root}"
+        ${node} ${./patch-skill-tree-store-hardlinks.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-skill-tree-store-hardlinks.mjs} "${root}"
+        ${node} ${./patch-skill-delivery-description.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-skill-delivery-description.mjs} "${root}"
+        ${node} ${./test-node-bootstrap-layout.mjs} "${root}"
+      '';
+      passthru =
+        (gateway.passthru or {})
+        // {
+          hotfixes = {
+            mcpCloseRejection = "openclaw-mcp-observe-close-rejection-v1";
+            stopBudget = "openclaw-nix-stop-budget-v1";
+            nodeBootstrapLayout = "openclaw-nix-node-bootstrap-layout-v1";
+            cloudWorkerGatewayUrl = "openclaw-nix-cloud-worker-gateway-url-v1";
+            skillTreeStoreHardlinks = "openclaw-nix-skill-tree-store-hardlinks-v1";
+            skillDeliveryDescription = "openclaw-nix-skill-delivery-description-v1";
+          };
+          # Layers that change dist/extensions afterwards (a plugin graft)
+          # rerun these on their final tree.
+          hotfixTests = {
+            nodeBootstrapLayout = ./test-node-bootstrap-layout.mjs;
+            cloudWorkerGatewayUrl = ./test-cloud-worker-gateway-url.mjs;
+            skillTreeStoreHardlinks = ./test-skill-tree-store-hardlinks.mjs;
+            skillDeliveryDescription = ./test-skill-delivery-description.mjs;
+          };
+          unpatchedGateway = gateway;
+        };
+      meta = gateway.meta or {};
+    }
