@@ -16,6 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
+        with:
+          # The Nix version consumers build with, so derivations and the cache match.
+          install_url: https://releases.nixos.org/nix/nix-2.34.8/install
       - name: Evaluate every output
         run: nix flake check --no-build
       - name: Formatting
@@ -34,6 +37,9 @@ jobs:
           df -h /
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
+        with:
+          # The Nix version consumers build with, so derivations and the cache match.
+          install_url: https://releases.nixos.org/nix/nix-2.34.8/install
       - uses: cachix/cachix-action@v15
         if: vars.CACHIX_CACHE != ''
         with:

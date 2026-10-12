@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
+        with:
+          # The Nix version consumers build with, so derivations and the cache match.
+          install_url: https://releases.nixos.org/nix/nix-2.34.8/install
       - name: Compare with the latest stable release
         id: latest
         env:
