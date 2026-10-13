@@ -89,6 +89,54 @@ pkgs.openclawNix.stateFence {                         # a fenced entrypoint
 pkgs.openclawNix.checkSingleRelease { roots = [config.system.build.toplevel]; }
 ```
 
+## Servers: the NixOS module
+
+`nixosModules.openclaw` runs each gateway as a system service, which is what a server
+wants; the Home Manager modules suit a workstation where gateways belong to a desktop
+user.
+
+```nix
+{
+  imports = [openclaw-nix.nixosModules.openclaw];
+
+  services.openclaw.instances.main = {
+    port = 18789;
+    credentials.OPENCLAW_GATEWAY_TOKEN = "/run/secrets/openclaw-gateway-token";
+    settings = {
+      gateway = {
+        mode = "local";
+        port = 18789;
+        bind = "loopback";
+        auth = {mode = "token"; token = "$OPENCLAW_GATEWAY_TOKEN";};
+      };
+      agents.defaults.workspace = "/var/lib/openclaw/main/workspace";
+    };
+    configOverlay.enable = true; # the Control UI may save, within its policy
+  };
+}
+```
+
+Each instance is `openclaw-<name>.service`:
+
+- its own system user and group (`openclaw-<name>`), state in `/var/lib/openclaw/<name>`
+  (mode 0700), and OpenClaw's file logs in `/var/log/openclaw/<name>`, removed after
+  `logRetention` (30 days); console output goes to the journal;
+- secrets as `credentials`: files loaded with systemd's `LoadCredential` and exported only
+  inside the service's own wrappers, so they appear in neither the unit, the store nor the
+  rendered config, which references them as `"$NAME"`;
+- the same prepare step as the Home Manager module: validation with a fallback to the
+  pure Nix render, doctor on copies after a package change, and the optional Control UI
+  overlay;
+- `hardening` on by default: read-only system, no home directories, private `/tmp` and
+  devices, no capabilities, a system-call filter. `systemd-analyze security` rates the
+  unit 1.4 (the module's VM test fails above 3.0); override single settings with
+  `serviceConfig` rather than turning it off;
+- the gateway's own stop semantics: it drains active work for up to about five minutes
+  before it exits (`KillMode=mixed`, `TimeoutStopSec=360s`).
+
+The port stays closed unless `openFirewall` is set: terminate TLS and authenticate users
+in a reverse proxy on the same host.
+
 ## Control UI over a Nix config
 
 nix-openclaw renders an instance's config and runs the gateway in Nix mode, where every

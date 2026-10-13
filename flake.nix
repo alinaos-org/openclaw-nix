@@ -76,6 +76,10 @@
     # programs.openclaw.instances.<name>.configOverlay, for nix-openclaw's
     # Home Manager module.
     homeManagerModules.configOverlay = import ./modules/home-manager/config-overlay.nix {inherit self;};
+    # Gateways as system services with their own users, state and hardening, for
+    # servers (modules/nixos/openclaw.nix).
+    nixosModules.openclaw = import ./modules/nixos/openclaw.nix {inherit self;};
+    nixosModules.default = self.nixosModules.openclaw;
 
     packages = forAllSystems (system: let
       pkgs = pkgsFor system;
@@ -185,6 +189,72 @@
         fold=${(mkConfigOverlay pkgs).fold} bash ${./tests/config-overlay/fold.sh}
         touch $out
       '';
+      # The NixOS module in a VM: a gateway as its own system user, state and logs in
+      # their directories, the credential kept out of the unit and the config, the
+      # hardened unit's exposure, and a Control UI change that survives a restart.
+      nixos-module = pkgs.testers.runNixOSTest {
+        name = "openclaw-nixos-module";
+        nodes.machine = {pkgs, ...}: {
+          imports = [self.nixosModules.openclaw];
+          virtualisation.memorySize = 4096;
+          virtualisation.cores = 2;
+          environment.systemPackages = [pkgs.curl pkgs.jq];
+          services.openclaw.instances.test = {
+            port = 18789;
+            configOverlay.enable = true;
+            # A store file in the test only; a real host points at a root-only secret.
+            credentials.OPENCLAW_GATEWAY_TOKEN = "${pkgs.writeText "gateway-token" "vm-test-token"}";
+            settings = {
+              gateway = {
+                mode = "local";
+                port = 18789;
+                bind = "loopback";
+                auth = {
+                  mode = "token";
+                  token = "$OPENCLAW_GATEWAY_TOKEN";
+                };
+              };
+              agents.defaults = {
+                workspace = "/var/lib/openclaw/test/workspace";
+                thinkingDefault = "low";
+              };
+            };
+          };
+        };
+        testScript = ''
+          state = "/var/lib/openclaw/test"
+          machine.wait_for_unit("openclaw-test.service")
+          machine.wait_until_succeeds("curl -sf http://127.0.0.1:18789/readyz", timeout=600)
+
+          with subtest("own user, state and file logs"):
+              pid = machine.succeed("systemctl show -p MainPID --value openclaw-test").strip()
+              machine.succeed(f"test \"$(ps -o user:32= -p {pid})\" = openclaw-test")
+              machine.succeed(f"test \"$(stat -c %U:%a {state})\" = openclaw-test:700")
+              machine.wait_until_succeeds("ls /var/log/openclaw/test/openclaw-*.log", timeout=120)
+
+          with subtest("the credential stays out of the unit and the configs"):
+              machine.fail("grep -q vm-test-token /etc/systemd/system/openclaw-test.service")
+              machine.fail(f"grep -q vm-test-token {state}/openclaw.json {state}/openclaw-runtime.json")
+
+          with subtest("hardened"):
+              line = machine.succeed("systemd-analyze security openclaw-test.service | tail -1")
+              exposure = float(line.split(":")[1].split()[0])
+              print(f"exposure {exposure}")
+              assert exposure <= 3.0, line
+
+          with subtest("an allowed Control UI change survives a restart"):
+              machine.succeed("systemctl stop openclaw-test")
+              machine.succeed(
+                  f"runuser -u openclaw-test -- sh -c "
+                  f"'jq \".agents.defaults.thinkingDefault = \\\"high\\\"\" {state}/openclaw-runtime.json > {state}/edit.json "
+                  f"&& mv {state}/edit.json {state}/openclaw-runtime.json'"
+              )
+              machine.succeed("systemctl start openclaw-test")
+              machine.wait_until_succeeds("curl -sf http://127.0.0.1:18789/readyz", timeout=600)
+              machine.succeed(f"jq -e '.agents.defaults.thinkingDefault == \"high\"' {state}/openclaw-runtime.json")
+              machine.succeed(f"jq -e '.entries | length == 1' {state}/config-overlay.json")
+        '';
+      };
       # The Home Manager module over nix-openclaw's: a writable instance gets the
       # prepare step, the runtime config and Nix mode off (after nix-openclaw's
       # own environment), its operator command, and the nightly sync timer.

@@ -67,3 +67,28 @@ jobs:
         env:
           CACHIX_CACHE: ${{ vars.CACHIX_CACHE }}
         run: cachix push "$CACHIX_CACHE" "$(nix eval --raw .#gateway.pnpmDeps.outPath)" "$(nix eval --raw .#gateway.outPath)"
+
+  # The NixOS module in a VM (checks.nixos-module). Not a required check until it
+  # has proven stable on hosted runners.
+  nixos-module:
+    needs: eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: Allow KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.34.8/install
+          extra_nix_config: system-features = nixos-test benchmark big-parallel kvm
+      - uses: cachix/cachix-action@v15
+        if: vars.CACHIX_CACHE != ''
+        with:
+          name: ${{ vars.CACHIX_CACHE }}
+          skipPush: true
+      - name: NixOS module VM test
+        run: nix build -L .#checks.x86_64-linux.nixos-module
