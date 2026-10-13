@@ -1,0 +1,16 @@
+{
+  "id": "session-icons",
+  "name": "Session Icons",
+  "version": "0.1.0",
+  "description": "A searchable library of colour session icons, from the session menu's Icon library.",
+  "activation": { "onStartup": true },
+  "controlUi": {
+    "entry": "dist/control-ui/library.js",
+    "styles": ["dist/control-ui/library.css"]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
