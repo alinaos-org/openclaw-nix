@@ -843,6 +843,45 @@ in {
               so fleet-health can report when it lags the installed one.
             '';
           };
+          cleanEnvironment = {
+            enable = lib.mkEnableOption ''
+              a clean environment: the prepare step and the gateway start from only the
+              variables the unit declares, `pass` and CREDENTIALS_DIRECTORY, not what
+              the user manager hands down (D-Bus, SSH agent, Wayland, ambient keys);
+              the overlay engine also runs without credentials. Needs a password
+              launcher (gatewayPasswordFile or deriveGatewayPassword)
+            '';
+            pass = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [];
+              description = "Variables from the unit's env files the gateway still receives.";
+            };
+          };
+          credentialFiles = lib.mkOption {
+            type = lib.types.attrsOf (lib.types.submodule {
+              options = {
+                path = lib.mkOption {
+                  type = lib.types.str;
+                  description = "The file systemd loads (LoadCredential).";
+                };
+                variable = lib.mkOption {
+                  type = lib.types.str;
+                  description = "The variable that receives the credential's path.";
+                };
+              };
+            });
+            default = {};
+            description = "Credentials the gateway reads as files: each one's path is exported in `variable`.";
+          };
+          serviceConfig = lib.mkOption {
+            type = lib.types.attrs;
+            default = {};
+            example = {
+              UMask = "0077";
+              NoNewPrivileges = true;
+            };
+            description = "Extra [Service] settings for the gateway unit, applied last.";
+          };
           canary = {
             enable = lib.mkEnableOption ''
               a scheduled canary: one real agent turn through the instance's own CLI
@@ -972,6 +1011,11 @@ in {
         })
         cfg.instances
         ++ lib.mapAttrsToList (name: inst: {
+          assertion = !inst.cleanEnvironment.enable || inst.deriveGatewayPassword || inst.gatewayPasswordFile != null;
+          message = "OpenClaw instance ${name}: cleanEnvironment wraps the password launcher, so it needs gatewayPasswordFile or deriveGatewayPassword";
+        })
+        cfg.instances
+        ++ lib.mapAttrsToList (name: inst: {
           assertion = lib.all (id: builtins.elem id graftIds) inst.excludedBundledRuntimePlugins;
           message = "OpenClaw instance ${name} may exclude only host-declared bundled runtime plugins";
         })
@@ -1089,7 +1133,58 @@ in {
               then "${stateDirFor name}/openclaw-runtime.declarative.json"
               else runtimeConfigPathFor name;
             instanceEnvironment =
-              lib.mapAttrsToList (environmentName: value: "${environmentName}=${value}") _inst.environment;
+              lib.mapAttrsToList (environmentName: value: "${environmentName}=${value}") _inst.environment
+              # Each credential file's path, as systemd mounts it.
+              ++ lib.mapAttrsToList (credential: c: "${c.variable}=%d/${credential}") _inst.credentialFiles;
+            unitEnvironment =
+              if _inst.runtimeConfigJqFilter != null
+              then
+                cfg.extraUnitEnvironment
+                ++ [
+                  unitPath
+                  "HOME=${cfg.home}"
+                  "OPENCLAW_CONFIG_PATH=${runtimeConfigFor}"
+                  "OPENCLAW_STATE_DIR=${stateDirFor name}"
+                  "OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY=1"
+                ]
+                # Nix mode makes every config write throw
+                # (OPENCLAW_NIX_MODE_CONFIG_IMMUTABLE): Control UI saves,
+                # provider sign-in's config step, /config. uiOverlay
+                # instances run writable and let prepare-config decide
+                # what survives a restart. Nix mode also disabled update
+                # checks and telemetry; keep both off explicitly.
+                ++ (
+                  if _inst.uiOverlay.enable
+                  # Explicit 0: the state-fenced wrapper defaults an
+                  # unset OPENCLAW_NIX_MODE back to 1.
+                  then ["OPENCLAW_NIX_MODE=0" "OPENCLAW_NO_AUTO_UPDATE=1" "DO_NOT_TRACK=1"]
+                  else ["OPENCLAW_NIX_MODE=1"]
+                )
+                ++ instanceEnvironment
+              else
+                cfg.extraUnitEnvironment
+                # The systemd user manager does not inherit the login
+                # shell's PATH, so gateway-spawned tools otherwise miss
+                # ~/.local/bin and the user's Nix profiles.
+                ++ [unitPath]
+                ++ instanceEnvironment;
+            # cleanEnvironment: the prepare step and the gateway start from exactly
+            # the variables the unit declares (plus `pass` from its env files and
+            # systemd's CREDENTIALS_DIRECTORY), nothing the user manager hands down.
+            keepNames =
+              map (entry: builtins.head (lib.splitString "=" entry)) unitEnvironment
+              ++ _inst.cleanEnvironment.pass
+              ++ ["CREDENTIALS_DIRECTORY"];
+            clean = command:
+              if !_inst.cleanEnvironment.enable
+              then command
+              else "${pkgs.writeShellScript "openclaw-${name}${suffix}-clean-env" ''
+                kept=()
+                for name in ${lib.escapeShellArgs (lib.unique keepNames)}; do
+                  if [ -n "''${!name+x}" ]; then kept+=("$name=''${!name}"); fi
+                done
+                exec ${pkgs.coreutils}/bin/env -i "''${kept[@]}" "$@"
+              ''} ${command}";
           in
             lib.nameValuePair "${unitNameFor name}${suffix}" {
               Install.WantedBy = lib.optional (_inst.autoStart && !declarative) "default.target";
@@ -1137,38 +1232,8 @@ in {
                   # gets the store the tokens are actually in.
                   Environment =
                     if _inst.runtimeConfigJqFilter != null
-                    then
-                      lib.mkForce (
-                        cfg.extraUnitEnvironment
-                        ++ [
-                          unitPath
-                          "HOME=${cfg.home}"
-                          "OPENCLAW_CONFIG_PATH=${runtimeConfigFor}"
-                          "OPENCLAW_STATE_DIR=${stateDirFor name}"
-                          "OPENCLAW_DISABLE_PERSISTED_PLUGIN_REGISTRY=1"
-                        ]
-                        # Nix mode makes every config write throw
-                        # (OPENCLAW_NIX_MODE_CONFIG_IMMUTABLE): Control UI saves,
-                        # provider sign-in's config step, /config. uiOverlay
-                        # instances run writable and let prepare-config decide
-                        # what survives a restart. Nix mode also disabled update
-                        # checks and telemetry; keep both off explicitly.
-                        ++ (
-                          if _inst.uiOverlay.enable
-                          # Explicit 0: the state-fenced wrapper defaults an
-                          # unset OPENCLAW_NIX_MODE back to 1.
-                          then ["OPENCLAW_NIX_MODE=0" "OPENCLAW_NO_AUTO_UPDATE=1" "DO_NOT_TRACK=1"]
-                          else ["OPENCLAW_NIX_MODE=1"]
-                        )
-                        ++ instanceEnvironment
-                      )
-                    else
-                      cfg.extraUnitEnvironment
-                      # The systemd user manager does not inherit the login
-                      # shell's PATH, so gateway-spawned tools otherwise miss
-                      # ~/.local/bin and the user's Nix profiles.
-                      ++ [unitPath]
-                      ++ instanceEnvironment;
+                    then lib.mkForce unitEnvironment
+                    else unitEnvironment;
                   # Talk's OAuth/subscription path is selected only when
                   # OPENAI_API_KEY is absent. Unset it after EnvironmentFile
                   # processing so the canonical SOPS bundle remains available
@@ -1196,8 +1261,15 @@ in {
                     then builtins.head environmentFiles
                     else environmentFiles;
                 }
-                // lib.optionalAttrs (_inst.gatewayPasswordFile != null) {
-                  LoadCredential = "gateway-password:${_inst.gatewayPasswordFile}";
+                // lib.optionalAttrs (_inst.gatewayPasswordFile != null || _inst.credentialFiles != {}) {
+                  LoadCredential = let
+                    credentials =
+                      lib.optional (_inst.gatewayPasswordFile != null) "gateway-password:${_inst.gatewayPasswordFile}"
+                      ++ lib.mapAttrsToList (credential: c: "${credential}:${c.path}") _inst.credentialFiles;
+                  in
+                    if builtins.length credentials == 1
+                    then builtins.head credentials
+                    else credentials;
                 }
                 // lib.optionalAttrs (_inst.runtimeConfigJqFilter != null) (let
                   runtimeConfig = runtimeConfigFor;
@@ -1218,25 +1290,27 @@ in {
                       if _inst.materializeRuntimePlugins
                       then materializedRuntimePluginsRootFor name
                       else null;
+                    isolateTools = _inst.cleanEnvironment.enable;
                   };
                 in {
-                  ExecStartPre = "${prepareConfig}/bin/openclaw-${name}${suffix}-prepare-config";
+                  ExecStartPre = clean "${prepareConfig}/bin/openclaw-${name}${suffix}-prepare-config";
                   # A first start on a new release may run doctor migrations
                   # (bounded at 900s inside prepare-config); the user-manager
                   # default of 90s would kill them half-way.
                   TimeoutStartSec = lib.mkIf _inst.migrateStateOnUpgrade "20min";
                 })
                 // lib.optionalAttrs (_inst.deriveGatewayPassword || _inst.gatewayPasswordFile != null) {
-                  ExecStart = lib.mkForce "${passwordLauncherFor name _inst}/bin/openclaw-gateway-${name}";
+                  ExecStart = lib.mkForce (clean "${passwordLauncherFor name _inst}/bin/openclaw-gateway-${name}");
                 }
                 # Upstream defines only the main unit; the twin needs its own
                 # start command (the same one passwordLauncherFor execs).
                 // lib.optionalAttrs (declarative && !(_inst.deriveGatewayPassword || _inst.gatewayPasswordFile != null)) {
-                  ExecStart = "${packageFor name _inst}/bin/openclaw gateway --port ${toString _inst.gatewayPort}";
+                  ExecStart = clean "${packageFor name _inst}/bin/openclaw gateway --port ${toString _inst.gatewayPort}";
                   Restart = "on-failure";
                   RestartSec = "5s";
                   WorkingDirectory = stateDirFor name;
-                };
+                }
+                // _inst.serviceConfig;
             };
         in
           lib.mapAttrs' (mkUnit false) cfg.instances
