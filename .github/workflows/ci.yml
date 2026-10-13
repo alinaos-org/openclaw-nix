@@ -56,6 +56,8 @@ jobs:
         run: nix build -L --max-jobs 1 .#gateway-hotfixed .#openclaw .#runtime-plugins
       - name: Single release, state fence, customize layer and upgrade skill
         run: nix build -L .#checks.x86_64-linux.single-release .#checks.x86_64-linux.state-fence .#checks.x86_64-linux.customize .#checks.x86_64-linux.upgrade-skill
+      - name: Config overlay (engine, prepare-config, fold, Home Manager module)
+        run: nix build -L .#checks.x86_64-linux.config-overlay .#checks.x86_64-linux.config-overlay-prepare .#checks.x86_64-linux.config-overlay-fold .#checks.x86_64-linux.config-overlay-home-manager
       # The source build, for consumers with `sharedBuild`, and its pnpm
       # dependency set, whose store path depends on its hash alone, so even a
       # consumer that compiles its own gateway reuses it. A release pull
