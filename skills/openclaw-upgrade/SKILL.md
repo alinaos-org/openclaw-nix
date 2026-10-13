@@ -51,8 +51,10 @@ generic scripts their host defaults. If there is no host profile, stop and write
    openclaw-nix`. Check that the host's compile is still openclaw-nix's own: its
    derivation equals openclaw-nix's `.#gateway` (the host profile names the contract that
    asserts it). Otherwise the host compiles locally and the cache does not help.
-4. **Build** each instance's package with `scripts/build-capped.sh` (the compile
-   downloads; the copy layers build locally, about 1.5 min each), then
+4. **Build** the compile first with `scripts/fetch-or-compile.sh`: it compiles here when
+   the release kept its pnpm dependency set (about 5 min, the same path as the cache's),
+   and fetches otherwise. Then each instance's package with `scripts/build-capped.sh`
+   (the copy layers build locally, about 1.5 min each), then
    `scripts/check-plugin-sdk-imports.py <package>` against the package the main gateway
    will run.
 5. **Qualify** each instance on copies of its state, in parallel and never beside a

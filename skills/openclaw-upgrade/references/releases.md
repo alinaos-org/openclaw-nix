@@ -46,8 +46,10 @@ Release-specific values are data, not gates: the `releases.nix` entry
   (2026.10.3: a rebase merge kept the path).
 - The cached compile is a large download (2026.10.3: 880 MB compressed, 2.9 GB unpacked).
   On a slow link with the pnpm set already local (the release kept its hash), compiling
-  is faster: about 5 minutes on 8 cores, and the same store path. Build it with
-  `nix build --option substitute false '<gateway drv>^out'` before the consumer's closure.
+  is faster: about 5 minutes on 8 cores, and the same store path.
+  `scripts/fetch-or-compile.sh` makes that choice before the consumer's closure: it
+  compiles with substitution off only when nothing but the source and the compile is
+  missing, and fetches otherwise.
 - `checkSingleRelease` matches OpenClaw's own package names, including layered ones
   (`openclaw-gateway-custom-fenced-<release>`), and fails a closure carrying any other
   release.
