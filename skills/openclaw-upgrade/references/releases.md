@@ -16,6 +16,12 @@ release newer than `release.nix`'s `current`, it runs:
 It pushes `release-<v>`, opens a pull request and dispatches CI on it. To do it by hand,
 run the same two scripts in a clone.
 
+Opening the pull request needs "Allow GitHub Actions to create and approve pull requests"
+(Settings, Actions, General: the organization first, then the repository). Without it the
+workflow fails after pushing the branch, and the CI dispatch after that never runs; open
+the pull request by hand and CI starts on it (2026.10.3). A branch cut before a later
+`main` commit rebases cleanly: its commit touches only the release files.
+
 Release-specific values are data, not gates: the `releases.nix` entry
 (`pnpmBootstrapVersion`, `tsdownHeapMb`, `buildTimestamp`) and the plugin pins.
 
@@ -35,6 +41,13 @@ Release-specific values are data, not gates: the `releases.nix` entry
   After removing a `follows`, run `nix flake update openclaw-nix`: a plain relock
   resolved a fresh nixpkgs instead of this flake's locked one. The pnpm dependency set is
   a fixed-output path, so every consumer reuses it, even one compiling its own gateway.
+- Merge the release pull request any way (merge, squash or rebase): the gateway's store
+  path follows the source content, not the commit, so the build CI pushed stays valid
+  (2026.10.3: a rebase merge kept the path).
+- The cached compile is a large download (2026.10.3: 880 MB compressed, 2.9 GB unpacked).
+  On a slow link with the pnpm set already local (the release kept its hash), compiling
+  is faster: about 5 minutes on 8 cores, and the same store path. Build it with
+  `nix build --option substitute false '<gateway drv>^out'` before the consumer's closure.
 - `checkSingleRelease` matches OpenClaw's own package names, including layered ones
   (`openclaw-gateway-custom-fenced-<release>`), and fails a closure carrying any other
   release.

@@ -142,7 +142,9 @@ then copies `skill` to wherever its agents load skills. See
 `scripts/new-release.py <version>` adds a release (tag, release-SHA cross-check, source
 and pnpm hashes) and `scripts/pin-runtime-plugins.py <version>` re-pins the plugins.
 The `release-watch` workflow runs both daily and opens a pull request when OpenClaw
-publishes a new stable release; CI builds and tests it there.
+publishes a new stable release; CI builds and tests it there. It needs "Allow GitHub
+Actions to create and approve pull requests" enabled for the organization and the
+repository.
 
 When a hotfix patch fails on a new release, upstream either fixed the bug (drop the
 patch and its test) or moved the code (re-port its anchors).
