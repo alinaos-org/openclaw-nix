@@ -35,7 +35,7 @@
   release ? (import ../../release.nix).current,
   # Appended to the version: <release>-<localRevision>. Bump when this build
   # changes for the same upstream release.
-  localRevision ? "nix.1",
+  localRevision ? "nix.2",
   # Source patches applied in order, before pnpm: a list of paths, or of
   # { name, patch } attrsets. Applied with -p1 and zero fuzz.
   extraSourcePatches ? [],
@@ -639,6 +639,39 @@ in
             console.log(`managed Codex app-server: ''${command} (''${version})`);
           }
           EOF
+
+          # Reproducibility. nix-openclaw links dependencies some packages never
+          # declare (strip-ansi, combined-stream, hasown) to the first copy `find`
+          # lists, which depends on directory order: 2026.10.3's top-level strip-ansi
+          # was 7.2.0 in one build and 6.0.1 in another. Its links are absolute,
+          # unlike pnpm's, so point each at the highest version (ties by path).
+          pnpm_store="$out/lib/openclaw/node_modules/.pnpm"
+          for dep in strip-ansi combined-stream hasown; do
+            chosen=$(
+              for dir in "$pnpm_store"/*/node_modules/"$dep"; do
+                if [ -d "$dir" ] && [ ! -L "$dir" ]; then
+                  printf '%s\t%s\n' "$("$node" -p "require(process.argv[1]).version" "$dir/package.json")" "$dir"
+                fi
+              done | LC_ALL=C ${coreutils}/bin/sort -t "$(printf '\t')" -k1,1V -k2,2 | ${coreutils}/bin/tail -n 1 | ${coreutils}/bin/cut -f2
+            )
+            [ -n "$chosen" ] || continue
+            while IFS= read -r -d "" link; do
+              ${coreutils}/bin/ln -sfn "$chosen" "$link"
+            done < <(${findutils}/bin/find "$out/lib/openclaw/node_modules" -name "$dep" -type l -lname "$pnpm_store/*" -print0)
+          done
+          # pnpm's install metadata records when it ran; record the release's build
+          # time instead. The test run's Vitest cache is not part of the package.
+          while IFS= read -r -d "" pnpm_meta; do
+            "$node" -e '
+              const fs = require("node:fs");
+              const [file, stamp] = process.argv.slice(1);
+              const data = JSON.parse(fs.readFileSync(file, "utf8"));
+              if ("prunedAt" in data) data.prunedAt = new Date(stamp).toUTCString();
+              if ("lastValidatedTimestamp" in data) data.lastValidatedTimestamp = Date.parse(stamp);
+              fs.writeFileSync(file, JSON.stringify(data, null, 2) + "\n");
+            ' "$pnpm_meta" ${lib.escapeShellArg buildTimestamp}
+          done < <(${findutils}/bin/find "$out/lib/openclaw" \( -name .modules.yaml -o -name .pnpm-workspace-state-v1.json \) -type f -print0)
+          rm -rf "$out/lib/openclaw/node_modules/.vite"
 
           ${extraInstallCommands}
 

@@ -57,6 +57,9 @@ jobs:
             diff hashes/cached.txt hashes/rebuilt.txt | head -100
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
+          # Both copies of the smallest differing files, paired by name with Vite's
+          # content hash ignored, to read what differs.
+          python3 -I scripts/sample-differences.py "$OUT" "$OUT.check" hashes/cached.txt hashes/rebuilt.txt hashes/samples
           exit 1
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()

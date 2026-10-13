@@ -354,16 +354,19 @@ nix.settings = {
   `nix build --rebuild` and fails if the output differs from the cached one, listing
   the files that differ. It always publishes the cached build's per-file hashes
   (`scripts/file-hashes.sh`), so a host that compiled its own can compare. **The
-  gateway is not reproducible yet**, as of 2026.10.3:
-  - the native Control UI's chunk hashes differ between builds;
-  - pnpm's install timestamps (`prunedAt`, `lastValidatedTimestamp`) and a leftover
-    Vitest cache vary;
-  - nix-openclaw links three undeclared dependencies (`strip-ansi`, `combined-stream`,
-    `hasown`) to whichever copy `find` lists first. `strip-ansi` resolved to 7.2.0 in
+  gateway was not reproducible** through `2026.10.3-nix.1`:
+  - nix-openclaw linked three undeclared dependencies (`strip-ansi`, `combined-stream`,
+    `hasown`) to whichever copy `find` listed first. `strip-ansi` resolved to 7.2.0 in
     one build and 6.0.1 in another.
+  - pnpm's install timestamps (`prunedAt`, `lastValidatedTimestamp`) and a leftover
+    Vitest cache varied.
+  - The native Control UI's chunk hashes differed between two CI builds.
   
-  The cached build is still the one CI built and attested; a local compile can
-  differ from it.
+  `nix.2` fixes the first two: it links each of those dependencies to its highest
+  version, records the release's build time in pnpm's metadata, and drops the cache.
+  CI then rebuilt `nix.2` bit for bit. The Control UI difference was intermittent, so
+  the weekly check is what shows whether it is gone. When it fails, it keeps both
+  copies of the differing files.
 - **Without this cache:** every source is a fixed-output fetch, so leaving the
   substituter out builds everything locally: the pnpm dependency set from the npm
   registry, then the compile (about 5 minutes on 8 cores, peaking around 15 GB).
