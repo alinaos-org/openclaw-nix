@@ -1,4 +1,4 @@
-// openclaw-session-icons — the Icon library in the session menu.
+// openclaw-session-icons — Custom icons in the session menu.
 //
 // Browser-only: dist/control-ui/library.js saves a choice through the gateway's
 // own sessions.patch, so the plugin registers no methods, hooks or tools.

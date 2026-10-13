@@ -1,4 +1,4 @@
-/* session-icons: the Icon library dialog. Host tokens only, so it follows the
+/* session-icons: the custom icon library dialog. Host tokens only, so it follows the
    Control UI theme. */
 
 .session-icons {
@@ -97,6 +97,7 @@
   gap: 8px;
 }
 
+.session-icons__hint,
 .session-icons__empty,
 .session-icons__count,
 .session-icons__error {
@@ -107,4 +108,33 @@
 
 .session-icons__error {
   color: var(--danger);
+}
+
+.session-icons__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.session-icons__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.session-icons__close {
+  border: 1px solid var(--border);
+  border-radius: var(--menu-item-radius, 6px);
+  padding: 4px 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  cursor: var(--cursor-action, pointer);
+}
+
+.session-icons__close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }

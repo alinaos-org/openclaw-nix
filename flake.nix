@@ -102,7 +102,7 @@
       gateway-hotfixed = pkgs.openclawNix.hotfix pkgs.openclaw-gateway;
       openclaw = pkgs.openclaw;
       upgrade-skill = mkUpgradeSkill {inherit pkgs;};
-      # The session menu's Icon library (native Control UI plugin).
+      # The session menu's Custom icons library (native Control UI plugin).
       session-icons = pkgs.openclawRuntimePlugins.session-icons;
       runtime-plugins = pkgs.linkFarm "openclaw-runtime-plugins" (lib.mapAttrsToList (name: path: {inherit name path;}) (lib.filterAttrs (id: _: pkgs.openclawNix.pins.plugins ? ${id}) pkgs.openclawRuntimePlugins));
     });
@@ -237,7 +237,7 @@
         fold=${(mkConfigOverlay pkgs).fold} bash ${./tests/config-overlay/fold.sh}
         touch $out
       '';
-      # The Icon library plugin: its own tests run in its build.
+      # The custom icon library plugin: its own tests run in its build.
       session-icons = p.session-icons;
       # The NixOS module in a VM: a gateway as its own system user, state and logs in
       # their directories, the credential kept out of the unit and the config, the
@@ -371,7 +371,7 @@
               assert turns, requests
               assert all(r["model"] == "stub-model" and r["authorization"] == "Bearer vm-stub-key" for r in turns), turns
 
-          with subtest("the Icon library is a native Control UI plugin the gateway serves"):
+          with subtest("the custom icon library is a native Control UI plugin the gateway serves"):
               listed = openclaw("gateway call plugins.controlUi.list --json --timeout 30000 --params '{}'")
               print(listed)
               assert "session-icons" in listed, listed

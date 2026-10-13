@@ -103,10 +103,10 @@ in {
     (prev.openclawRuntimePlugins or {})
     // pinnedPlugins
     // {
-      # The session menu's Icon library: a native Control UI dialog that saves a
+      # The session menu's Custom icons library: a native Control UI dialog that saves a
       # colour SVG icon through the gateway's own sessions.patch. No config.
       session-icons =
-        final.runCommand "openclaw-runtime-plugin-session-icons-0.1.0" {
+        final.runCommand "openclaw-runtime-plugin-session-icons-0.2.0" {
           nativeBuildInputs = [final.nodejs_22];
         } ''
           mkdir -p $out/node_modules
