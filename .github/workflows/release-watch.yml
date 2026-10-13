@@ -17,7 +17,10 @@ jobs:
   watch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          # The rebase below needs main's history, not a shallow clone.
+          fetch-depth: 0
       - uses: cachix/install-nix-action@v31
         with:
           # The Nix version consumers build with, so derivations and the cache match.
@@ -31,8 +34,12 @@ jobs:
           current=$(nix eval --raw -f release.nix current)
           echo "latest=$latest current=$current"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
-          if [ "$latest" != "$current" ] && ! gh pr list --state open --head "release-$latest" --json number --jq '.[0].number' | grep -q .; then
-            echo "new=true" >> "$GITHUB_OUTPUT"
+          if [ "$latest" != "$current" ]; then
+            if gh pr list --state open --head "release-$latest" --json number --jq '.[0].number' | grep -q .; then
+              echo "open=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "new=true" >> "$GITHUB_OUTPUT"
+            fi
           fi
       - name: Pin the release
         if: steps.latest.outputs.new == 'true'
@@ -62,3 +69,27 @@ jobs:
           # Pull requests opened with GITHUB_TOKEN start no workflows; a
           # dispatch does, so run CI on the release branch explicitly.
           gh workflow run ci.yml --ref "release-$v"
+      # A release pull request still open when main moves would merge an old
+      # base (2026.10.3's branch predated a main commit and was rebased by
+      # hand). Rebase the watcher's own commit and rerun CI; leave a branch
+      # anyone has added to alone.
+      - name: Keep an open release branch on main
+        if: steps.latest.outputs.open == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          b=release-${{ steps.latest.outputs.latest }}
+          bot="41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --quiet origin main "$b"
+          if git merge-base --is-ancestor origin/main "origin/$b"; then
+            echo "$b is on main"; exit 0
+          fi
+          if [ "$(git rev-list --count "origin/main..origin/$b")" != 1 ] || [ "$(git log -1 --format=%ae "origin/$b")" != "$bot" ]; then
+            echo "$b has commits besides the watcher's; not rebasing"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "$bot"
+          git switch -c "$b" "origin/$b"
+          git rebase origin/main
+          git push --force-with-lease="$b:$(git rev-parse "origin/$b")" origin "$b"
+          gh workflow run ci.yml --ref "$b"

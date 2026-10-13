@@ -19,8 +19,9 @@ run the same two scripts in a clone.
 Opening the pull request needs "Allow GitHub Actions to create and approve pull requests"
 (Settings, Actions, General: the organization first, then the repository). Without it the
 workflow fails after pushing the branch, and the CI dispatch after that never runs; open
-the pull request by hand and CI starts on it (2026.10.3). A branch cut before a later
-`main` commit rebases cleanly: its commit touches only the release files.
+the pull request by hand and CI starts on it (2026.10.3). While a release pull request
+stays open, each run rebases its branch onto a moved `main` and reruns CI, as long as
+the branch holds only the watcher's own commit; anything else it leaves for a person.
 
 Release-specific values are data, not gates: the `releases.nix` entry
 (`pnpmBootstrapVersion`, `tsdownHeapMb`, `buildTimestamp`) and the plugin pins.
