@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Release evidence for the gateway this checkout builds:
 #
-#   scripts/release-evidence.sh <out-dir>
+#   scripts/release-evidence.sh <out-dir> [<flake>]
 #
+# <flake> is the release's checkout (default: this one), so a tag cut before this
+# script existed can still be described by the current one.
 # - gateway-npm.{cdx,spdx}.json: SBOM of the gateway's npm dependency tree (syft over
 #   the installed node_modules), where nearly all of its third-party code is;
 # - gateway-nix.{cdx,spdx}.json: SBOM of its Nix runtime closure (sbomnix: Node,
@@ -13,22 +15,23 @@
 #   dependency set) with their NAR hashes, which a consumer compares with
 #   `nix path-info --json` after substituting.
 #
-# The tools come from this flake's locked nixpkgs (`--inputs-from .`). The scan reports
+# The tools come from the release's locked nixpkgs (`--inputs-from <flake>`). The scan reports
 # and never fails the release: the findings are upstream's dependencies, and a release
 # that waits on them never ships its own fixes.
 set -euo pipefail
-out=${1:?usage: release-evidence.sh <out-dir>}
+out=${1:?usage: release-evidence.sh <out-dir> [<flake>]}
+flake=$(cd "${2:-.}" && pwd)
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 
-tool() { echo "$(nix build --no-link --print-out-paths --inputs-from . "nixpkgs#$1")/bin/$1"; }
+tool() { echo "$(nix build --no-link --print-out-paths --inputs-from "$flake" "nixpkgs#$1")/bin/$1"; }
 syft=$(tool syft)
 grype=$(tool grype)
 sbomnix=$(tool sbomnix)
 
-version=$(nix eval --raw -f release.nix current)
-gateway=$(nix build --no-link --print-out-paths .#gateway)
-deps=$(nix build --no-link --print-out-paths .#gateway.pnpmDeps)
+version=$(nix eval --raw -f "$flake/release.nix" current)
+gateway=$(nix build --no-link --print-out-paths "$flake#gateway")
+deps=$(nix build --no-link --print-out-paths "$flake#gateway.pnpmDeps")
 echo "gateway: $gateway"
 
 "$syft" scan "dir:$gateway" -q \
