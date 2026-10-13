@@ -1,0 +1,4 @@
+# Every path needs a code owner's review before it merges into main (ruleset
+# "main: code-owner review"). Release pull requests from release-watch need it too:
+# the Actions bot can open them but is not a code owner.
+* @mmango7474
