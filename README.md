@@ -140,6 +140,19 @@ Per instance:
   strict-Nix `declarativeTwin`.
 - **CLIs.** It gets `oc-<name>`, `openclaw-overlay-<name>` and
   `openclaw-<name>-mode`.
+- **Rollback.** `openclaw-<name>-restore` rolls the state back, as in "Upgrade and
+  rollback" below. Use `systemctl --user stop`, then the target generation's restore
+  command, then switch to that generation.
+- **Canary.** `canary.enable` runs a weekly agent turn through `oc-<name>` and writes
+  `<stateDir>/hooks-state/canary.json` for a health check. The instance needs a
+  password, because `oc-<name>` clears the shared token.
+
+`checks.workstation` boots a VM and checks:
+- a user's gateway, running as that user's unit and started at boot;
+- secrets from the shared env file, kept out of the configs;
+- the Icon library, served from state;
+- an agent turn against a stub model provider;
+- the restore command.
 
 `lib.mkWorkstationModule {optionPath = [...];}` puts the options elsewhere; alinaos uses
 `["csa" "openclaw"]`.

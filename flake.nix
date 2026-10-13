@@ -432,6 +432,150 @@
               machine.succeed(f"ls {state}/backups/restore-*/replaced/agents")
         '';
       };
+      # The workstation module in a VM: one gateway as a user unit of a desktop
+      # user, started at boot through linger, with its secrets from the shared env
+      # file, the Icon library copied into its state, and one agent turn against a
+      # stub model provider.
+      workstation = pkgs.testers.runNixOSTest {
+        name = "openclaw-workstation";
+        # The module adds its package-set overlays, as on a real host.
+        node.pkgsReadOnly = false;
+        nodes.machine = {pkgs, ...}: {
+          imports = [
+            nix-openclaw.inputs.home-manager.nixosModules.home-manager
+            self.nixosModules.workstation
+          ];
+          virtualisation.memorySize = 4096;
+          virtualisation.cores = 2;
+          environment.systemPackages = [pkgs.curl pkgs.jq];
+          users.users.alice.isNormalUser = true;
+          home-manager.users.alice.home.stateVersion = "25.11";
+          # A test file; a real host points at a secret only the user can read.
+          environment.etc."openclaw-test.env" = {
+            text = ''
+              OPENCLAW_GATEWAY_TOKEN=ws-test-token
+              STUB_API_KEY=ws-stub-key
+            '';
+            user = "alice";
+            mode = "0400";
+          };
+          systemd.services.stub-provider = {
+            wantedBy = ["multi-user.target"];
+            serviceConfig = {
+              ExecStart = "${pkgs.python3}/bin/python3 -I ${./tests/nixos-module/stub-provider.py} /var/lib/stub-provider/requests.jsonl";
+              StateDirectory = "stub-provider";
+              DynamicUser = true;
+            };
+          };
+          services.openclaw.workstation = {
+            user = "alice";
+            sharedEnvironmentFile = "/etc/openclaw-test.env";
+            interactiveInstance = "main";
+            instances.main = {
+              configFile = pkgs.writeText "openclaw-main.json" (builtins.toJSON {
+                gateway = {
+                  mode = "local";
+                  port = 18789;
+                  bind = "loopback";
+                  auth = {
+                    mode = "token";
+                    token = "$OPENCLAW_GATEWAY_TOKEN";
+                  };
+                };
+                models = {
+                  mode = "merge";
+                  providers.stub = {
+                    baseUrl = "http://127.0.0.1:9999/v1";
+                    api = "openai-completions";
+                    apiKey = {
+                      source = "env";
+                      provider = "default";
+                      id = "STUB_API_KEY";
+                    };
+                    models = [
+                      {
+                        id = "stub-model";
+                        name = "Stub";
+                        input = ["text"];
+                        contextWindow = 32768;
+                        maxTokens = 1024;
+                        reasoning = false;
+                      }
+                    ];
+                  };
+                };
+                agents.defaults = {
+                  workspace = "/home/alice/.openclaw-main/workspace";
+                  model.primary = "stub/stub-model";
+                };
+              });
+              gatewayPort = 18789;
+              runtimePlugins = ["session-icons"];
+              materializeRuntimePlugins = true;
+              runtimeConfigJqFilter = ".";
+              uiOverlay.enable = true;
+            };
+          };
+        };
+        testScript = {nodes, ...}: ''
+          import json
+
+          state = "/home/alice/.openclaw-main"
+
+          def openclaw(args):
+              # The interactive instance's CLI, as the desktop user runs it.
+              return machine.succeed(
+                  "runuser -u alice -- env HOME=/home/alice "
+                  f"OPENCLAW_STATE_DIR={state} OPENCLAW_CONFIG_PATH={state}/openclaw-runtime.json "
+                  f"OPENCLAW_GATEWAY_TOKEN=ws-test-token /etc/profiles/per-user/alice/bin/openclaw {args}"
+              )
+
+          machine.wait_for_unit("multi-user.target")
+          machine.wait_for_unit("openclaw-gateway-main.service", "alice")
+          machine.wait_until_succeeds("curl -sf http://127.0.0.1:18789/readyz", timeout=600)
+
+          with subtest("a user unit of alice, started at boot through linger"):
+              machine.succeed("test -e /var/lib/systemd/linger/alice")
+              pid = machine.succeed(
+                  "runuser -u alice -- env XDG_RUNTIME_DIR=/run/user/$(id -u alice) "
+                  "systemctl --user show -p MainPID --value openclaw-gateway-main.service"
+              ).strip()
+              machine.succeed(f"test \"$(ps -o user:32= -p {pid})\" = alice")
+              machine.succeed(f"test \"$(stat -c %U {state})\" = alice")
+
+          with subtest("the shared env file's secrets stay out of the configs"):
+              for secret in ["ws-test-token", "ws-stub-key"]:
+                  machine.fail(f"grep -q {secret} {state}/openclaw.json {state}/openclaw-runtime.json")
+
+          with subtest("the Icon library loads from the state directory"):
+              listed = openclaw("gateway call plugins.controlUi.list --json --timeout 30000 --params '{}'")
+              print(listed)
+              assert "session-icons" in listed, listed
+              assert json.loads(listed)["diagnostics"] == [], listed
+              machine.succeed(
+                  f"jq -e --arg r {state}/runtime-plugins/ "
+                  f"'[.plugins.load.paths[] | select(startswith($r))] | length >= 1' {state}/openclaw-runtime.json"
+              )
+
+          with subtest("an agent turn reaches the model provider with the shared env file's key"):
+              reply = openclaw("agent --agent main --session-key agent:main:ws-test -m 'Say hello.' --json")
+              print(reply)
+              assert "STUB-OK" in reply, reply
+              requests = [json.loads(line) for line in machine.succeed("cat /var/lib/stub-provider/requests.jsonl").splitlines()]
+              turns = [r for r in requests if r["path"].endswith("/chat/completions")]
+              assert turns and all(r["authorization"] == "Bearer ws-stub-key" for r in turns), requests
+
+          with subtest("the operator commands: overlay and restore"):
+              machine.succeed("test -x /etc/profiles/per-user/alice/bin/openclaw-overlay-main")
+              as_alice = "runuser -u alice -- env XDG_RUNTIME_DIR=/run/user/$(id -u alice) "
+              # The first start migrated (and snapshotted) the fresh state.
+              listing = machine.succeed(as_alice + "/etc/profiles/per-user/alice/bin/openclaw-main-restore list")
+              print(listing)
+              assert "pre-migrate-" in listing, listing
+              # Never against a running gateway.
+              machine.fail(as_alice + "/etc/profiles/per-user/alice/bin/openclaw-main-restore restore latest")
+        '';
+      };
       # The Home Manager module over nix-openclaw's: a writable instance gets the
       # prepare step, the runtime config and Nix mode off (after nix-openclaw's
       # own environment), its operator command, and the nightly sync timer.

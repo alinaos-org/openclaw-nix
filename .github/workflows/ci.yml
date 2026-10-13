@@ -68,7 +68,8 @@ jobs:
           CACHIX_CACHE: ${{ vars.CACHIX_CACHE }}
         run: cachix push "$CACHIX_CACHE" "$(nix eval --raw .#gateway.pnpmDeps.outPath)" "$(nix eval --raw .#gateway.outPath)"
 
-  # The NixOS module in a VM (checks.nixos-module). Not a required check until it
+  # The NixOS and workstation modules in VMs (checks.nixos-module,
+  # checks.workstation). Not a required check until it
   # has proven stable on hosted runners.
   nixos-module:
     needs: eval
@@ -92,3 +93,5 @@ jobs:
           skipPush: true
       - name: NixOS module VM test
         run: nix build -L .#checks.x86_64-linux.nixos-module
+      - name: Workstation module VM test
+        run: nix build -L .#checks.x86_64-linux.workstation
