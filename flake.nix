@@ -70,7 +70,7 @@
       inherit mkOverlay mkPackageSetOverlay mkUpgradeSkill mkConfigOverlay;
       release = import ./release.nix;
       # The workstation module with its options at another path, for a host
-      # that has its own namespace (alinaos uses ["csa" "openclaw"]).
+      # that keeps its own namespace.
       mkWorkstationModule = {optionPath ? ["services" "openclaw" "workstation"]}:
         import ./modules/workstation/module.nix {inherit self nix-openclaw optionPath;};
     };

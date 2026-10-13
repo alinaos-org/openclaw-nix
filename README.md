@@ -154,8 +154,8 @@ Per instance:
 - an agent turn against a stub model provider;
 - the restore command.
 
-`lib.mkWorkstationModule {optionPath = [...];}` puts the options elsewhere; alinaos uses
-`["csa" "openclaw"]`.
+`lib.mkWorkstationModule {optionPath = [...];}` puts the options at another path, for a
+host that keeps its own namespace.
 
 ## Servers: the NixOS module
 
