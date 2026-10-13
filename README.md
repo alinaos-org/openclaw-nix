@@ -89,6 +89,37 @@ pkgs.openclawNix.stateFence {                         # a fenced entrypoint
 pkgs.openclawNix.checkSingleRelease { roots = [config.system.build.toplevel]; }
 ```
 
+## Control UI over a Nix config
+
+nix-openclaw renders an instance's config and runs the gateway in Nix mode, where every
+config write throws: the Control UI cannot save models, sign-in, heartbeats or thinking
+levels. `homeManagerModules.configOverlay` (with nix-openclaw's Home Manager module)
+keeps Nix authoritative and lets the Control UI save:
+
+```nix
+programs.openclaw.instances.prod.configOverlay = {
+  enable = true;
+  # policy = ./my-policy.json;   # allow/deny path patterns; the default is conservative
+  sync = {                        # optional: a nightly review branch of the UI's changes
+    enable = true;
+    repo = "/home/me/config";
+    worktree = "/home/me/config-prod-ui-sync";
+    sourceFile = "openclaw/prod.json";
+  };
+};
+```
+
+The gateway runs from a writable `openclaw-runtime.json`. Before every start, the
+overlay engine keeps the Control UI's changes to paths the policy allows
+(`config-overlay.json`), reports the rest as drift (`config-drift.json`) and renders the
+new Nix config with the overlay on top, falling back to the pure Nix render if the
+result is invalid; an entry the Nix source later adopts prunes itself. On a new package
+version it runs the new doctor once against disposable copies and writes its proposals
+to `upgrade-config-drift.json` for the Nix source. `openclaw-overlay-<name>` lists,
+drops or promotes entries (`promote` prints a merge patch for the source). The builders
+(`pkgs.openclawNix.configOverlay` or `lib.mkConfigOverlay pkgs`: `cli`,
+`prepareConfig`, `sync`) serve hosts that wire their own units.
+
 ## Upgrade skill
 
 `skills/openclaw-upgrade` is the agent procedure for upgrading a host: review and merge
