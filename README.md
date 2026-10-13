@@ -221,4 +221,23 @@ nix.settings = {
 
 ## License
 
-MIT. nix-openclaw, used as a flake input and not copied here, is AGPL-3.0.
+openclaw-nix's own files are MIT (`LICENSE`). OpenClaw itself is MIT. Several outputs
+are built with [nix-openclaw](https://github.com/openclaw/nix-openclaw), which is
+AGPL-3.0 with no additional permissions, so an organization with an AGPL policy should
+review this before deploying. The parts that come from nix-openclaw, as of this
+release:
+
+| openclaw-nix output | nix-openclaw part | How it is used |
+|---|---|---|
+| `gateway` (and every layer over it) | `nix/packages/openclaw-gateway-source.nix` | the source recipe, called and overridden |
+| `gateway` | `nix/scripts/gateway-build.sh`, `gateway-prebuild.sh` | copied into the build and edited (`packages/gateway`) |
+| `runtime-plugins`, `pkgs.openclawRuntimePlugins` | `nix/lib/openclaw-runtime-plugin.nix`, `nix/generated/openclaw-runtime-plugins` | the plugin builder and its generated locks |
+| `overlays.default` | `overlays.default` | applied first, for the CLI tool bundle |
+| `homeManagerModules.configOverlay` | `homeManagerModules.openclaw` | extends its `programs.openclaw.instances` options |
+
+These are build recipes and configuration modules. None of nix-openclaw's code runs
+inside the gateway, and none is served over a network. `NOTICE` lists the components
+and their licenses. Removing the dependency means replacing each row with an
+openclaw-nix implementation written from OpenClaw's own build. That is tracked as
+future work, and the server module (`nixosModules.openclaw`) already needs none of it
+beyond the packages.

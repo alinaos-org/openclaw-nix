@@ -1,0 +1,16 @@
+openclaw-nix
+Copyright (c) 2026 alinaos-org contributors. MIT License (LICENSE).
+
+This repository builds and configures third-party software. Their licenses apply to
+those parts; see README.md, "License", for which openclaw-nix outputs use each one.
+
+- OpenClaw (https://github.com/openclaw/openclaw): MIT. The gateway, CLI and
+  runtime plugins this repository builds are OpenClaw.
+- nix-openclaw (https://github.com/openclaw/nix-openclaw): GNU Affero General Public
+  License v3.0, with no additional permissions. Used as a flake input: its gateway
+  source recipe, its gateway build scripts (copied into the build and edited), its
+  runtime-plugin builder and generated locks, its overlay and its Home Manager module.
+  Nothing from it is vendored in this repository.
+- nixpkgs (https://github.com/NixOS/nixpkgs): MIT.
+- Runtime plugins and their npm dependencies: each under its own license, as published
+  to npm; pins/runtime-plugins.json lists them.
