@@ -69,6 +69,10 @@
     lib = {
       inherit mkOverlay mkPackageSetOverlay mkUpgradeSkill mkConfigOverlay;
       release = import ./release.nix;
+      # The workstation module with its options at another path, for a host
+      # that has its own namespace (alinaos uses ["csa" "openclaw"]).
+      mkWorkstationModule = {optionPath ? ["services" "openclaw" "workstation"]}:
+        import ./modules/workstation/module.nix {inherit self nix-openclaw optionPath;};
     };
 
     overlays.default = mkOverlay {};
@@ -80,6 +84,9 @@
     # servers (modules/nixos/openclaw.nix).
     nixosModules.openclaw = import ./modules/nixos/openclaw.nix {inherit self;};
     nixosModules.default = self.nixosModules.openclaw;
+    # Gateways as systemd user units of one desktop user, over nix-openclaw's
+    # Home Manager module, for workstations (modules/workstation/module.nix).
+    nixosModules.workstation = self.lib.mkWorkstationModule {};
 
     packages = forAllSystems (system: let
       pkgs = pkgsFor system;

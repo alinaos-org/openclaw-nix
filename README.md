@@ -91,11 +91,64 @@ pkgs.openclawNix.stateFence {                         # a fenced entrypoint
 pkgs.openclawNix.checkSingleRelease { roots = [config.system.build.toplevel]; }
 ```
 
+## Workstations: several gateways for one desktop user
+
+`nixosModules.workstation` runs gateways as systemd **user** units of one desktop user,
+over nix-openclaw's Home Manager module. That suits a workstation, where agents use the
+user's own tools, logins and project checkouts. It is the module nova (alinaos) runs, so
+another machine can reproduce that setup by declaring its instances:
+
+```nix
+{
+  imports = [
+    home-manager.nixosModules.home-manager
+    openclaw-nix.nixosModules.workstation
+  ];
+
+  services.openclaw.workstation = {
+    user = "alice";
+    sharedEnvironmentFile = config.sops.secrets.openclaw_env.path; # VAR=value lines
+    interactiveInstance = "main";
+    instances.main = {
+      configFile = ./openclaw.json; # the instance's config; agents, models, channels
+      gatewayPort = 18789;
+      runtimePlugins = ["session-icons"];
+      materializeRuntimePlugins = true;
+      runtimeConfigJqFilter = ".";
+      uiOverlay.enable = true; # the Control UI may save, within its policy
+    };
+  };
+}
+```
+
+Per instance:
+
+- **Unit and state.** It gets `openclaw-gateway-<name>.service` and
+  `~/.openclaw-<name>`. Its read-only `stateDir`, `unitName` and config paths are for
+  other modules to read.
+- **Packages.** It runs the release's gateway, optionally a hotfix or customized one,
+  with the host's `bundledRuntimePlugins` copied into the trusted tree and the state
+  fence.
+- **Config.** The Nix config is rendered and, with `runtimeConfigJqFilter`, prepared at
+  each start by the same prepare step as the other modules: Control UI overlay,
+  migration snapshot, plugin copies.
+- **Secrets.** These come from the shared env file, minus `unsetEnvironment`, or from a
+  per-instance `environmentFile`. The gateway password comes from a file or is derived
+  from the shared token.
+- **Unit tuning.** `memoryHigh`/`memoryMax`, `stopTimeout`,
+  `inaccessiblePaths`/`readOnlyPaths`, `keepRunningOnActivation` (keep-old) and a
+  strict-Nix `declarativeTwin`.
+- **CLIs.** It gets `oc-<name>`, `openclaw-overlay-<name>` and
+  `openclaw-<name>-mode`.
+
+`lib.mkWorkstationModule {optionPath = [...];}` puts the options elsewhere; alinaos uses
+`["csa" "openclaw"]`.
+
 ## Servers: the NixOS module
 
 `nixosModules.openclaw` runs each gateway as a system service, which is what a server
-wants; the Home Manager modules suit a workstation where gateways belong to a desktop
-user.
+wants; `nixosModules.workstation` (above) suits a workstation where gateways belong to a
+desktop user.
 
 ```nix
 {
