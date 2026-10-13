@@ -350,9 +350,20 @@ nix.settings = {
   nix path-info --json --json-format 1 <path> | jq -r '.[].narHash'
   ```
 
-- **Reproducible:** `reproducibility` rebuilds the gateway weekly with
-  `nix build --rebuild` and fails if the output differs from the cached one. Anyone can
-  run the same check: `nix build github:alinaos-org/openclaw-nix/<tag>#gateway --rebuild`.
+- **Reproducibility:** `reproducibility` rebuilds the gateway weekly with
+  `nix build --rebuild` and fails if the output differs from the cached one, listing
+  the files that differ. It always publishes the cached build's per-file hashes
+  (`scripts/file-hashes.sh`), so a host that compiled its own can compare. **The
+  gateway is not reproducible yet**, as of 2026.10.3:
+  - the native Control UI's chunk hashes differ between builds;
+  - pnpm's install timestamps (`prunedAt`, `lastValidatedTimestamp`) and a leftover
+    Vitest cache vary;
+  - nix-openclaw links three undeclared dependencies (`strip-ansi`, `combined-stream`,
+    `hasown`) to whichever copy `find` lists first. `strip-ansi` resolved to 7.2.0 in
+    one build and 6.0.1 in another.
+  
+  The cached build is still the one CI built and attested; a local compile can
+  differ from it.
 - **Without this cache:** every source is a fixed-output fetch, so leaving the
   substituter out builds everything locally: the pnpm dependency set from the npm
   registry, then the compile (about 5 minutes on 8 cores, peaking around 15 GB).
