@@ -96,7 +96,25 @@ in {
     inherit (gateway) version;
   };
 
-  openclawRuntimePlugins = (prev.openclawRuntimePlugins or {}) // pinnedPlugins;
+  # Native Control UI plugins that ship with openclaw-nix. The plugin's own tests
+  # run in the build (a manifest/registration mismatch drops a plugin at load),
+  # and its SDK peer links the gateway in the closure.
+  openclawRuntimePlugins =
+    (prev.openclawRuntimePlugins or {})
+    // pinnedPlugins
+    // {
+      # The session menu's Icon library: a native Control UI dialog that saves a
+      # colour SVG icon through the gateway's own sessions.patch. No config.
+      session-icons =
+        final.runCommand "openclaw-runtime-plugin-session-icons-0.1.0" {
+          nativeBuildInputs = [final.nodejs_22];
+        } ''
+          mkdir -p $out/node_modules
+          cp -r ${./packages/openclaw-session-icons}/. $out/
+          node --test $out/tests/*.test.mjs
+          ln -s ${final.openclaw-gateway}/lib/openclaw $out/node_modules/openclaw
+        '';
+    };
 
   openclawNix = {
     inherit release pins gateway compiledGateway mkRuntimePlugin;

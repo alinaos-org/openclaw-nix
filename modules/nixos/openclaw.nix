@@ -25,6 +25,24 @@
   json = pkgs.formats.json {};
   enabled = lib.filterAttrs (_: inst: inst.enable) cfg.instances;
 
+  # Native Control UI plugins switched on per instance: each adds its load path,
+  # allows and enables it, and turns on native plugin UI (Labs > Custom plugin UI).
+  settingsFor = inst: let
+    s = inst.settings;
+    plugins = s.plugins or {};
+  in
+    if !inst.sessionIcons.enable
+    then s
+    else
+      lib.recursiveUpdate s {
+        plugins = {
+          load.paths = (plugins.load.paths or []) ++ ["${inst.sessionIcons.package}"];
+          allow = lib.unique ((plugins.allow or []) ++ ["session-icons"]);
+          entries."session-icons".enabled = true;
+        };
+        gateway.controlUi.experimental.customPlugins = true;
+      };
+
   unitFor = name: inst: let
     stateDir = "/var/lib/openclaw/${name}";
     logsDir = "/var/log/openclaw/${name}";
@@ -33,7 +51,7 @@
     configSource =
       if inst.configFile != null
       then inst.configFile
-      else json.generate "openclaw-${name}.json" inst.settings;
+      else json.generate "openclaw-${name}.json" (settingsFor inst);
     # Export each credential under its own name, then run the command.
     withCredentials = label: command:
       pkgs.writeShellScript "openclaw-${name}-${label}" ''
@@ -241,6 +259,20 @@ in {
             '';
           };
 
+          sessionIcons = {
+            enable = lib.mkEnableOption ''
+              the session menu's Icon library: 72 colour icons for session titles, saved
+              through the gateway's own sessions.patch (native Control UI plugin; turns on
+              Labs > Custom plugin UI)
+            '';
+            package = lib.mkOption {
+              type = lib.types.package;
+              default = self.packages.${system}.session-icons;
+              defaultText = lib.literalExpression "openclaw-nix.packages.\${system}.session-icons";
+              description = "The plugin package.";
+            };
+          };
+
           configOverlay = {
             enable = lib.mkEnableOption "a Control UI that can save, over the Nix config";
             policy = lib.mkOption {
@@ -263,8 +295,13 @@ in {
 
           materializePlugins = lib.mkOption {
             type = lib.types.bool;
-            default = false;
-            description = "Copy plugins.load.paths out of the store into the state directory.";
+            default = config.sessionIcons.enable;
+            defaultText = lib.literalExpression "config.sessionIcons.enable";
+            description = ''
+              Copy plugins.load.paths out of the store into the state directory. The
+              gateway refuses a plugin whose files are hardlinks, and store optimisation
+              hardlinks store files, so turn this on for any plugin loaded from the store.
+            '';
           };
 
           hardening = lib.mkOption {
@@ -298,6 +335,11 @@ in {
       lib.mapAttrsToList (name: inst: {
         assertion = lib.all (n: builtins.match "[A-Za-z_][A-Za-z0-9_]*" n != null) (lib.attrNames inst.credentials);
         message = "services.openclaw.instances.${name}.credentials: names must be environment variable names";
+      })
+      enabled
+      ++ lib.mapAttrsToList (name: inst: {
+        assertion = !(inst.sessionIcons.enable && inst.configFile != null);
+        message = "services.openclaw.instances.${name}.sessionIcons needs `settings`, not `configFile`";
       })
       enabled
       ++ [

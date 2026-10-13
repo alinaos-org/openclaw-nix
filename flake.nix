@@ -89,6 +89,8 @@
       gateway-hotfixed = pkgs.openclawNix.hotfix pkgs.openclaw-gateway;
       openclaw = pkgs.openclaw;
       upgrade-skill = mkUpgradeSkill {inherit pkgs;};
+      # The session menu's Icon library (native Control UI plugin).
+      session-icons = pkgs.openclawRuntimePlugins.session-icons;
       runtime-plugins = pkgs.linkFarm "openclaw-runtime-plugins" (lib.mapAttrsToList (name: path: {inherit name path;}) (lib.filterAttrs (id: _: pkgs.openclawNix.pins.plugins ? ${id}) pkgs.openclawRuntimePlugins));
     });
 
@@ -189,6 +191,8 @@
         fold=${(mkConfigOverlay pkgs).fold} bash ${./tests/config-overlay/fold.sh}
         touch $out
       '';
+      # The Icon library plugin: its own tests run in its build.
+      session-icons = p.session-icons;
       # The NixOS module in a VM: a gateway as its own system user, state and logs in
       # their directories, the credential kept out of the unit and the config, the
       # hardened unit's exposure, and a Control UI change that survives a restart.
@@ -202,6 +206,7 @@
           services.openclaw.instances.test = {
             port = 18789;
             configOverlay.enable = true;
+            sessionIcons.enable = true;
             # A store file in the test only; a real host points at a root-only secret.
             credentials.OPENCLAW_GATEWAY_TOKEN = "${pkgs.writeText "gateway-token" "vm-test-token"}";
             settings = {
@@ -221,7 +226,9 @@
             };
           };
         };
-        testScript = ''
+        testScript = {nodes, ...}: ''
+          import json
+
           state = "/var/lib/openclaw/test"
           machine.wait_for_unit("openclaw-test.service")
           machine.wait_until_succeeds("curl -sf http://127.0.0.1:18789/readyz", timeout=600)
@@ -241,6 +248,23 @@
               exposure = float(line.split(":")[1].split()[0])
               print(f"exposure {exposure}")
               assert exposure <= 3.0, line
+
+          with subtest("the Icon library is a native Control UI plugin the gateway serves"):
+              gw = "${nodes.machine.services.openclaw.instances.test.package}/bin/openclaw"
+              listed = machine.succeed(
+                  f"runuser -u openclaw-test -- env HOME={state} OPENCLAW_STATE_DIR={state} "
+                  f"OPENCLAW_CONFIG_PATH={state}/openclaw-runtime.json OPENCLAW_NIX_MODE=1 "
+                  f"OPENCLAW_GATEWAY_TOKEN=vm-test-token {gw} gateway call plugins.controlUi.list "
+                  f"--json --timeout 30000 --params '{{}}'"
+              )
+              print(listed)
+              assert "session-icons" in listed, listed
+              assert json.loads(listed)["diagnostics"] == [], listed
+              # Loaded from the state directory: the gateway refuses hardlinked store files.
+              machine.succeed(
+                  f"jq -e --arg r {state}/runtime-plugins/ "
+                  f"'.plugins.load.paths | length == 1 and (.[0] | startswith($r))' {state}/openclaw-runtime.json"
+              )
 
           with subtest("an allowed Control UI change survives a restart"):
               machine.succeed("systemctl stop openclaw-test")

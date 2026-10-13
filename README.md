@@ -133,7 +133,10 @@ Each instance is `openclaw-<name>.service`:
   unit 1.4 (the module's VM test fails above 3.0); override single settings with
   `serviceConfig` rather than turning it off;
 - the gateway's own stop semantics: it drains active work for up to about five minutes
-  before it exits (`KillMode=mixed`, `TimeoutStopSec=360s`).
+  before it exits (`KillMode=mixed`, `TimeoutStopSec=360s`);
+- `sessionIcons.enable` for the session menu's Icon library
+  ([`packages/openclaw-session-icons`](packages/openclaw-session-icons/README.md)),
+  copied into the state directory before it loads (`materializePlugins`).
 
 The port stays closed unless `openFirewall` is set: terminate TLS and authenticate users
 in a reverse proxy on the same host.
