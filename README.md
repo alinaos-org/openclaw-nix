@@ -142,6 +142,17 @@ Each instance is `openclaw-<name>.service`:
 The port stays closed unless `openFirewall` is set: terminate TLS and authenticate users
 in a reverse proxy on the same host.
 
+`checks.nixos-module` boots a VM with one instance and checks it end to end:
+- its own user, state and logs;
+- credentials absent from the unit and the configs;
+- the hardening score;
+- one agent turn against a stub OpenAI-compatible provider, whose API key arrives only
+  through the instance's credential;
+- the Icon library served from the state directory;
+- a Control UI edit surviving a restart.
+
+CI runs it on every pull request.
+
 ## Control UI over a Nix config
 
 nix-openclaw renders an instance's config and runs the gateway in Nix mode, where every
