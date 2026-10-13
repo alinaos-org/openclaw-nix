@@ -284,9 +284,13 @@
     # Source paths that differ from the runtime shape: a list of
     # {from = [...]; to = [...];}, applied where `to` exists in the source.
     renames ? [],
+    # Path prefixes kept in the overlay and never folded: state the Control UI
+    # owns (its sidebar, for example) rather than configuration.
+    exclude ? [],
     baseBranch ? "main",
   }: let
     renamesFile = builtins.toFile "openclaw-${name}-ui-sync-renames.json" (builtins.toJSON renames);
+    excludeFile = builtins.toFile "openclaw-${name}-ui-sync-exclude.json" (builtins.toJSON exclude);
   in
     writeShellApplication {
       name = "openclaw-${name}-ui-sync";
@@ -310,7 +314,7 @@
         # Machine-owned branch: rebuilt from the base branch every night.
         git -C "$wt" checkout -q ${lib.escapeShellArg branch}
         git -C "$wt" reset -q --hard ${lib.escapeShellArg baseBranch}
-        summary=$(python3 ${fold} "$overlay" "$wt"/${lib.escapeShellArg sourceFile} ${renamesFile})
+        summary=$(python3 ${fold} "$overlay" "$wt"/${lib.escapeShellArg sourceFile} ${renamesFile} ${excludeFile})
         if git -C "$wt" diff --quiet; then
           echo "${name}-ui-sync: overlay already matches ${baseBranch}"; exit 0
         fi

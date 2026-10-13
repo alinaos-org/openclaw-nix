@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fold a Control UI overlay (runtime shape) into a gateway's source config.
 
-usage: fold-overlay.py <overlay.json> <source openclaw.json> [renames.json]
+usage: fold-overlay.py <overlay.json> <source openclaw.json> [renames.json] [exclude.json]
 
 Each overlay entry (a set or delete at a path, from `openclaw-overlay-<name>
 preview`) is written into the source config:
@@ -12,9 +12,15 @@ preview`) is written into the source config:
 - renames.json, a list of {"from": [...], "to": [...]}, maps a runtime path
   prefix to the source's own spelling, applied only where the `to` path already
   exists in the source (for example a key the host's render transform renames).
+- exclude.json, a list of path prefixes, keeps matching entries in the overlay:
+  state the Control UI owns (its sidebar, for example) rather than configuration.
+- A delete of a path the source does not set is not folded: it is already
+  folded, or the render or a host transform adds the key, which only a change
+  there can carry.
 - Everything else is written at its own path.
 
-Prints a commit-message body listing what was folded and what was not.
+The source file is rewritten only when its content changes. Prints a
+commit-message body listing what was folded and what was not.
 """
 import json
 import sys
@@ -45,6 +51,10 @@ def exists(cfg, path):
     return True
 
 
+def excluded(path, prefixes):
+    return any(path[: len(p)] == p for p in prefixes)
+
+
 def to_source(src, path, renames):
     for rule in renames:
         prefix, target = rule["from"], rule["to"]
@@ -57,14 +67,19 @@ def main():
     overlay = json.load(open(sys.argv[1], encoding="utf-8"))
     src_path = sys.argv[2]
     renames = json.load(open(sys.argv[3], encoding="utf-8")) if len(sys.argv) > 3 else []
+    exclude = json.load(open(sys.argv[4], encoding="utf-8")) if len(sys.argv) > 4 else []
     src = json.load(open(src_path, encoding="utf-8"))
+    original = json.loads(json.dumps(src))
     roster = src.get("agents", {}).get("list")
     agents = {a.get("id"): a for a in roster} if isinstance(roster, list) else None
-    folded, skipped = [], []
+    folded, skipped, kept = [], [], []
     for e in overlay.get("entries", []):
         path = e["path"]
         value = DELETE if e["op"] == "delete" else e["value"]
         label = ".".join(path)
+        if excluded(path, exclude):
+            kept.append(label)
+            continue
         if agents is not None and path[:2] == ["agents", "entries"] and len(path) > 2:
             agent = agents.get(path[2])
             if agent is None:
@@ -73,15 +88,22 @@ def main():
             if len(path) == 3:
                 skipped.append(f"{label} (whole-agent replacement is not folded)")
                 continue
-            put(agent, path[3:], value)
+            target, at = agent, path[3:]
         else:
-            put(src, to_source(src, path, renames), value)
+            target, at = src, to_source(src, path, renames)
+        if value is DELETE and not exists(target, at):
+            skipped.append(f"{label} (deleted, but the source does not set it: already folded, or the render or a transform adds it)")
+            continue
+        put(target, at, value)
         folded.append(label + (" (deleted)" if value is DELETE else ""))
-    with open(src_path, "w", encoding="utf-8") as f:
-        f.write(json.dumps(src, indent=2, ensure_ascii=False) + "\n")
+    if src != original:
+        with open(src_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(src, indent=2, ensure_ascii=False) + "\n")
     lines = [f"Folded {len(folded)} Control UI change(s):"] + [f"- {x}" for x in folded]
     if skipped:
         lines += ["", f"Not folded ({len(skipped)}), handle by hand:"] + [f"- {x}" for x in skipped]
+    if kept:
+        lines += ["", f"Kept in the overlay ({len(kept)}, excluded from folding):"] + [f"- {x}" for x in kept]
     print("\n".join(lines))
 
 

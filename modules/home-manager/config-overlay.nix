@@ -43,7 +43,7 @@
       inherit name;
       inherit (inst) stateDir;
       inherit (inst.configOverlay) policy;
-      inherit (s) repo worktree branch sourceFile renames baseBranch;
+      inherit (s) repo worktree branch sourceFile renames exclude baseBranch;
     };
 in {
   options.programs.openclaw.instances = lib.mkOption {
@@ -133,6 +133,12 @@ in {
               }
             ];
             description = "Source spellings of runtime paths (the inverse of `transform`'s renames).";
+          };
+          exclude = lib.mkOption {
+            type = lib.types.listOf (lib.types.listOf lib.types.str);
+            default = [];
+            example = [["ui"]];
+            description = "Path prefixes kept in the overlay and never folded: state the Control UI owns rather than configuration.";
           };
           onCalendar = lib.mkOption {
             type = lib.types.str;
