@@ -1,13 +1,23 @@
 # openclaw-session-icons
 
-A searchable library of 72 colour session icons in nine groups (aerospace and
+A searchable library of 72 bold-colour session icons in nine groups (aerospace and
 simulation, AI and agents, code, home lab, security, business, finance, creative,
-life and interests), opened from a session's menu: **Icon library…**.
+life and interests), opened from a session's menu: **Custom icons…**.
 
 A choice is saved like a custom icon from the built-in picker: a self-contained
 SVG data URL in the session's `icon` field, through the gateway's own
 `sessions.patch`. Any Control UI renders it, with or without this plugin, and
 the built-in picker still changes or clears it.
+
+The custom set is separate from **Icon & color**, which still contains the
+built-in choices. Right-click a session in the sidebar (or open its overflow
+menu on mobile), then choose **Custom icons…**. Search by name or interest,
+including “Simulink”, “AI”, “homelab”, or “surf”.
+
+Version 0.2 keeps the original shapes and replaces pastel paints with saturated
+blue, violet, orange, magenta, emerald and gold. Both the old pastel icons and
+the first outline icons still show as selected. Select an old icon again to
+save its bold version; existing sessions are not rewritten automatically.
 
 ## Pieces
 
@@ -41,8 +51,8 @@ Otherwise a gateway needs four things:
 The library started on 2026-10-12 as a Control UI source patch in a consumer
 repository, which made that host's gateway build its own. As a native plugin the
 gateway stays openclaw-nix's shared build, and it moved here so every install can
-use it. Saved values are byte-identical to the patch's, including the first build's
-one-colour outlines, which still count as their icon. The artwork is original to
+use it. Previous saved values are retained byte-for-byte for matching, including the first
+build's one-colour outlines. New selections save the bold artwork. The artwork is original to
 this project and shipped under its MIT license.
 
 ## Tests

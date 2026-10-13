@@ -1,0 +1,362 @@
+[
+  {
+    "id": "aircraft",
+    "pastel": "25b15749ca32c1f2982252c2c5f12118a4348528c60215f794b8de81fbf64922",
+    "outline": "373afec2a0f0c4962ba730db559f8b4ef808986e9a2b00b13910ee8c164259a6"
+  },
+  {
+    "id": "propeller",
+    "pastel": "00b80e6372b4323a02ce1eb0f4e06e14c4dcbbc10aa31898f4046d57502cda59",
+    "outline": "a4005f1dc2624508e885454f181ea406c127feab0733d97792a86c52aa1e22b8"
+  },
+  {
+    "id": "control-loop",
+    "pastel": "2ad388ca227dc3c3f6c2af59c73088d11d39dcf580347d8745b97099c1b69c18",
+    "outline": "3fe7c4430caf2381a654ac1a607f60000b2724c95e8d29759260e686b4939b87"
+  },
+  {
+    "id": "simulation",
+    "pastel": "26309a4ece452312b2edbfba26ec47eaf0c1d77ba33ba4f75363b418dbff18ba",
+    "outline": "7d6c81a5fe10e8f309a458183022312399bf227907a5b29fc5faa8bf0bd4b03e"
+  },
+  {
+    "id": "six-dof",
+    "pastel": "7d996e41434462556bef476ed63bc0b4f389c39beaff40b0350949f71629c74d",
+    "outline": "3a8d85c1b244795a68db6899d642965127c6d83615651329a86ff62f65b06e0b"
+  },
+  {
+    "id": "airflow",
+    "pastel": "9f587ef27c5923409c9aa13d13e6007202bb7bf7ff3ff323fced71682f298d82",
+    "outline": "4be2c7a9052805643f1a7f0d7b7ca2b2088189c5bad40efe0c1bdeb28ea1780b"
+  },
+  {
+    "id": "telemetry",
+    "pastel": "5dd2ed989531405d3c69ae59a7821309a82af1ff4a7bb9d57586db39b53f7d37",
+    "outline": "d409bb22ec8e504f3a7250d017c77af3d558ecb08404487a1355c148ab8aa39f"
+  },
+  {
+    "id": "satellite",
+    "pastel": "6d7b0437a5262eaa619367de4a9faa99c35ea6d78df64ba40a087e77082d24c5",
+    "outline": "113a545d8a8ec7a24e6e4ef602cb8e45b336a952113742f3ce9717203437e5d8"
+  },
+  {
+    "id": "agent",
+    "pastel": "c7c339a470d17d60fcd4bbabe32ec3d214a49fbcac396341df62d7ace42c2447",
+    "outline": "50c7dc7f40efff25fdcf78e7b41731336becf4fda23b8871cafb2de07149ff01"
+  },
+  {
+    "id": "agent-team",
+    "pastel": "34a1bc0ac2d25ef8ba12dc6552787ecf9485db3c0a9fb2759b2044b2b3988605",
+    "outline": "662cec97905926d3ae6e61b547e6b66fcd6b7fa993f7c2de492182b3cd747f22"
+  },
+  {
+    "id": "neural-net",
+    "pastel": "c8a0f5fa35b0bfa70afab98e9b4170e6e97d2185c78e20add8b94f7e42d59255",
+    "outline": "e746a32ccf4a39a596100ca9850ec689bb7a2b3a0a79dc282cf2873f8ace68bc"
+  },
+  {
+    "id": "memory",
+    "pastel": "451774330f77fe6e55947614b8316d3e3e34299232e41732010b052f2fb97804",
+    "outline": "a0aa9c3f20dd7379c9f8c2e85a6c4c6f6856a99f296fc0a9b29e7ab98411c9ce"
+  },
+  {
+    "id": "workflow",
+    "pastel": "b20819202cf1d94691ff3f105bccad1ec210846c6d02c652ea70f9776ffaa0a9",
+    "outline": "f294410521343b0c073d5cc082f871a11c82bf76dd7e6e73b4dbee4e01e49051"
+  },
+  {
+    "id": "factory",
+    "pastel": "49789e3ca6a6c88678f828c3e5cfa8ba084f8a9d3e5cdfd82913ecf559ab11b4",
+    "outline": "8abec1f6b69f119a84dd2373ad628f462ebc6a8ac29a478774511dc9feab8e13"
+  },
+  {
+    "id": "research",
+    "pastel": "05413945cf2c2e67153321bd543b41de6fc8a97bb00a3f54f8dacfd383ca74c7",
+    "outline": "f2af499751ebd17b42ecb8145f31d7a315b82169270c2f33a7d24bb74d7eba7e"
+  },
+  {
+    "id": "voice",
+    "pastel": "0192aefe697c57f159e3822dc3ee678cca2d0b1f618fa9fb64733c00fa0b32f4",
+    "outline": "db14e4fdf4e24d10e20e62b8bcad897f6612d7756f0a9efad9a8126244292ed2"
+  },
+  {
+    "id": "terminal",
+    "pastel": "9fe5760ab479f9790cf34ad479277388bf500500fcca51ea1c107bb2b0a297c4",
+    "outline": "a22d7055f7ed0304b196ddfbd5ab227675d40fad45937ad2f0f39710fa11ba0c"
+  },
+  {
+    "id": "code",
+    "pastel": "296efc9d5f5cbff079f898bdbbe71eb830591b845b824814e971a2348e66a469",
+    "outline": "b12d9058d17576b64871fa35badf76dfd0216c70c4e885aae9a595af8a15d831"
+  },
+  {
+    "id": "git",
+    "pastel": "103ffad3fb102e45a402ae15d293ce4a560349a8948c23650199bdca2651f975",
+    "outline": "8f0ee3ee2d20535519a1c13e8e2aa107527895c05c79acdb489e690a07fb5549"
+  },
+  {
+    "id": "debug",
+    "pastel": "5c601406552ec8f7fb0e296d89677b21f851e9df0ede249af6cf9930cce195e4",
+    "outline": "c8c0ce26f920edaaf0433bde90997b5ff84a13e9f6cd85839558d674f72c8a94"
+  },
+  {
+    "id": "tests",
+    "pastel": "b6da24fc44a1e3eab1d914a77e4364c830cc9b54d1ed28a7dcd594dc59fe30fe",
+    "outline": "af034a919bc21787b1ca5ac05eda76c0a578d332ecfdc16939e0a8620f106cb1"
+  },
+  {
+    "id": "api",
+    "pastel": "c6c6c86e693c2c3ccb7de3a0a70ad97046d0ec7d9214593355d8b7dc79639ef1",
+    "outline": "29b166de8f5b7a8357d71bd3b77babb8b3e39c0fc6081bce6430bf3c47625e9a"
+  },
+  {
+    "id": "package",
+    "pastel": "23d5e30788de46363728f50fbdbee2b33f98ec15cee00f4c5fc75cac6b36379f",
+    "outline": "05af6b3310a8d93ab684b8157486ab95ad8662eb6fb3a970434741e7b35c3d02"
+  },
+  {
+    "id": "web",
+    "pastel": "1641528d89bb43c34ae0599b7b14713378e94a9fb8248ab5abe40385c527ea22",
+    "outline": "5622c9e36fa3d3482776b3160a8e81c770a42bb15448774ed6c59a230f6cec39"
+  },
+  {
+    "id": "server",
+    "pastel": "5a3f5f468a5a8541f5ef6a43098e2ec9e91c303a0f96c1fc9215f1e81b34fb3f",
+    "outline": "cb3c264dae60f279b00591bcc10a96a474ca3da8abbc7a93e565a4f6fc506838"
+  },
+  {
+    "id": "cluster",
+    "pastel": "f3236ccf077ca062b8960cd76e265836551ddba6d08744431e68b2c90b87c31b",
+    "outline": "e936f817fd32fbc524e56ddd47963d525465331beb27c0de524efcae69ba7ffc"
+  },
+  {
+    "id": "storage",
+    "pastel": "bb864bac2339355abd1c20ee10d57d94cb5b53d31c8dbdbdf6585aad9922cbf4",
+    "outline": "3c14e36b39d995a23f445d2362a07b81d6400c305cb65d3924ec8df8fde213d5"
+  },
+  {
+    "id": "network",
+    "pastel": "a5da42be23ba59b3fea683aaf9849b1d1a8b4b52bf9ea6eb55a73b0fa660c482",
+    "outline": "1a17ee74b38bc93049e6e51594da414939c6d06e3720ed4caef01558f1489a03"
+  },
+  {
+    "id": "cloud",
+    "pastel": "e4218ea056fda02dbca512503cff50c3cede169c2293bba9ec2823afb5b48084",
+    "outline": "0ed3a73c27650bb8f42796e499e1c718ff9342a84b77de16b703638f5dda99d5"
+  },
+  {
+    "id": "chip",
+    "pastel": "2447650bf168bdf8eef811a51abb5656990c533836e56138918a2027e7180024",
+    "outline": "bcf74bbe5c4592162b4e1a407cea40e16207c290de033587e3cf9a8b5e2c7a9f"
+  },
+  {
+    "id": "linux",
+    "pastel": "4e6ce83fcfd28fb3f1910f88047c3d669a754c8ab646bc266c086d9012a2005a",
+    "outline": "5e1a2a4ba7fa0edc242a903e8ec75cb530b1fbfab14dc188f654f178a13b0ce0"
+  },
+  {
+    "id": "observability",
+    "pastel": "63536a722ec8e53e3a313c51a428f34d6a363506f4fbbe7a0573e24639c841ff",
+    "outline": "0dd5ae8993db7f709a7935c743ccab8b4537ac82b8d463421aba483b2af5b385"
+  },
+  {
+    "id": "shield",
+    "pastel": "494468cda55175df182919a27588d0bcff9d57d51ade3452f8ad5ee7472c503b",
+    "outline": "35400077dd6d975d9ed30980964b6a6c75a3d93c4a8864c3a10f2214517f6979"
+  },
+  {
+    "id": "key",
+    "pastel": "44eede27249c750db9b367858d5dee790ed0867d0f673f1c66aa7b641975b931",
+    "outline": "92bdcff6128816c8935188b5cf531795d5f8ac09633ed69c823d8d2071ede334"
+  },
+  {
+    "id": "lock",
+    "pastel": "7c8e7fd9e94bec06444f0440b3f6accc02b97139ceb75781218ad75734bec0f1",
+    "outline": "22c841c4c6212e92dd8cb5d1a39e9b1db3680b8b174130c83053f2e9828c08e6"
+  },
+  {
+    "id": "scanner",
+    "pastel": "be0164af114b8519c9c2b6c45f101c470b53b912759a0df10c50dc34620fa921",
+    "outline": "38d19fbff22184e2e9a2e01bfaa48883d11424d07cefdd4f0f327743de93157e"
+  },
+  {
+    "id": "backup",
+    "pastel": "0739e49a74187a98b1ce37222c686de9e78bc96ecefe1b3a40344844596586f9",
+    "outline": "58a198c3b869d5571750a36d05835aaf2c23d79f2200799339caecfa931d41ab"
+  },
+  {
+    "id": "review",
+    "pastel": "e3f8ccd8cc9459376c158a4ba064eae1b62039c2cb6159769b7a990cd62f462f",
+    "outline": "f3f1defcdf194a48c7e01cf4e73482f971bf2d863b89b1a1e5a3638b42d5d9b7"
+  },
+  {
+    "id": "firewall",
+    "pastel": "d60dc7393ed14990614d1e5af992b118f9c1d91d42dd634b6d3a9c97bc7972d4",
+    "outline": "d5245de1ee52627c5921cfed920a1cec150ff13d38d3479afd461edd866a7431"
+  },
+  {
+    "id": "incident",
+    "pastel": "2dbc2e94642b564b0d5ed08a9a5f3128bfa9fee6573de84b2931cd18f2c37f63",
+    "outline": "85e75e62b9a935f8fcb4ee7532aad7bb9dba53393ce0e4feb86c6e058039fbdf"
+  },
+  {
+    "id": "consulting",
+    "pastel": "6833db68e3e6ce58b613fc1f6c8395c5ef2b623d097def26bcaf920a20cb7ec3",
+    "outline": "f8f8b3863316047b5526f1004399845fb6ef7670a0753f02807ead6736a0080c"
+  },
+  {
+    "id": "startup",
+    "pastel": "97903ce761813bb9d88521c908e789c6e6ceb3fc2c0432e0187a1e8082001330",
+    "outline": "bbc4977ad9a0bfaf83a9b912f9821ca379d9a2d6224bea0479e91d00e7424a75"
+  },
+  {
+    "id": "strategy",
+    "pastel": "40f74a29a905ba15738b9b0123d14fe8a5eec5bf3ed8394d25145f70e8684dba",
+    "outline": "de1f41c0a2667762c3c18ea2398f0ccff7a884cd52a9d7f2a607ffa56d70a1af"
+  },
+  {
+    "id": "career",
+    "pastel": "b520af112dacd07a8a6730cdccee2055b9d7344dafb812e3332c3e1a65a271e4",
+    "outline": "03464df20e76495f2e5e4689e4c12b28111064f7cbbe86f9c2da2cb6baeb71d0"
+  },
+  {
+    "id": "meeting",
+    "pastel": "f2ce9447e526318c416d7d9a4207a946aad3899a0e6d7699c8dd7be39185cab0",
+    "outline": "0d2e187254fd78302d7393544eb86c4d740841b9b1b821bce6f9ec9b60d5aa9a"
+  },
+  {
+    "id": "handshake",
+    "pastel": "a20f1b5bfadaf74e76aecd480b3b1304b99051d3162e2ec4da287ec58cef0c7c",
+    "outline": "1e60d7f92c9cd0f959b6f1c0cee3a13a7ef1a7b93263f84a3a0efa6c0eabe9ee"
+  },
+  {
+    "id": "documents",
+    "pastel": "8ec1ce64be45c5497530ccef0ca3f7d73a16c20fb3c2c83039f97d85b2b14784",
+    "outline": "16366329fc890e2ea17a595cc2704409abb955650dc5e37223ecaace2abb0cb2"
+  },
+  {
+    "id": "mail",
+    "pastel": "5dc1e01a455ab830e47eb9f47727ae3a759c7d4182bbf3644a20116bf3358b17",
+    "outline": "be7bac7d32cf7d9040cc1184e89268ecf5f3a0636ef51503ea1514a0c9632610"
+  },
+  {
+    "id": "markets",
+    "pastel": "55ff0783c7e5028f8aca90a75222d680d17ebe7792fdf8973ebac183c98c50ce",
+    "outline": "80ec1a1eb359b6477f59163a5aae52e4b8568449edcdcc8f904f39ac292a4b7f"
+  },
+  {
+    "id": "bitcoin",
+    "pastel": "fdeef522960b9be6306e70c028c023e14fcafb08d322f42e65d8eaee37b17400",
+    "outline": "3a9afd9c9c58a60a558674b0db6292b7b2098bd8d8cbd4e5997847616e44b496"
+  },
+  {
+    "id": "wallet",
+    "pastel": "57dc5f8ce3ec46dd6fb157b29f81be6b06f5e43c329699a47d7f2c56f809e5a6",
+    "outline": "85de78b9270c529fb5c6171560e33bc49b66d1fbcf654dccffb2c0b5fda4bd65"
+  },
+  {
+    "id": "credit",
+    "pastel": "c4dd428df584e3f4c57197106f9bca89d687952c45e561b688cb8e186711a061",
+    "outline": "9636892ddc8dd1bc250d972f157a06ba87d7d61eb8421fbbbf40a5b9ec3691dd"
+  },
+  {
+    "id": "savings",
+    "pastel": "5735fa90db526d75d4879d99be27e73f874606a99424baee38ff87892aafc2e8",
+    "outline": "df34a87b151545010cfa6f133984bf2bd3fbf1a38f9b7e0ab70f09ffb5faefd0"
+  },
+  {
+    "id": "receipt",
+    "pastel": "770061c9cc9c2f4f558a49b41e43753c65b149882ee448c8deaebbf5a3ba3741",
+    "outline": "abdd0be98193d0644435cd88d04204a4e4cdb3cae7f1b374ce42954c658b6238"
+  },
+  {
+    "id": "analysis",
+    "pastel": "9320d941cd4bad0c0ca4ea1fcfb24ebb0682f2b404d5fd62d0ed2af6d296bbb6",
+    "outline": "b6f9ff9d37e042b575a783a22a5ca3df4339ade2df78ea45c780269e7a853496"
+  },
+  {
+    "id": "value",
+    "pastel": "0aea51dd07931161b5873cafe22e15a5de1013f583e69d6c7ffb2ca309518848",
+    "outline": "78b898d260c3ee5d82a7843570eb5c8e778372c282420548becf6eabe415251d"
+  },
+  {
+    "id": "video",
+    "pastel": "cfc469982fd67b1770a07418ade443d782e2215fe5397912f860ba79670c2625",
+    "outline": "fa358188647b3de3894b45a2bcb816965b9ae4599aba2d6ddfba72e5f3e88d67"
+  },
+  {
+    "id": "camera",
+    "pastel": "1709ab4bb7ad200c7561bc7d7ced7f9668164d442ffbd08b3be21527b5254e4a",
+    "outline": "fc9371fe6adfe9651d442e16f184e263cb9bdc6ecbc509487b1b3a0a9e92d5ce"
+  },
+  {
+    "id": "design",
+    "pastel": "8fbeab599676175d3bb31f2f5437e18f88cb468dd1d84bdf3bace297bb7fa7a6",
+    "outline": "474ddcdcba55fbe7266f9bfd9406a49c87d9fcf971e1cdc054d5f90b50bff25c"
+  },
+  {
+    "id": "audio",
+    "pastel": "81a237ce076b359618f8de898001a1e78db71655d9cedf13ad8b3bcf94479345",
+    "outline": "ba944fd251640489b1918c199da73fe83eb441d1d29e8d9869af47465018d4b7"
+  },
+  {
+    "id": "writing",
+    "pastel": "dcf3c869ebcac584d9bdb5ac53f8fef0aa84a013c7c161ac3f7dd2a22903ac27",
+    "outline": "6b1031fe98a9211fc7cb9ce778fa795573d3671b149419a88dcc1c4cc5c97461"
+  },
+  {
+    "id": "social",
+    "pastel": "f015fb30b455e049fadf8df2ab8f583b2e2aaa85fb6e257c669087655b2ec14f",
+    "outline": "8059b16cb5dd2e557408c0ffa7359e4303c62a6d47cf2adb017270a0102500d8"
+  },
+  {
+    "id": "presentation",
+    "pastel": "1f3980665e86b2691700326a10f8c0169bd25698f2f96c61c58462f1d094d4ea",
+    "outline": "3cb98ede8d78719b2a17ffc2578b908203032b69239191f14d095f7b7a785e04"
+  },
+  {
+    "id": "smart-glasses",
+    "pastel": "5b89fe04c1193279b9f18cfa12a649f8d488be3d5c81b60154409e36b63de2e6",
+    "outline": "26680a3bdd54905fda0a271c72d5c3e1073c000aad9f17142aaac75af42adb16"
+  },
+  {
+    "id": "surf",
+    "pastel": "b3ff9d128561dd8fc18bfb4c53869e871d660de71c20d2e526856919c94cec08",
+    "outline": "aa3aaf3ab8bc724af3c8a68af5356c789f7fbcd0f72730fcaff8d9397d843c52"
+  },
+  {
+    "id": "coffee",
+    "pastel": "721fbf4b0f750b4e73522e0ee0080d9fddf4a9cee49b2592dfc121a6361c5774",
+    "outline": "60f770cab179a089beed134628ebe5d00e9e07592d0bf864721db84838697e30"
+  },
+  {
+    "id": "dining",
+    "pastel": "9b4cbe991c00c5f856aba330f404e5d1dcc54155ea6af46fdbf33e7811995804",
+    "outline": "fa16a52fd386061bb2885588d5755b6a3df3e3d8cc909d9721bc58d389f68675"
+  },
+  {
+    "id": "live-music",
+    "pastel": "b6576dabaaf7e92cee94311632707cb75f0493ce66fdca2047dd644a693d0480",
+    "outline": "139b884f19e46f0dec6b005a085308541e235f91dd856bbf8d77e70d3615ee75"
+  },
+  {
+    "id": "comedy",
+    "pastel": "a9b2d328113d01d714befc9dcd19983aa05c7cec496c5365af4de27c23c76198",
+    "outline": "58c44d244edcee781142b17d2f2e049fb99b3006ab4db6b07995845f7fa46d3b"
+  },
+  {
+    "id": "travel",
+    "pastel": "cd739c2c434d031439fa7dfe22087c53bad5b10594680b7f50353ce9e0ebf8e1",
+    "outline": "a7e35ea99e972f4f832a82a2e03ce61a0c861429368cb5c6beb415583bd23da4"
+  },
+  {
+    "id": "home",
+    "pastel": "252eb5b18903ca95a64687d4df5e35e3bff50f5208f8f0ec56c43db415c8d9e7",
+    "outline": "f9c6450536d8475e13c78b0f20d77b461e503749efa754788efb94e2625687ff"
+  },
+  {
+    "id": "health",
+    "pastel": "fb887ff6b8901e2962f6b77e3f04b3de306af16770fc84698a4dfaf82760c384",
+    "outline": "8cdb44abdf95e42a803ed7cec7c123991994462f30e103cc606a2373670cc06d"
+  }
+]

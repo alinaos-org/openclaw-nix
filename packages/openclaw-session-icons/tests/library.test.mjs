@@ -62,7 +62,7 @@ test("activation registers one session-menu action and nothing else", async () =
   assert.equal(actions.length, 1);
   const [action] = actions;
   assert.equal(action.placement, "session");
-  assert.equal(action.label, "Icon library…");
+  assert.equal(action.label, "Custom icons…");
   assert.deepEqual(action.resolve({sessionKey: "agent:main:main"}), {disabled: false});
   host.connection.canWrite = false;
   assert.deepEqual(action.resolve({sessionKey: "agent:main:main"}), {disabled: true});
@@ -75,7 +75,7 @@ test("every icon has a unique id and a self-contained SVG within the gateway's l
   assert.equal(new Set(icons.map((icon) => icon.id)).size, icons.length);
   assert.equal(new Set(icons.map((icon) => icon.group)).size, 9);
   for (const icon of icons) {
-    for (const value of [icon.value, icon.legacyValue]) {
+    for (const value of [icon.value, icon.previousValue, icon.legacyValue]) {
       assert.ok(value.startsWith("data:image/svg+xml,"), icon.id);
       const source = decodeURIComponent(value.slice("data:image/svg+xml,".length));
       // SESSION_ICON_SVG_MAX_BYTES in the gateway protocol.
@@ -88,9 +88,9 @@ test("every icon has a unique id and a self-contained SVG within the gateway's l
 test("saved values keep their exact encoding, so icons sessions already have still match", async () => {
   const {catalog} = await browser();
   const aircraft = catalog().find((icon) => icon.id === "aircraft");
-  const colour = decodeURIComponent(aircraft.value.slice("data:image/svg+xml,".length));
+  const colour = decodeURIComponent(aircraft.previousValue.slice("data:image/svg+xml,".length));
   assert.ok(colour.startsWith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2 5v4l8 5v3l-8-3v4l3 2H7l3-2v-4l-8 3v-3l8-5V7Z" fill="#38bdf8"/>'));
-  assert.equal(aircraft.value, `data:image/svg+xml,${encodeURIComponent(colour)}`);
+  assert.equal(aircraft.previousValue, `data:image/svg+xml,${encodeURIComponent(colour)}`);
   assert.equal(
     aircraft.legacyValue,
     `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#7a92c2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18m0-17 2 3v4l7 5v2l-7-2v3l3 2H7l3-2v-3l-7 2v-2l7-5V7Z"/></svg>')}`,
@@ -111,6 +111,7 @@ test("a choice is the current icon in either encoding, and saves the colour one"
   const [icon, other] = catalog();
   assert.ok(isSelected(icon.value, icon));
   assert.ok(isSelected(icon.legacyValue, icon));
+  assert.ok(isSelected(icon.previousValue, icon));
   assert.ok(!isSelected(other.value, icon));
   assert.ok(!isSelected(null, icon));
   assert.deepEqual(iconPatch({sessionKey: "agent:main:main", agentId: "main"}, icon), {
@@ -119,4 +120,41 @@ test("a choice is the current icon in either encoding, and saves the colour one"
     icon: icon.value,
   });
   assert.deepEqual(iconPatch({sessionKey: "agent:main:main"}, icon), {key: "agent:main:main", icon: icon.value});
+});
+
+test("all 144 previous saved values remain byte-identical and selected", async () => {
+  const {createHash} = await import('node:crypto');
+  const {catalog, isSelected} = await browser();
+  const baseline = JSON.parse(await read('./previous-values.json'));
+  assert.equal(baseline.length, 72);
+  for (const expected of baseline) {
+    const icon = catalog().find((entry) => entry.id === expected.id);
+    for (const [key, value] of [['pastel', icon.previousValue], ['outline', icon.legacyValue]]) {
+      assert.equal(createHash('sha256').update(value).digest('hex'), expected[key], `${icon.id}: ${key}`);
+      assert.ok(isSelected(value, icon));
+    }
+  }
+});
+
+test("bold artwork preserves every shape, with saturated non-pastel paints", async () => {
+  const {catalog} = await browser();
+  const decode = (value) => decodeURIComponent(value.slice('data:image/svg+xml,'.length));
+  const geometry = (svg) => svg.replace(/#[0-9a-f]{6}/gu, '#PAINT');
+  for (const icon of catalog()) {
+    const bold = decode(icon.value), old = decode(icon.previousValue);
+    assert.equal(geometry(bold), geometry(old), `${icon.id}: unchanged geometry`);
+    assert.notEqual(bold, old, `${icon.id}: palette changed`);
+    const paints = [...new Set(bold.match(/#[0-9a-f]{6}/gu))];
+    let saturated = 0;
+    for (const hex of paints) {
+      const rgb = [1,3,5].map((i) => parseInt(hex.slice(i,i+2),16)/255);
+      const max = Math.max(...rgb), min = Math.min(...rgb);
+      if (max-min < 0.2) continue; // neutral ink/highlight
+      const lightness = (max+min)/2;
+      const saturation = (max-min)/(1-Math.abs(2*lightness-1));
+      assert.ok(saturation >= 0.75 && lightness <= 0.56, `${icon.id}: ${hex} must be bold, not pastel`);
+      saturated++;
+    }
+    assert.ok(saturated >= 2, `${icon.id}: at least two bold colours`);
+  }
 });

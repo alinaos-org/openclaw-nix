@@ -1,5 +1,5 @@
 // session-icons Control UI entry: a searchable library of colour session icons,
-// opened from the session menu (Icon library…).
+// opened from the session menu (Custom icons…).
 //
 // The built-in icon picker has no extension point, so this is a session action
 // with its own dialog. A choice is saved exactly like a custom icon from the
@@ -13,11 +13,26 @@ const PLUGIN_ID = "session-icons";
 const ACTION_ID = "icon-library";
 const SVG_DATA_URL_PREFIX = "data:image/svg+xml,";
 
-// The saved value of each icon. These strings are what sessions store, so they
-// must stay byte-identical: a different encoding would stop matching the icons
-// sessions already have.
-const colourSource = (id) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">${ARTWORK[id]}</svg>`;
+// Keep the original artwork bytes for exact matching of saved pastel icons.
+// Recolour only paint attributes: geometry, whitespace and encoding stay intact.
+const BOLD_PALETTE = {
+  "#38bdf8": "#0085ff", // blue
+  "#a78bfa": "#7030e8", // violet
+  "#fb923c": "#f47700", // orange
+  "#f472b6": "#e91e8f", // magenta
+  "#34d399": "#00ad73", // emerald
+  "#facc15": "#ffc400", // gold
+  "#22d3ee": "#00b8d4", // cyan
+  "#fb7185": "#ed2033", // red
+  "#334155": "#1e293b", // ink
+  "#f8fafc": "#ffffff", // highlight
+};
+const colourSource = (id, bold = true) => {
+  const artwork = bold
+    ? ARTWORK[id].replace(/#[0-9a-f]{6}/gu, (colour) => BOLD_PALETTE[colour] ?? colour)
+    : ARTWORK[id];
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">${artwork}</svg>`;
+};
 // The first library build (2026-10-12) saved one-colour outlines; they still
 // count as that icon when the library marks the current choice.
 const outlineSource = (path) =>
@@ -29,6 +44,7 @@ export function catalog() {
   catalogCache ??= DEFINITIONS.map((icon) => ({
     ...icon,
     value: `${SVG_DATA_URL_PREFIX}${encodeURIComponent(colourSource(icon.id))}`,
+    previousValue: `${SVG_DATA_URL_PREFIX}${encodeURIComponent(colourSource(icon.id, false))}`,
     legacyValue: `${SVG_DATA_URL_PREFIX}${encodeURIComponent(outlineSource(icon.path))}`,
   }));
   return catalogCache;
@@ -44,7 +60,7 @@ export function searchIcons(query) {
 }
 
 export function isSelected(current, icon) {
-  return current === icon.value || current === icon.legacyValue;
+  return current === icon.value || current === icon.previousValue || current === icon.legacyValue;
 }
 
 /** The sessions.patch parameters that give a session this icon. */
@@ -69,6 +85,12 @@ function openLibrary(host, session) {
   let closed = false;
 
   const content = el("div", "session-icons");
+  const heading = el("div", "session-icons__heading");
+  const title = el("h2", "session-icons__title", "Custom icons");
+  const dismiss = el("button", "session-icons__close", "Close");
+  dismiss.type = "button";
+  dismiss.addEventListener("click", () => { if (!busy) close(); });
+  heading.append(title, dismiss);
   const search = el("input", "session-icons__search");
   search.type = "search";
   search.placeholder = "Search icons…";
@@ -77,16 +99,20 @@ function openLibrary(host, session) {
   const footer = el("div", "session-icons__footer");
   const count = el("span", "session-icons__count");
   count.setAttribute("role", "status");
+  const hint = el("p", "session-icons__hint");
+  if (catalog().some((icon) => isSelected(current, icon) && current !== icon.value)) {
+    hint.textContent = "Your saved icon uses the earlier palette. Choose it again to use the bold version.";
+  }
   const error = el("span", "session-icons__error");
   error.setAttribute("role", "alert");
   footer.append(count, error);
-  content.append(search, results, footer);
+  content.append(heading, search, results, hint, footer);
 
   const container = el("div");
   document.body.append(container);
   const dialog = host.components.mountDialog(container, {
-    label: "Icon library",
-    description: "Choose an icon for this session.",
+    label: "Custom icons",
+    description: "72 original designs in bold colours. Choose one to save it for this session.",
     content,
     onCancel: () => {
       if (busy) return false;
@@ -97,6 +123,7 @@ function openLibrary(host, session) {
   function close() {
     if (closed) return;
     closed = true;
+    host.signal.removeEventListener("abort", close);
     dialog.dispose();
     container.remove();
   }
@@ -113,8 +140,9 @@ function openLibrary(host, session) {
   }
 
   async function choose(icon) {
-    if (busy) return;
+    if (busy || closed || !host.connection.canWrite) return;
     busy = true;
+    dismiss.disabled = true;
     error.textContent = "";
     for (const choice of choices()) choice.disabled = true;
     try {
@@ -122,7 +150,9 @@ function openLibrary(host, session) {
       current = icon.value;
       close();
     } catch (failure) {
+      if (closed) return;
       busy = false;
+      dismiss.disabled = false;
       error.textContent = `Could not save the icon: ${errorText(failure)}`;
       render();
     }
@@ -201,7 +231,7 @@ export default {
   activate(host) {
     return host.ui.registerAction({
       id: ACTION_ID,
-      label: "Icon library…",
+      label: "Custom icons…",
       placement: "session",
       resolve: () => ({disabled: !host.connection.canWrite}),
       run: ({sessionKey, agentId, session}) => {

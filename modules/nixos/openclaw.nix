@@ -299,7 +299,7 @@ in {
 
           sessionIcons = {
             enable = lib.mkEnableOption ''
-              the session menu's Icon library: 72 colour icons for session titles, saved
+              the session menu's Custom icons library: 72 colour icons for session titles, saved
               through the gateway's own sessions.patch (native Control UI plugin; turns on
               Labs > Custom plugin UI)
             '';
