@@ -7,47 +7,47 @@
       "dependencies": {
         "typebox": "1.3.34"
       },
-      "nixHash": "sha256-A3q0gFSlCbepOCzQQVxTjdXeaquNSJ+hncAXVDgZeb4=",
-      "npmIntegrity": "sha512-q2k3mfNaHFMs99PWfN33BFxtkfSnyjpWxNAgOFIcFJmyBjHJPp++q9klhJ79sGJ9ySQDG6JaF+T3d8AGF3R4DA==",
-      "npmShasum": "2b14ed632358cb79ae9631debf94fb8e754df0d4",
+      "nixHash": "sha256-6ubP0ZSlDV7Wkfx2q0wSbv/AIbx5VVJrEZr7OHbXHss=",
+      "npmIntegrity": "sha512-n8xVdvnWOfxtRS2NII2FrcrUUgxIs1xZSnDt9RS35Ze9oz/t0LOHhGzlRLhos9JtkmrrO1Vo0Is71iESESCoQQ==",
+      "npmShasum": "54b1f0b50e663e9d3ff5cc28561f5bb542422d25",
       "package": "@openclaw/firecrawl-plugin",
-      "tarballUrl": "https://registry.npmjs.org/@openclaw/firecrawl-plugin/-/firecrawl-plugin-2026.10.2.tgz"
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/firecrawl-plugin/-/firecrawl-plugin-2026.10.3.tgz"
     },
     "kimi": {
       "bundleDependencies": [],
       "dependencies": {},
-      "nixHash": "sha256-gIdLkTY+5US3ebQ/5TBTWTZqC01dDzNe+TNOlllBMOQ=",
-      "npmIntegrity": "sha512-gm4NF0bgIgJnUvKQFzqyYAkm5f+AdaxUdGsmNn8J/mifY0/TfkhW4QqWOzO1TPdfF9R0+lg6y936HRez7qxZLw==",
-      "npmShasum": "28936624c15f84525fbafccfa86efcca06a30877",
+      "nixHash": "sha256-edfsormEypHaCiFjbd8+V9lY70s/GRrSU3uhF54XqoA=",
+      "npmIntegrity": "sha512-LcwGaJ4dudrimSzK3+HNy5oghp7btG3ItA32sP0c+8KuZWssR9uPLt7vVYMOO7iKv72Oq8abfXZkSOid+oEDSA==",
+      "npmShasum": "168d7640f7fec34413daf1caf63c58e4f3acff4f",
       "package": "@openclaw/kimi-provider",
-      "tarballUrl": "https://registry.npmjs.org/@openclaw/kimi-provider/-/kimi-provider-2026.10.2.tgz"
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/kimi-provider/-/kimi-provider-2026.10.3.tgz"
     },
     "moonshot": {
       "bundleDependencies": [],
       "dependencies": {},
-      "nixHash": "sha256-HW1Bpa+X2tf7Gyv+PVLVgMj408FH3gbakcQGkPt9tVc=",
-      "npmIntegrity": "sha512-18E96vfZl+3M9x9h6cwmzU2OOxXDVy5b4I6v+7g6f4Zg2HKaAi20eahiV5SRO3DxjK6B0zkB146VlNwrIT5/cA==",
-      "npmShasum": "66e9eb92de70f5b948753dde17907ee79d38d5b0",
+      "nixHash": "sha256-dGVY3xjMME6CEhZM0/ZyDlH+4shvi3FYzLct+Y/ywB0=",
+      "npmIntegrity": "sha512-BjsDBrU6Gcow/hDgYLlDg5YCTFHtHFf15tuuKDNLYvWivdtxdJuuLmyDpSDSONWG5fpIuyW2vyOqmlz3pylN/A==",
+      "npmShasum": "c02d07dce6297bf01bce068476025b39b1c33870",
       "package": "@openclaw/moonshot-provider",
-      "tarballUrl": "https://registry.npmjs.org/@openclaw/moonshot-provider/-/moonshot-provider-2026.10.2.tgz"
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/moonshot-provider/-/moonshot-provider-2026.10.3.tgz"
     },
     "perplexity": {
       "bundleDependencies": [],
       "dependencies": {},
-      "nixHash": "sha256-AhDRnhHijjEisgyEG8rVcSWuBp/cPvWCgSozLd4xZ5U=",
-      "npmIntegrity": "sha512-P0g0E6BDgTKqARNf1Voe0JS0FGuIaWkXVTxHtsufDGpSG//A6V2bTlfBHhpKVr+IVqBjRiRzK80Ii42vRDE7eg==",
-      "npmShasum": "50b358f1cbcf0f3b2d53c4f464f34422aeec7eef",
+      "nixHash": "sha256-xKj7ULvrfQKfcVpDDGH+xEFl5Bixj0d0Hf7bdbEqe/8=",
+      "npmIntegrity": "sha512-JgGEvG41QNiuNLRhKfQr+S6hPxypQyQYGfKNcfo4bWxhncXm2quulsy75kzuzC7uMNvdwKZPUg/q5yLsMWsi2A==",
+      "npmShasum": "3f0c68b7a604af9d8458a17621a3d9b8b0e21816",
       "package": "@openclaw/perplexity-plugin",
-      "tarballUrl": "https://registry.npmjs.org/@openclaw/perplexity-plugin/-/perplexity-plugin-2026.10.2.tgz"
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/perplexity-plugin/-/perplexity-plugin-2026.10.3.tgz"
     },
     "qwen": {
       "bundleDependencies": [],
       "dependencies": {},
-      "nixHash": "sha256-3QWwmgPN87DlKwZLEPgyHCVYM/0ggd037RBrNDw2YJc=",
-      "npmIntegrity": "sha512-wdwgABbKla/pKnY9MgJyMWRZSKWQDFWg13P/o6apywQHp4TOIfWRp6T9GNy/XBWF9k/VwNVkqKX3arVcssNh9w==",
-      "npmShasum": "dbe181f62f6aedbef121d3c0f58fda939f067449",
+      "nixHash": "sha256-n/DapVwzeoKSwsvbu1D1nnJxWEhRh2EVV2fCmloqz08=",
+      "npmIntegrity": "sha512-NgptX9yoXzTUal6cW74Eu17vrxzp2EoxrK7sNB+Cg/F74WPd6J71fBSg+rgLgTLTAy79Zzoydo9YQyWHKV20cg==",
+      "npmShasum": "210fc36f03e98435cf566792a92192e46321aaff",
       "package": "@openclaw/qwen-provider",
-      "tarballUrl": "https://registry.npmjs.org/@openclaw/qwen-provider/-/qwen-provider-2026.10.2.tgz"
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/qwen-provider/-/qwen-provider-2026.10.3.tgz"
     },
     "tavily": {
       "bundleDependencies": [
@@ -56,30 +56,30 @@
       "dependencies": {
         "typebox": "1.3.34"
       },
-      "nixHash": "sha256-1rXVulfGAr4qVWx/IuY0JuvksYWpiPs8KAvTcA6H9uA=",
-      "npmIntegrity": "sha512-pyuJowWND058yq5JYbJg5s8YKjrGUJ86H8hk258aGhRknCiFM7M16SQMW4BgY/PwA9hGkBX/YLe2ghyBCGPbAw==",
-      "npmShasum": "ffcc4f80af34c34c86c3af11a03dd78a04b9a5fd",
+      "nixHash": "sha256-y+2wxos+tghYSeWv1ZiS+1VPlZ0cielcyfaZySYxNEc=",
+      "npmIntegrity": "sha512-79eYESnqTZwyB9R5csyhNCNrNwcLTgHuW6j6r8V7IxIGdioiPI3NlvhRr419JNIWggysR/AA82Hty8+EmzPxrQ==",
+      "npmShasum": "63ecab481604272ff555eb8d576e01f048e2fa84",
       "package": "@openclaw/tavily-plugin",
-      "tarballUrl": "https://registry.npmjs.org/@openclaw/tavily-plugin/-/tavily-plugin-2026.10.2.tgz"
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/tavily-plugin/-/tavily-plugin-2026.10.3.tgz"
     },
     "voyage": {
       "bundleDependencies": [],
       "dependencies": {},
-      "nixHash": "sha256-7NwmGGJuFlh8DrYae15xxACci/OLD4p2vxKpRzaeNTw=",
-      "npmIntegrity": "sha512-CmmzQRokh7qugpHHWe6HQjfPB9T3S36Mne+r0Hz4NygwEjl3fBXHq7ndXZ9QOjHXkhXRpl2FB4HLdtIyOyfm6w==",
-      "npmShasum": "fe1219fe4536cabefa3c8624bd274bc45cd125a8",
+      "nixHash": "sha256-u+EJEsjI9MWHszIt341S4/ajpWRkFE36AlxnMWFWknM=",
+      "npmIntegrity": "sha512-qetkl9KmVuj9dd+5uO1l+VLIMbeSebz7w1Zz+6xRBVZL0dbyRPecEenqiIZSLf6yGGJpGw1MNpFFmbyyyPtwfA==",
+      "npmShasum": "710fdd8e9f10c87bacee2b13148b65b597a2a5a2",
       "package": "@openclaw/voyage-provider",
-      "tarballUrl": "https://registry.npmjs.org/@openclaw/voyage-provider/-/voyage-provider-2026.10.2.tgz"
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/voyage-provider/-/voyage-provider-2026.10.3.tgz"
     },
     "zai": {
       "bundleDependencies": [],
       "dependencies": {},
-      "nixHash": "sha256-lJ43NehyyCL/NZkx0OLYrgSg5EBDEIWmtqnPskBXUI0=",
-      "npmIntegrity": "sha512-o6CC8LC+Zv/3qhh5HCJbH/bU0xGntfJ19B1SJqVpuxqz1iGL2x1kWw6qx0PTVvrYTDcER2jDeuIFaOKqGHkfTg==",
-      "npmShasum": "8ad0fa161983152e7ad57dfd49c27183674bfd98",
+      "nixHash": "sha256-jWNR3DiX4IMivCTnYxhJed1HxmBAEM5EfznnCsjIqNk=",
+      "npmIntegrity": "sha512-yH8RK1S/A4mB2ESRLimLGZnfjS2d6Jbzd25edIMnrOivvzmjKnUgB7hQL/EwKjL8bLLskFB1R4HwhddnEeQo5w==",
+      "npmShasum": "e31a73fc5a70412e1063baedcc3e75d72ea298b6",
       "package": "@openclaw/zai-provider",
-      "tarballUrl": "https://registry.npmjs.org/@openclaw/zai-provider/-/zai-provider-2026.10.2.tgz"
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/zai-provider/-/zai-provider-2026.10.3.tgz"
     }
   },
-  "version": "2026.10.2"
+  "version": "2026.10.3"
 }
