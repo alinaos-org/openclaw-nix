@@ -356,6 +356,69 @@
         exec ${packageFor name inst}/bin/openclaw "$@"
       '';
     };
+  # `openclaw-<name>-restore list|restore <snapshot|latest>`: roll the state back
+  # to a pre-migration snapshot (configOverlay.restoreState) with the gateway
+  # stopped. Run the one from the generation being rolled back to; switching to
+  # that generation starts the gateway (README, "Upgrade and rollback").
+  restoreToolFor = name: inst: let
+    unit = "${unitNameFor name}.service";
+    tool = configOverlay.restoreState {
+      inherit name;
+      stateDir = stateDirFor name;
+      package = packageFor name inst;
+    };
+  in
+    pkgs.writeShellApplication {
+      name = "openclaw-${name}-restore";
+      runtimeInputs = [pkgs.systemd];
+      text = ''
+        case "''${1:-}" in
+          list) exec ${tool}/bin/openclaw-${name}-restore-state list ;;
+          restore)
+            if systemctl --user is-active --quiet ${unit}; then
+              echo "refusing: ${unit} is running; stop it first (systemctl --user stop ${unit})" >&2
+              exit 1
+            fi
+            ${tool}/bin/openclaw-${name}-restore-state "$@"
+            echo "Now switch the system to the generation this command came from; that starts ${unit}." >&2
+            echo "(If the system already runs it: systemctl --user start ${unit}.)" >&2
+            ;;
+          *)
+            echo "usage: openclaw-${name}-restore list | restore <pre-migrate-...|latest> [--force]" >&2
+            exit 64
+            ;;
+        esac
+      '';
+    };
+
+  # A scheduled canary: one real agent turn through the instance's own CLI, with
+  # the result in <stateDir>/hooks-state/canary.json for a health check to read.
+  canaryFor = name: inst:
+    pkgs.writeShellApplication {
+      name = "openclaw-${name}-canary";
+      runtimeInputs = [pkgs.coreutils pkgs.gnugrep pkgs.jq];
+      text = ''
+        out=${stateDirFor name}/hooks-state/canary.json
+        mkdir -p "$(dirname "$out")"
+        started=$(date -Is)
+        rc=0
+        res=$(timeout 300 ${instanceCliFor name inst}/bin/oc-${name} agent --agent ${lib.escapeShellArg inst.canary.agent} \
+          --session-key ${lib.escapeShellArg "agent:${inst.canary.agent}:canary"} \
+          -m ${lib.escapeShellArg inst.canary.message} --json 2>&1) || rc=$?
+        status=$(jq -r '.status // empty' <<<"$res" 2>/dev/null || true)
+        reply=$(jq -r '.result.payloads[0].text // empty' <<<"$res" 2>/dev/null || true)
+        model=$(jq -r '((.result.meta.agentMeta.provider // "") + "/" + (.result.meta.agentMeta.model // ""))' <<<"$res" 2>/dev/null || true)
+        ok=false
+        if [ "$rc" -eq 0 ] && [ "$status" = ok ] && grep -qiw ok <<<"$reply"; then ok=true; fi
+        jq -n --arg ts "$started" --argjson ok "$ok" --argjson rc "$rc" --arg model "$model" \
+          --arg reply "$(head -c 200 <<<"$reply")" \
+          '{ts: $ts, ok: $ok, rc: $rc, model: $model, reply: $reply}' > "$out.tmp"
+        mv "$out.tmp" "$out"
+        [ "$ok" = true ]
+      '';
+    };
+  canaryInstances = lib.filterAttrs (_: inst: inst.canary.enable) cfg.instances;
+
   # The units' PATH: the user's local bin and Nix profiles, then the system's.
   unitPath = "PATH=${cfg.home}/.local/bin:/run/wrappers/bin:${cfg.home}/.nix-profile/bin:/nix/profile/bin:${cfg.home}/.local/state/nix/profile/bin:/etc/profiles/per-user/${cfg.user}/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin";
 in {
@@ -780,6 +843,28 @@ in {
               so fleet-health can report when it lags the installed one.
             '';
           };
+          canary = {
+            enable = lib.mkEnableOption ''
+              a scheduled canary: one real agent turn through the instance's own CLI
+              (oc-<name>), with the result in <stateDir>/hooks-state/canary.json. The
+              CLI clears the shared gateway token, so the instance needs a password
+              (gatewayPasswordFile or deriveGatewayPassword)
+            '';
+            agent = lib.mkOption {
+              type = lib.types.str;
+              description = "The agent the canary turn runs.";
+            };
+            message = lib.mkOption {
+              type = lib.types.str;
+              default = "Canary check. Reply with exactly: OK";
+              description = "The canary prompt; the reply must contain the word OK.";
+            };
+            onCalendar = lib.mkOption {
+              type = lib.types.str;
+              default = "weekly";
+              description = "systemd OnCalendar for the canary timer.";
+            };
+          };
           migrateStateOnUpgrade = lib.mkOption {
             type = lib.types.bool;
             default = true;
@@ -882,6 +967,11 @@ in {
         })
         cfg.instances
         ++ lib.mapAttrsToList (name: inst: {
+          assertion = !inst.canary.enable || inst.deriveGatewayPassword || inst.gatewayPasswordFile != null;
+          message = "OpenClaw instance ${name}: canary runs through oc-${name}, which needs gatewayPasswordFile or deriveGatewayPassword";
+        })
+        cfg.instances
+        ++ lib.mapAttrsToList (name: inst: {
           assertion = lib.all (id: builtins.elem id graftIds) inst.excludedBundledRuntimePlugins;
           message = "OpenClaw instance ${name} may exclude only host-declared bundled runtime plugins";
         })
@@ -927,7 +1017,8 @@ in {
         home.packages =
           lib.mapAttrsToList overlayToolFor (lib.filterAttrs (_: inst: inst.uiOverlay.enable) cfg.instances)
           ++ lib.mapAttrsToList instanceCliFor (lib.filterAttrs (name: _: name != interactiveInstance) cfg.instances)
-          ++ lib.mapAttrsToList modeToolFor (lib.filterAttrs (_: inst: inst.declarativeTwin.enable) cfg.instances);
+          ++ lib.mapAttrsToList modeToolFor (lib.filterAttrs (_: inst: inst.declarativeTwin.enable) cfg.instances)
+          ++ lib.mapAttrsToList restoreToolFor (lib.filterAttrs (_: inst: inst.migrateStateOnUpgrade && inst.runtimeConfigJqFilter != null) cfg.instances);
 
         # nix-openclaw also installs programs.openclaw.package as the
         # interactive CLI. Bind that global package to this repository's
@@ -1149,7 +1240,27 @@ in {
             };
         in
           lib.mapAttrs' (mkUnit false) cfg.instances
-          // lib.mapAttrs' (mkUnit true) (lib.filterAttrs (_: inst: inst.declarativeTwin.enable) cfg.instances);
+          // lib.mapAttrs' (mkUnit true) (lib.filterAttrs (_: inst: inst.declarativeTwin.enable) cfg.instances)
+          // lib.mapAttrs' (name: inst:
+            lib.nameValuePair "openclaw-${name}-canary" {
+              Unit.Description = "OpenClaw ${name} canary (one real agent turn)";
+              Service = {
+                Type = "oneshot";
+                ExecStart = "${canaryFor name inst}/bin/openclaw-${name}-canary";
+              };
+            })
+          canaryInstances;
+        systemd.user.timers = lib.mapAttrs' (name: inst:
+          lib.nameValuePair "openclaw-${name}-canary" {
+            Unit.Description = "OpenClaw ${name} canary";
+            Timer = {
+              OnCalendar = inst.canary.onCalendar;
+              RandomizedDelaySec = "15m";
+              Persistent = true;
+            };
+            Install.WantedBy = ["timers.target"];
+          })
+        canaryInstances;
       };
 
       # Interactive CLI runs (openclaw status / plugins / logs ...) must consume
