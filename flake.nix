@@ -236,12 +236,25 @@
           virtualisation.memorySize = 4096;
           virtualisation.cores = 2;
           environment.systemPackages = [pkgs.curl pkgs.jq];
+          # An OpenAI-compatible model that always answers STUB-OK and logs each request.
+          systemd.services.stub-provider = {
+            wantedBy = ["multi-user.target"];
+            before = ["openclaw-test.service"];
+            serviceConfig = {
+              ExecStart = "${pkgs.python3}/bin/python3 -I ${./tests/nixos-module/stub-provider.py} /var/lib/stub-provider/requests.jsonl";
+              StateDirectory = "stub-provider";
+              DynamicUser = true;
+            };
+          };
           services.openclaw.instances.test = {
             port = 18789;
             configOverlay.enable = true;
             sessionIcons.enable = true;
             # A store file in the test only; a real host points at a root-only secret.
-            credentials.OPENCLAW_GATEWAY_TOKEN = "${pkgs.writeText "gateway-token" "vm-test-token"}";
+            credentials = {
+              OPENCLAW_GATEWAY_TOKEN = "${pkgs.writeText "gateway-token" "vm-test-token"}";
+              STUB_API_KEY = "${pkgs.writeText "stub-api-key" "vm-stub-key"}";
+            };
             settings = {
               gateway = {
                 mode = "local";
@@ -252,9 +265,32 @@
                   token = "$OPENCLAW_GATEWAY_TOKEN";
                 };
               };
+              models = {
+                mode = "merge";
+                providers.stub = {
+                  baseUrl = "http://127.0.0.1:9999/v1";
+                  api = "openai-completions";
+                  apiKey = {
+                    source = "env";
+                    provider = "default";
+                    id = "STUB_API_KEY";
+                  };
+                  models = [
+                    {
+                      id = "stub-model";
+                      name = "Stub";
+                      input = ["text"];
+                      contextWindow = 32768;
+                      maxTokens = 1024;
+                      reasoning = false;
+                    }
+                  ];
+                };
+              };
               agents.defaults = {
                 workspace = "/var/lib/openclaw/test/workspace";
                 thinkingDefault = "low";
+                model.primary = "stub/stub-model";
               };
             };
           };
@@ -263,6 +299,16 @@
           import json
 
           state = "/var/lib/openclaw/test"
+          gw = "${nodes.machine.services.openclaw.instances.test.package}/bin/openclaw"
+
+          def openclaw(args):
+              # The instance's own user, state and config, as an operator would run it.
+              return machine.succeed(
+                  f"runuser -u openclaw-test -- env HOME={state} OPENCLAW_STATE_DIR={state} "
+                  f"OPENCLAW_CONFIG_PATH={state}/openclaw-runtime.json OPENCLAW_NIX_MODE=1 "
+                  f"OPENCLAW_GATEWAY_TOKEN=vm-test-token {gw} {args}"
+              )
+
           machine.wait_for_unit("openclaw-test.service")
           machine.wait_until_succeeds("curl -sf http://127.0.0.1:18789/readyz", timeout=600)
 
@@ -272,9 +318,10 @@
               machine.succeed(f"test \"$(stat -c %U:%a {state})\" = openclaw-test:700")
               machine.wait_until_succeeds("ls /var/log/openclaw/test/openclaw-*.log", timeout=120)
 
-          with subtest("the credential stays out of the unit and the configs"):
-              machine.fail("grep -q vm-test-token /etc/systemd/system/openclaw-test.service")
-              machine.fail(f"grep -q vm-test-token {state}/openclaw.json {state}/openclaw-runtime.json")
+          with subtest("the credentials stay out of the unit and the configs"):
+              for secret in ["vm-test-token", "vm-stub-key"]:
+                  machine.fail(f"grep -q {secret} /etc/systemd/system/openclaw-test.service")
+                  machine.fail(f"grep -q {secret} {state}/openclaw.json {state}/openclaw-runtime.json")
 
           with subtest("hardened"):
               line = machine.succeed("systemd-analyze security openclaw-test.service | tail -1")
@@ -282,14 +329,29 @@
               print(f"exposure {exposure}")
               assert exposure <= 3.0, line
 
+          with subtest("an agent turn reaches the model provider with the instance's credential"):
+              # The prompt never names the stub's answer, so only the provider can supply it.
+              reply = openclaw("agent --agent main --session-key agent:main:vm-test -m 'Say hello.' --json")
+              print(reply)
+
+              def visible(node):
+                  if isinstance(node, dict):
+                      if "finalAssistantVisibleText" in node:
+                          yield node["finalAssistantVisibleText"]
+                      for value in node.values():
+                          yield from visible(value)
+                  elif isinstance(node, list):
+                      for value in node:
+                          yield from visible(value)
+
+              assert "STUB-OK" in list(visible(json.loads(reply))), reply
+              requests = [json.loads(line) for line in machine.succeed("cat /var/lib/stub-provider/requests.jsonl").splitlines()]
+              turns = [r for r in requests if r["path"].endswith("/chat/completions")]
+              assert turns, requests
+              assert all(r["model"] == "stub-model" and r["authorization"] == "Bearer vm-stub-key" for r in turns), turns
+
           with subtest("the Icon library is a native Control UI plugin the gateway serves"):
-              gw = "${nodes.machine.services.openclaw.instances.test.package}/bin/openclaw"
-              listed = machine.succeed(
-                  f"runuser -u openclaw-test -- env HOME={state} OPENCLAW_STATE_DIR={state} "
-                  f"OPENCLAW_CONFIG_PATH={state}/openclaw-runtime.json OPENCLAW_NIX_MODE=1 "
-                  f"OPENCLAW_GATEWAY_TOKEN=vm-test-token {gw} gateway call plugins.controlUi.list "
-                  f"--json --timeout 30000 --params '{{}}'"
-              )
+              listed = openclaw("gateway call plugins.controlUi.list --json --timeout 30000 --params '{}'")
               print(listed)
               assert "session-icons" in listed, listed
               assert json.loads(listed)["diagnostics"] == [], listed
