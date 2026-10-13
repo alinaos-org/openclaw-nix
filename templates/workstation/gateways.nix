@@ -17,8 +17,9 @@
       runtimePlugins = ["session-icons"];
       materializeRuntimePlugins = true;
       # Render a writable runtime config at each start, so the Control UI can
-      # save within its policy.
-      runtimeConfigJqFilter = ".";
+      # save within its policy. Labs > Custom plugin UI, which the Icon library
+      # needs, rides this filter: nix-openclaw's typed options reject the key.
+      runtimeConfigJqFilter = ''.gateway.controlUi.experimental = {"customPlugins": true}'';
       uiOverlay.enable = true;
     };
   };
