@@ -41,9 +41,10 @@ generic scripts their host defaults. If there is no host profile, stop and write
 
 1. **Release.** Review openclaw-nix's `release-<v>` pull request: the tag and release SHA,
    the changelog against every patch, the customize layer's anchors and the host's
-   plugins ([releases](references/releases.md)). A patch whose code moved fails CI's
-   build and is re-ported or dropped there. Merge once CI is green: the build is then in
-   the cache.
+   plugins ([releases](references/releases.md)), and what a
+   [version sweep misses](references/lessons.md#what-a-version-sweep-misses). A patch
+   whose code moved fails CI's build and is re-ported or dropped there. Merge once CI is
+   green: the build is then in the cache.
 2. **Decide** to take it now ([cadence](references/lessons.md#cadence)): a stable release
    with a reason, in the host's instance order, inside an approved restart window.
 3. **Candidate.** In a fresh worktree off the host's main branch, `nix flake update
@@ -86,7 +87,11 @@ step ends with what must be true before the next.
 3. **Patch layers.** Walk the changelog against the hotfix layer, the customize layer
    and every host plugin ([patch layer](references/releases.md#patch-layer)). Drop what
    upstream fixed, re-port what it moved, and extend a gate only after that patch's test
-   passes on the candidate. Done when each patch is dropped or re-ported with its reason.
+   passes on the candidate. Then check what a
+   [version sweep misses](references/lessons.md#what-a-version-sweep-misses): new bundled
+   plugins, overrides the release made obsolete, keys nix-openclaw's typed module does
+   not know yet and separately versioned layers. Done when each patch is dropped or
+   re-ported with its reason and each of those is checked.
 4. **Rollback evidence.** Make sure the host's rollback (its profile) covers state as
    well as the closure: a newer release migrates databases, after which an old closure
    alone is no downgrade. Use [archive recovery](references/recovery.md#archive-recovery)

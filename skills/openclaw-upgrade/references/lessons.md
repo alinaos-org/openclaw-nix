@@ -74,6 +74,39 @@ log, check the live behavior, then adopt each in the Nix source or reject it on 
 Record standing decisions in the host profile so the next release does not re-litigate
 them.
 
+## What a version sweep misses
+
+Bumping every pinned version finds only what already exists at an older version. These
+change shape instead, and all four were live gaps after the 2026.9.6 upgrade on one
+host. Work them alongside the patch layers.
+
+- **New bundled plugins.** Diff the candidate's `dist-runtime/extensions/` against
+  `plugins.allow` and `plugins.entries`. A plugin shipped with `enabledByDefault: false`
+  needs an `entries` block, an `allow` entry and its own secret wiring, none of which a
+  version bump touches. Read its `openclaw.plugin.json` (`configContracts.secretInputs`,
+  `contracts`) before wiring it. A decision provider (`decisionModels`,
+  `decisionProviders`) is not a chat model: it never appears in `openclaw models list`
+  and `infer model inspect` reports "Model not found" for it. That is expected. 2026.9.6
+  shipped typesafe this way.
+- **Overrides the release made obsolete.** Check every local model override, including
+  `models.mode = "merge"` entries, against the new bundled catalog. An override for a
+  model the release now catalogs must be deleted, not bumped: a stale one keeps serving
+  worse metadata (no image input, fewer context options) while looking right. Assert the
+  removal in a contract so it cannot come back. 2026.9.6 made a 9.5 Opus override
+  obsolete.
+- **nix-openclaw's typed module lagging upstream.** A new upstream config key fails
+  evaluation in nix-openclaw's typed options until the module catches up, with an error
+  that names the option rather than the lag. Add the key in a jq transform over the
+  render instead (`configOverlay.transform`, or the host's own filter), gated to the
+  release, and let the gateway validate the result. Re-check the gate on the next bump
+  so the workaround does not outlive the lag. `agents.defaults.decisionModel` needed
+  this on 2026.9.6.
+- **Separately versioned layers.** The agent runtimes bundled in the gateway
+  (`node_modules/.pnpm/@openai+codex@*`, `@anthropic-ai+claude-agent-sdk@*`) and the
+  host's own CLIs and desktop apps move on their own versions, and `openclaw plugins
+  list` shows none of them. A clean plugin sweep says nothing about these; the host
+  profile lists the ones it has.
+
 ## Restart hazards
 
 - Live agent work: activation restarts gateways, which cuts every in-flight turn and
