@@ -142,6 +142,51 @@ Each instance is `openclaw-<name>.service`:
 The port stays closed unless `openFirewall` is set: terminate TLS and authenticate users
 in a reverse proxy on the same host.
 
+### Upgrade and rollback
+
+A new package's first start snapshots the state, then migrates it: the gateway
+stops, `backups/pre-migrate-<time>/state-snapshot.tgz` takes OpenClaw's databases and
+JSON files (recording the versions it came from and goes to), and the new doctor
+migrates the state in place. If doctor fails, the start is refused, and the state
+and its snapshot are kept. Rolling the closure back alone is therefore no downgrade:
+the old package would meet migrated databases. Roll the state back with it:
+
+1. `systemctl stop openclaw-<name>`. It drains active work first, for up to about six
+   minutes.
+2. Run the restore command **from the generation you are rolling back to**:
+
+   ```sh
+   gen=/nix/var/nix/profiles/system-41-link   # the generation before the upgrade
+   $gen/sw/bin/openclaw-<name>-restore list
+   $gen/sw/bin/openclaw-<name>-restore restore latest
+   ```
+
+   Its package must be the one the snapshot was taken from. The current
+   generation's command refuses, because its package is the newer one. It moves the
+   files the snapshot covers aside into `backups/restore-<time>/replaced/`, unpacks
+   the snapshot, and marks the state migrated for that package, so the old version
+   does not migrate it again. It deletes nothing and starts nothing.
+3. Switch to that generation (`$gen/bin/switch-to-configuration switch`, or
+   `nixos-rebuild switch --rollback` when it is the previous one). That starts the
+   gateway on the restored state.
+
+What a rollback costs:
+
+- **Recovery point:** the moment the upgrade started, for the databases and JSON
+  (sessions, agent state, Control UI edits). Their post-upgrade versions stay in
+  `backups/restore-<time>/replaced/`. Other files are left as they are: media, a
+  runtime's own home (Codex's, for example) and workspaces.
+- **Recovery time:** the stop's drain, the unpack and a start. A busy personal
+  gateway's state is about 3.6 GiB in 7,600 files, a 1.5 GB snapshot that unpacks in a
+  minute or two.
+- **Rehearsal:** `checks.nixos-module` runs these exact steps on every pull request.
+  It upgrades to a package that reports a newer version, adds a session, rolls back,
+  and checks that the session is gone and the pre-upgrade one is back. Rehearse on a
+  staging host with production-sized state before relying on it.
+
+Snapshots are not pruned. Each one is about the state's compressed size, so move
+old ones off the host once a release has been accepted.
+
 `checks.nixos-module` boots a VM with one instance and checks it end to end:
 - its own user, state and logs;
 - credentials absent from the unit and the configs;
@@ -149,7 +194,8 @@ in a reverse proxy on the same host.
 - one agent turn against a stub OpenAI-compatible provider, whose API key arrives only
   through the instance's credential;
 - the Icon library served from the state directory;
-- a Control UI edit surviving a restart.
+- a Control UI edit surviving a restart;
+- the rollback above.
 
 CI runs it on every pull request.
 

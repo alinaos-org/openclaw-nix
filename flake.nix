@@ -236,6 +236,14 @@
           virtualisation.memorySize = 4096;
           virtualisation.cores = 2;
           environment.systemPackages = [pkgs.curl pkgs.jq];
+          # The rollback drill's "new release": the same gateway reporting another
+          # version, so its first start migrates and snapshots the state.
+          specialisation.upgraded.configuration = {config, ...}: {
+            services.openclaw.instances.test.package = pkgs.writeShellScriptBin "openclaw" ''
+              if [ "''${1:-}" = --version ]; then echo "OpenClaw 2099.1.1 (rollback drill)"; exit 0; fi
+              exec ${config.services.openclaw.package}/bin/openclaw "$@"
+            '';
+          };
           # An OpenAI-compatible model that always answers STUB-OK and logs each request.
           systemd.services.stub-provider = {
             wantedBy = ["multi-user.target"];
@@ -372,6 +380,49 @@
               machine.wait_until_succeeds("curl -sf http://127.0.0.1:18789/readyz", timeout=600)
               machine.succeed(f"jq -e '.agents.defaults.thinkingDefault == \"high\"' {state}/openclaw-runtime.json")
               machine.succeed(f"jq -e '.entries | length == 1' {state}/config-overlay.json")
+
+          with subtest("rollback: the previous package gets the pre-upgrade state back"):
+              base = "${nodes.machine.system.build.toplevel}"
+              ready = "curl -sf http://127.0.0.1:18789/readyz"
+
+              def sessions():
+                  return openclaw("gateway call sessions.list --json --timeout 30000 --params '{}'")
+
+              def snapshot_count():
+                  return int(machine.succeed(f"ls -d {state}/backups/pre-migrate-* | wc -l"))
+
+              base_version = machine.succeed(f"{gw} --version | head -1").strip()
+              openclaw("agent --agent main --session-key agent:main:before-upgrade -m 'Say hello.' --json")
+
+              # Upgrade: the new package's first start snapshots the state, then migrates it.
+              before = snapshot_count()
+              machine.succeed(f"{base}/specialisation/upgraded/bin/switch-to-configuration test")
+              machine.wait_until_succeeds(ready, timeout=600)
+              assert snapshot_count() == before + 1
+              listing = machine.succeed("openclaw-test-restore list")
+              print(listing)
+              assert f"{base_version} -> OpenClaw 2099.1.1 (rollback drill)" in listing.splitlines()[0], listing
+              openclaw("agent --agent main --session-key agent:main:after-upgrade -m 'Say hello.' --json")
+              assert "agent:main:after-upgrade" in sessions()
+
+              # Roll back: stop the gateway, restore with the previous generation's command
+              # (the newer one's refuses: its package is not the snapshot's), then switch
+              # to that generation, which starts the gateway on the restored state.
+              machine.succeed("systemctl stop openclaw-test")
+              machine.fail("openclaw-test-restore restore latest")
+              machine.succeed(f"{base}/sw/bin/openclaw-test-restore restore latest")
+              machine.fail("systemctl is-active openclaw-test")
+              machine.succeed(f"{base}/bin/switch-to-configuration test")
+              machine.succeed("systemctl start openclaw-test")
+              machine.wait_until_succeeds(ready, timeout=600)
+
+              listed = sessions()
+              assert "agent:main:before-upgrade" in listed, listed
+              assert "agent:main:after-upgrade" not in listed, listed
+              assert machine.succeed(f"cat {state}/.migrated-for-version").strip() == base_version
+              # Restored state is marked for this package: the start did not migrate again.
+              assert snapshot_count() == before + 1
+              machine.succeed(f"ls {state}/backups/restore-*/replaced/agents")
         '';
       };
       # The Home Manager module over nix-openclaw's: a writable instance gets the

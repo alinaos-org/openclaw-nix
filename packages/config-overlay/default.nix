@@ -44,6 +44,18 @@
       '';
     };
 
+  # The state a pre-migration snapshot covers and a restore replaces: OpenClaw's
+  # databases and JSON files, the state an upgrade migrates. Not backups/, tmp/,
+  # quarantine/ (files an operator parked) or the copied plugin sets
+  # (runtime-plugins/, regenerated at every start); other files (media, a
+  # runtime's own home, workspaces) are left as they are. Run from the state
+  # directory.
+  snapshotFind = lib.concatStringsSep " " [
+    "find . -path ./backups -prune -o -path ./tmp -prune -o -path ./quarantine -prune -o -path ./runtime-plugins -prune -o"
+    "\\( -name '*.sqlite' -o -name '*.sqlite-wal' -o -name '*.sqlite-shm' -o -name '*.json' \\) -type f"
+  ];
+  snapshotSetNote = "databases and JSON outside backups, tmp, quarantine and runtime-plugins";
+
   # Before every start: capture the Control UI's changes (with an overlay
   # policy), migrate state once per new package version (doctor on disposable
   # config and workspace copies; its proposals land in upgrade-*-drift.json),
@@ -120,11 +132,14 @@
             mig_dir="$state_dir/backups/pre-migrate-$(date +%Y%m%dT%H%M%S)"
             install -d -m 0700 "$mig_dir"
             # Version-independent snapshot (the new binary may refuse
-            # to open old schemas). The gateway is stopped here.
-            (cd "$state_dir" && find . -path ./backups -prune -o -path ./tmp -prune -o \
-                \( -name '*.sqlite' -o -name '*.sqlite-wal' -o -name '*.sqlite-shm' -o -name '*.json' \) -type f -print0 \
+            # to open old schemas). The gateway is stopped here. It is the
+            # rollback: doctor and the new gateway migrate the real state.
+            # restoreState puts it back (same file set: ${snapshotSetNote}).
+            (cd "$state_dir" && ${snapshotFind} -print0 \
               | tar --null -czf "$mig_dir/state-snapshot.tgz" -T -) \
               || { echo "refusing ${name}: pre-migration snapshot failed" >&2; exit 1; }
+            printf '%s\n' "$old_version" > "$mig_dir/from-version"
+            printf '%s\n' "$new_version" > "$mig_dir/to-version"
             scratch_cfg="$mig_dir/doctor-config.json"
             cp "$migration_source" "$scratch_cfg"; chmod 0600 "$scratch_cfg"
             # Workspaces are agent files (Nix-managed for prod/merlin)
@@ -354,6 +369,86 @@
     python3 config-overlay-test.py
     touch "$out"
   '';
+  # Roll state back to a pre-migration snapshot, for the package the snapshot was
+  # taken from: `package` must be that one, so run the command from the
+  # generation being rolled back to, before switching to it. Run as the
+  # instance's user with the gateway stopped (the NixOS module's
+  # openclaw-<name>-restore checks both).
+  #
+  #   openclaw-<name>-restore-state list
+  #   openclaw-<name>-restore-state restore <pre-migrate-...|latest> [--force]
+  #
+  # Nothing is deleted: the files the snapshot covers go aside, as they are, into
+  # backups/restore-<time>/replaced/ before the snapshot is unpacked, so changes
+  # since the upgrade stay recoverable. The state is then marked migrated for the
+  # package now installed, so its next start does not migrate it again.
+  restoreState = {
+    name,
+    stateDir,
+    # The package that will run the restored state: the rolled-back one.
+    package,
+  }:
+    writeShellApplication {
+      name = "openclaw-${name}-restore-state";
+      runtimeInputs = [coreutils findutils gnutar gzip];
+      text = ''
+        state=${lib.escapeShellArg stateDir}
+        backups="$state/backups"
+        usage() {
+          echo "usage: openclaw-${name}-restore-state list | restore <pre-migrate-...|latest> [--force]" >&2
+          exit 64
+        }
+        snapshots() {
+          find "$backups" -mindepth 1 -maxdepth 1 -type d -name 'pre-migrate-*' -printf '%f\n' 2>/dev/null | sort -r
+        }
+        case "''${1:-}" in
+          list)
+            snapshots | while IFS= read -r snapshot; do
+              dir="$backups/$snapshot"
+              [ -f "$dir/state-snapshot.tgz" ] || continue
+              printf '%s  %s -> %s  %s\n' "$snapshot" \
+                "$(cat "$dir/from-version" 2>/dev/null || echo '?')" \
+                "$(cat "$dir/to-version" 2>/dev/null || echo '?')" \
+                "$(du -h "$dir/state-snapshot.tgz" | cut -f1)"
+            done
+            ;;
+          restore)
+            target=''${2:-}
+            [ -n "$target" ] || usage
+            if [ "$target" = latest ]; then
+              target=$(snapshots | head -1)
+              [ -n "$target" ] || { echo "no pre-migration snapshot in $backups" >&2; exit 66; }
+            fi
+            target=$(basename -- "$target")
+            snapshot="$backups/$target/state-snapshot.tgz"
+            [ -f "$snapshot" ] || { echo "no snapshot $snapshot" >&2; exit 66; }
+            version=$(${package}/bin/openclaw --version 2>/dev/null | head -1 || true)
+            [ -n "$version" ] || { echo "refusing: ${package}/bin/openclaw reports no version" >&2; exit 1; }
+            from=$(cat "$backups/$target/from-version" 2>/dev/null || true)
+            if [ "$from" != "$version" ] && [ "''${3:-}" != --force ]; then
+              echo "refusing: $target was taken from '$from', but the package installed now is '$version'." >&2
+              echo "Run the restore from the generation that has the package the snapshot came from, or pass --force." >&2
+              exit 65
+            fi
+            tar -tzf "$snapshot" > /dev/null
+            aside="$backups/restore-$(date +%Y%m%dT%H%M%S)"
+            install -d -m 0700 "$aside/replaced"
+            (cd "$state" && ${snapshotFind} -print0) | while IFS= read -r -d "" file; do
+              install -d -m 0700 "$aside/replaced/$(dirname -- "$file")"
+              mv -- "$state/$file" "$aside/replaced/$file"
+            done
+            for marker in .migrated-for-version .migration-failed-for-version; do
+              if [ -e "$state/$marker" ]; then mv -- "$state/$marker" "$aside/$marker"; fi
+            done
+            tar -C "$state" -xzf "$snapshot"
+            printf '%s\n' "$version" > "$state/.migrated-for-version"
+            printf '%s\n' "$target" > "$aside/restored-from"
+            echo "${name}: restored $target for $version; the state it replaced is in $aside/replaced"
+            ;;
+          *) usage ;;
+        esac
+      '';
+    };
 in {
-  inherit engine defaultPolicy fold cli prepareConfig sync test;
+  inherit engine defaultPolicy fold cli prepareConfig restoreState sync test;
 }

@@ -149,7 +149,7 @@
         # watchdog at about 327 s; stop only after it, and the children with it.
         KillMode = "mixed";
         TimeoutStopSec = "360s";
-        # The first start on a new package runs doctor on copies of the state.
+        # The first start on a new package snapshots the state and runs doctor on it.
         TimeoutStartSec =
           if inst.migrateOnUpgrade
           then "20min"
@@ -159,6 +159,44 @@
       inst.serviceConfig
     ];
   };
+
+  # The operator's rollback for the state: openclaw-<name>-restore (README, "Upgrade
+  # and rollback"). Run the one from the generation being rolled back to, with the
+  # gateway stopped; it restores as the instance's user and starts nothing, since
+  # switching to that generation starts the gateway.
+  restoreFor = name: inst: let
+    unit = "openclaw-${name}.service";
+    tool = overlayTools.restoreState {
+      inherit name;
+      stateDir = "/var/lib/openclaw/${name}";
+      inherit (inst) package;
+    };
+  in
+    pkgs.writeShellApplication {
+      name = "openclaw-${name}-restore";
+      runtimeInputs = [pkgs.systemd pkgs.util-linux pkgs.coreutils];
+      text = ''
+        usage() {
+          echo "usage: openclaw-${name}-restore list | restore <pre-migrate-...|latest> [--force]" >&2
+          exit 64
+        }
+        [ "$(id -u)" = 0 ] || { echo "openclaw-${name}-restore: run as root" >&2; exit 1; }
+        as_instance() { setpriv --reuid=${inst.user} --regid=${inst.group} --init-groups -- "$@"; }
+        case "''${1:-}" in
+          list) as_instance ${tool}/bin/openclaw-${name}-restore-state list ;;
+          restore)
+            if systemctl is-active --quiet ${unit}; then
+              echo "refusing: ${unit} is running; stop it first (systemctl stop ${unit})" >&2
+              exit 1
+            fi
+            as_instance ${tool}/bin/openclaw-${name}-restore-state "$@"
+            echo "Now switch the system to the generation this command came from; that starts ${unit}." >&2
+            echo "(If the system already runs it: systemctl start ${unit}.)" >&2
+            ;;
+          *) usage ;;
+        esac
+      '';
+    };
 
   logRules = name: inst:
     lib.optional (inst.logRetention != null) "e /var/log/openclaw/${name} - - - ${inst.logRetention}";
@@ -287,9 +325,10 @@ in {
             type = lib.types.bool;
             default = true;
             description = ''
-              On the first start of a new package version, snapshot the state and run the
-              new doctor against copies; its proposed changes are written for review, not
-              applied.
+              On the first start of a new package version, snapshot the state
+              (backups/pre-migrate-<time>; `openclaw-<name>-restore` puts it back) and run
+              the new doctor on it, with copies of the config and workspaces: their
+              proposed changes are written for review, not applied.
             '';
           };
 
@@ -361,6 +400,7 @@ in {
 
     systemd.services = lib.mapAttrs' (name: inst: lib.nameValuePair "openclaw-${name}" (unitFor name inst)) enabled;
     systemd.tmpfiles.rules = lib.concatLists (lib.mapAttrsToList logRules enabled);
+    environment.systemPackages = lib.mapAttrsToList restoreFor enabled;
 
     networking.firewall.allowedTCPPorts = lib.concatLists (lib.mapAttrsToList (_: inst: lib.optional inst.openFirewall inst.port) enabled);
   };
