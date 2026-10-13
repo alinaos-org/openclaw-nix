@@ -102,6 +102,39 @@
       single-release = pkgs.openclawNix.checkSingleRelease {
         roots = [p.gateway-hotfixed p.openclaw p.runtime-plugins];
       };
+      # packages/hotfix/register.nix covers every patch and test file, each entry has a
+      # test (or the reason there is none), an upstream status and a removal
+      # condition, default.nix applies and runs them, and the package advertises
+      # exactly the registered markers. Evaluation fails otherwise.
+      hotfix-register = let
+        inherit (pkgs) lib;
+        register = import ./packages/hotfix/register.nix;
+        files = builtins.attrNames (builtins.readDir ./packages/hotfix);
+        sorted = lib.sort lib.lessThan;
+        named = prefix: sorted (lib.filter (f: lib.hasPrefix prefix f && lib.hasSuffix ".mjs" f) files);
+        base = path: baseNameOf (toString path);
+        entries = lib.attrValues register;
+        applied = builtins.readFile ./packages/hotfix/default.nix;
+        has = e: field: (e.${field} or null) != null && e.${field} != "";
+        problems =
+          lib.optional (named "patch-" != sorted (map (e: base e.patch) entries))
+          "patch files and register entries differ"
+          ++ lib.optional (named "test-" != sorted (map (e: base e.test) (lib.filter (e: e.test != null) entries)))
+          "test files and registered tests differ"
+          ++ lib.concatLists (lib.mapAttrsToList (name: e:
+            lib.optional (e.test == null && !(has e "untested")) "${name}: no test and no reason"
+            ++ lib.optional (!(has e "fixes")) "${name}: no description"
+            ++ lib.optional (!(has e "removeWhen")) "${name}: no removal condition"
+            ++ lib.optional (e.upstream == null && !(has e "upstreamStatus")) "${name}: no upstream status"
+            ++ lib.optional (!(lib.hasInfix "./${base e.patch}" applied)) "${name}: default.nix does not apply it"
+            ++ lib.optional (e.test != null && !(lib.hasInfix "./${base e.test}" applied)) "${name}: default.nix does not run its test")
+          register)
+          ++ lib.optional (sorted (lib.attrValues p.gateway-hotfixed.passthru.hotfixes) != sorted (map (e: e.marker) entries))
+          "the package's passthru.hotfixes and the register's markers differ";
+      in
+        if problems == []
+        then pkgs.runCommand "hotfix-register" {} "touch $out"
+        else throw "hotfix register: ${lib.concatStringsSep "; " problems}";
       # The fence refuses implicit and protected state, and runs the gateway
       # for its own host and state directory.
       state-fence = let
