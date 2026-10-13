@@ -157,6 +157,13 @@ Per instance:
 `lib.mkWorkstationModule {optionPath = [...];}` puts the options at another path, for a
 host that keeps its own namespace.
 
+A new machine can start from the template, which includes a host flake, the gateway
+declarations and an instance config:
+
+```sh
+nix flake init -t github:alinaos-org/openclaw-nix#workstation
+```
+
 ## Servers: the NixOS module
 
 `nixosModules.openclaw` runs each gateway as a system service, which is what a server

@@ -88,6 +88,12 @@
     # Home Manager module, for workstations (modules/workstation/module.nix).
     nixosModules.workstation = self.lib.mkWorkstationModule {};
 
+    # `nix flake init -t github:alinaos-org/openclaw-nix#workstation`
+    templates.workstation = {
+      path = ./templates/workstation;
+      description = "A workstation with OpenClaw gateways as user units of one desktop user";
+    };
+
     packages = forAllSystems (system: let
       pkgs = pkgsFor system;
     in {

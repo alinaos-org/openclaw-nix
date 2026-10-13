@@ -1,0 +1,14 @@
+{
+  "gateway": {
+    "mode": "local",
+    "port": 18789,
+    "bind": "loopback",
+    "auth": {"mode": "token", "token": "$OPENCLAW_GATEWAY_TOKEN"}
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "/home/alice/.openclaw-main/workspace",
+      "model": {"primary": "anthropic/claude-sonnet-5"}
+    }
+  }
+}
