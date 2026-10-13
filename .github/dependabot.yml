@@ -1,0 +1,12 @@
+# Workflow actions are pinned by commit SHA (a tag can be moved by its owner); this
+# keeps the pins current. One pull request a week for minor and patch updates; a new
+# major version gets its own pull request, since it can change behaviour.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        update-types: [minor, patch]

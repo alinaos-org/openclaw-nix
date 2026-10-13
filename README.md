@@ -254,6 +254,45 @@ nix.settings = {
 };
 ```
 
+## Supply chain
+
+- **Workflows** pin every action by commit SHA; Dependabot proposes updates weekly.
+- **Each release** carries, from `release-evidence` (`scripts/release-evidence.sh`):
+  SBOMs of the gateway's npm dependency tree and of its Nix runtime closure (CycloneDX
+  and SPDX), grype's vulnerability matches for both with a summary
+  (`vulnerabilities.md`), and `store-paths.json`, the cached store paths with their NAR
+  hashes. The manifest and the SBOMs have a GitHub build-provenance attestation. The
+  scan reports; it does not block a release.
+- **Verify** a release before trusting the cache:
+
+  ```sh
+  gh release download 2026.10.3-r1 --repo alinaos-org/openclaw-nix -p store-paths.json
+  gh attestation verify store-paths.json --repo alinaos-org/openclaw-nix
+  # after substituting, each path's NAR hash must match the manifest's
+  nix path-info --json --json-format 1 <path> | jq -r '.[].narHash'
+  ```
+
+- **Reproducible:** `reproducibility` rebuilds the gateway weekly with
+  `nix build --rebuild` and fails if the output differs from the cached one. Anyone can
+  run the same check: `nix build github:alinaos-org/openclaw-nix/<tag>#gateway --rebuild`.
+- **Without this cache:** every source is a fixed-output fetch, so leaving the
+  substituter out builds everything locally: the pnpm dependency set from the npm
+  registry, then the compile (about 5 minutes on 8 cores, peaking around 15 GB).
+- **A private cache**, signed with your own key, so no host trusts
+  `alinaos-openclaw-nix.cachix.org`: build (or substitute and verify) the release on a
+  builder, then copy it into your cache. With an S3 bucket:
+
+  ```sh
+  nix key generate-secret --key-name cache.example.com-1 > cache.secret
+  nix key convert-secret-to-public < cache.secret > cache.public
+  nix build github:alinaos-org/openclaw-nix/2026.10.3-r1#gateway --option substitute false
+  nix copy --to "s3://example-nix-cache?region=eu-west-1&secret-key=$PWD/cache.secret" ./result
+  ```
+
+  Hosts then list only `s3://example-nix-cache?region=eu-west-1` in `substituters` and
+  the contents of `cache.public` in `trusted-public-keys`. [Attic](https://github.com/zhaofengli/attic)
+  works the same way for a self-hosted cache.
+
 ## License
 
 openclaw-nix's own files are MIT (`LICENSE`). OpenClaw itself is MIT. Several outputs
