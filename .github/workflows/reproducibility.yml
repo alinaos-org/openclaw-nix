@@ -1,8 +1,10 @@
 name: reproducibility
 
 # Rebuilds the gateway from source and compares it, bit for bit, with the build the
-# cache serves: `nix build --rebuild` fails when an output differs. 2026.10.3 also
-# rebuilt identically on a consumer's host. Weekly and by hand; not a required check.
+# cache serves: `nix build --rebuild` fails when an output differs, and the job then
+# lists the files that differ. It always publishes the cached build's per-file hashes
+# (scripts/file-hashes.sh), so a host that compiled its own can find what differs
+# without downloading the NAR. Weekly and by hand; not a required check.
 on:
   schedule:
     - cron: "17 6 * * 1"
@@ -29,7 +31,35 @@ jobs:
         with:
           name: ${{ vars.CACHIX_CACHE }}
           skipPush: true
-      - name: Fetch the cached build
-        run: nix build -L .#gateway
+      - name: Fetch the cached build and hash its files
+        run: |
+          out=$(nix build -L --no-link --print-out-paths .#gateway)
+          echo "OUT=$out" >> "$GITHUB_ENV"
+          mkdir -p hashes
+          scripts/file-hashes.sh "$out" > hashes/cached.txt
+          nix path-info --json --json-format 1 "$out" | jq -r '.[].narHash' > hashes/cached.narHash
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gateway-file-hashes-cached
+          path: hashes/
       - name: Rebuild it from source and compare
-        run: nix build -L --rebuild --max-jobs 1 .#gateway
+        run: |
+          if nix build -L --rebuild --keep-failed --max-jobs 1 .#gateway; then
+            echo "rebuilt bit for bit: $OUT" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          [ -d "$OUT.check" ] || exit 1
+          scripts/file-hashes.sh "$OUT.check" > hashes/rebuilt.txt
+          {
+            echo "## The rebuild differs from the cached build"
+            echo
+            echo '```'
+            diff hashes/cached.txt hashes/rebuilt.txt | head -100
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: gateway-file-hashes-rebuilt
+          path: hashes/
