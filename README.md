@@ -114,7 +114,9 @@ another machine can reproduce that setup by declaring its instances:
       gatewayPort = 18789;
       runtimePlugins = ["session-icons"];
       materializeRuntimePlugins = true;
-      runtimeConfigJqFilter = ".";
+      # Labs > Custom plugin UI for the Icon library; nix-openclaw's typed
+      # options reject the key, so it rides the runtime filter.
+      runtimeConfigJqFilter = ''.gateway.controlUi.experimental = {"customPlugins": true}'';
       uiOverlay.enable = true; # the Control UI may save, within its policy
     };
   };

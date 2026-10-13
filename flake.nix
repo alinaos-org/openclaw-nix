@@ -518,7 +518,9 @@
               gatewayPort = 18789;
               runtimePlugins = ["session-icons"];
               materializeRuntimePlugins = true;
-              runtimeConfigJqFilter = ".";
+              # Labs > Custom plugin UI, which the Icon library needs; nix-openclaw's
+              # typed options reject this key, so it rides the runtime filter.
+              runtimeConfigJqFilter = ''.gateway.controlUi.experimental = {"customPlugins": true}'';
               uiOverlay.enable = true;
             };
           };
