@@ -161,12 +161,23 @@
           overlayPolicy = o.defaultPolicy;
           migrateOnUpgrade = true;
         };
+        # A Nix-only instance that copies its runtime plugins out of the store.
+        materializeState = "/build/config-overlay-test/materialize";
+        prepareMaterialized = o.prepareConfig {
+          name = "test-materialize";
+          stateDir = materializeState;
+          runtimeConfig = "${materializeState}/openclaw-runtime.json";
+          package = stub;
+          materializePluginsRoot = "${materializeState}/runtime-plugins";
+        };
       in
-        pkgs.runCommand "openclaw-config-overlay-prepare-test" {nativeBuildInputs = [pkgs.jq];} ''
+        pkgs.runCommand "openclaw-config-overlay-prepare-test" {nativeBuildInputs = [pkgs.jq pkgs.findutils];} ''
           if [ "$NIX_BUILD_TOP" != /build ]; then
             echo "skipped: the build directory is $NIX_BUILD_TOP, not /build"
           else
             prepare=${prepare}/bin/openclaw-test-prepare-config state=${state} bash ${./tests/config-overlay/prepare.sh}
+            prepare=${prepareMaterialized}/bin/openclaw-test-materialize-prepare-config state=${materializeState} \
+              bash ${./tests/config-overlay/materialize.sh}
           fi
           touch $out
         '';

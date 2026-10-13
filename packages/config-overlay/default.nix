@@ -218,6 +218,25 @@
             mv "$plugin_staging" "$materialized_plugin_set"
           fi
 
+          # Each plugin list gets its own set, so every release adds one; nothing
+          # removed them (nova kept 44 for prod, 1.7 GB, peering on releases back
+          # to 2026.7.1). Keep this set and the most recently used other one;
+          # older sets are copies of store paths, and a rollback recreates its
+          # own. Staging left by a failed copy goes after an hour. Never fatal:
+          # a cleanup error must not stop the gateway starting.
+          touch "$materialized_plugin_set"
+          prune_plugin_sets() {
+            find "$materialized_plugins_root" -mindepth 1 -maxdepth 1 -type d \
+              -regextype posix-extended -regex '.*/[0-9a-f]{64}' ! -name "$plugin_set_id" -printf '%T@ %p\n' \
+              | sort -rn | tail -n +2 | cut -d' ' -f2- \
+              | while IFS= read -r stale_set; do
+                  chmod -R u+w -- "$stale_set" && rm -rf -- "$stale_set"
+                done
+            find "$materialized_plugins_root" -mindepth 1 -maxdepth 1 -type d -name '.plugin-set-*' -mmin +60 \
+              -exec chmod -R u+w {} + -exec rm -rf {} +
+          }
+          prune_plugin_sets || echo "WARN ${name}: could not prune old materialized plugin sets in $materialized_plugins_root" >&2
+
           rewritten_config="$runtime_config.plugins.tmp"
           jq --arg root "$materialized_plugin_set" '
             .plugins.load.paths = ((.plugins.load.paths // []) | map($root + "/" + (split("/")[-1])))
