@@ -56,6 +56,10 @@
           }
         '');
 
+    # Nix config plus a Control UI that can save (packages/config-overlay):
+    # cli, prepareConfig, sync, defaultPolicy.
+    mkConfigOverlay = pkgs: pkgs.callPackage ./packages/config-overlay {};
+
     pkgsFor = system:
       import nixpkgs {
         inherit system;
@@ -63,11 +67,15 @@
       };
   in {
     lib = {
-      inherit mkOverlay mkPackageSetOverlay mkUpgradeSkill;
+      inherit mkOverlay mkPackageSetOverlay mkUpgradeSkill mkConfigOverlay;
       release = import ./release.nix;
     };
 
     overlays.default = mkOverlay {};
+
+    # programs.openclaw.instances.<name>.configOverlay, for nix-openclaw's
+    # Home Manager module.
+    homeManagerModules.configOverlay = import ./modules/home-manager/config-overlay.nix {inherit self;};
 
     packages = forAllSystems (system: let
       pkgs = pkgsFor system;
@@ -130,6 +138,97 @@
           python3 ${./tests/check-upgrade-skill.py} ${skill}
           touch $out
         '';
+      # The overlay engine's own tests.
+      config-overlay = (mkConfigOverlay pkgs).test;
+      # prepareConfig end to end against a scratch state, with a stub openclaw.
+      config-overlay-prepare = let
+        o = mkConfigOverlay pkgs;
+        stub = pkgs.writeShellScriptBin "openclaw" ''
+          case "$1" in
+            --version) echo "OpenClaw 2026.10.2 (stub)" ;;
+            config) ${pkgs.jq}/bin/jq -e '.agents.defaults.thinkingDefault != "bogus"' "$OPENCLAW_CONFIG_PATH" >/dev/null ;;
+            doctor) exit 0 ;;
+            *) exit 2 ;;
+          esac
+        '';
+        # The sandbox build directory: the state paths are baked in at evaluation.
+        state = "/build/config-overlay-test/state";
+        prepare = o.prepareConfig {
+          name = "test";
+          stateDir = state;
+          runtimeConfig = "${state}/openclaw-runtime.json";
+          package = stub;
+          overlayPolicy = o.defaultPolicy;
+          migrateOnUpgrade = true;
+        };
+      in
+        pkgs.runCommand "openclaw-config-overlay-prepare-test" {nativeBuildInputs = [pkgs.jq];} ''
+          if [ "$NIX_BUILD_TOP" != /build ]; then
+            echo "skipped: the build directory is $NIX_BUILD_TOP, not /build"
+          else
+            prepare=${prepare}/bin/openclaw-test-prepare-config state=${state} bash ${./tests/config-overlay/prepare.sh}
+          fi
+          touch $out
+        '';
+      config-overlay-fold = pkgs.runCommand "openclaw-config-overlay-fold-test" {nativeBuildInputs = [pkgs.jq pkgs.python3];} ''
+        fold=${(mkConfigOverlay pkgs).fold} bash ${./tests/config-overlay/fold.sh}
+        touch $out
+      '';
+      # The Home Manager module over nix-openclaw's: a writable instance gets the
+      # prepare step, the runtime config and Nix mode off (after nix-openclaw's
+      # own environment), its operator command, and the nightly sync timer.
+      config-overlay-home-manager = let
+        stub = pkgs.writeShellScriptBin "openclaw" "exit 0";
+        home = nix-openclaw.inputs.home-manager.lib.homeManagerConfiguration {
+          inherit pkgs;
+          modules = [
+            nix-openclaw.homeManagerModules.openclaw
+            self.homeManagerModules.configOverlay
+            {
+              home = {
+                username = "alice";
+                homeDirectory = "/home/alice";
+                stateVersion = "25.05";
+              };
+              programs.openclaw = {
+                enable = true;
+                installApp = false;
+                instances.demo = {
+                  config.gateway.mode = "local";
+                  configOverlay = {
+                    enable = true;
+                    package = stub;
+                    sync = {
+                      enable = true;
+                      repo = "/home/alice/config";
+                      worktree = "/home/alice/config-demo-ui-sync";
+                      sourceFile = "openclaw/demo.json";
+                    };
+                  };
+                };
+              };
+            }
+          ];
+        };
+        cfg = home.config;
+        service = cfg.systemd.user.services."openclaw-gateway-demo".Service;
+        env = service.Environment;
+        prepare = lib.head (lib.toList service.ExecStartPre);
+        sync = lib.head (lib.toList cfg.systemd.user.services."openclaw-demo-ui-sync".Service.ExecStart);
+      in
+        assert lib.hasSuffix "/bin/openclaw-demo-prepare-config" prepare;
+        assert lib.elem "OPENCLAW_CONFIG_PATH=/home/alice/.openclaw-demo/openclaw.json" env;
+        assert lib.elem "OPENCLAW_CONFIG_PATH=/home/alice/.openclaw-demo/openclaw-runtime.json" env;
+        # systemd keeps the last assignment: the writable config and Nix mode off.
+        assert lib.last (lib.filter (lib.hasPrefix "OPENCLAW_CONFIG_PATH=") env) == "OPENCLAW_CONFIG_PATH=/home/alice/.openclaw-demo/openclaw-runtime.json";
+        assert lib.last (lib.filter (lib.hasPrefix "OPENCLAW_NIX_MODE=") env) == "OPENCLAW_NIX_MODE=0";
+        assert cfg.systemd.user.timers ? "openclaw-demo-ui-sync";
+        assert lib.any (p: lib.hasSuffix "openclaw-overlay-demo" (p.name or "")) cfg.home.packages;
+          pkgs.runCommand "openclaw-config-overlay-home-manager-test" {} ''
+            test -x ${prepare}
+            test -x ${sync}
+            touch $out
+          '';
       formatting = pkgs.runCommand "openclaw-nix-formatting" {nativeBuildInputs = [pkgs.alejandra];} ''
         alejandra --check ${self}
         touch $out

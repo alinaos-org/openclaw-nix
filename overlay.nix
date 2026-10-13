@@ -105,6 +105,9 @@ in {
     # A consumer's changes as a copy layer over a gateway tree (packages/custom).
     customize = customizeGateway;
 
+    # Nix config plus a Control UI that can save (packages/config-overlay).
+    configOverlay = self.lib.mkConfigOverlay final;
+
     # The openclaw-upgrade skill with a host profile (lib.mkUpgradeSkill).
     upgradeSkill = args: self.lib.mkUpgradeSkill ({pkgs = final;} // args);
 
