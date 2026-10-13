@@ -18,7 +18,8 @@ CLI tool bundle and runtime-plugin builder, and adds:
   entries, managed Codex app-server links, procps and esbuild shutdown fixes for the
   asset build. Each fails the build if a release moves the code it repairs.
 - **A hotfix layer** (`packages/hotfix`) for upstream bugs not yet fixed in a release,
-  each patch anchored to the exact code it replaces and tested in the build.
+  each patch anchored to the exact code it replaces, tested in the build and listed in
+  its [register](packages/hotfix/register.nix) (see "Hotfix layer" below).
 - **A state fence** (`packages/state-fence.nix`): an entrypoint that refuses implicit
   or protected state directories, so a candidate or recovery binary run by hand
   cannot migrate production state. It wraps a finished tree, so several fenced
@@ -201,6 +202,26 @@ repository.
 When a hotfix patch fails on a new release, upstream either fixed the bug (drop the
 patch and its test) or moved the code (re-port its anchors).
 
+### Hotfix layer
+
+Patching upstream's build output is a last resort, for a bug that breaks a supported
+deployment, and every patch is a security-review item. Each one:
+
+- checks the exact code it replaces, found exactly once, so a release that moves or
+  fixes that code fails the build instead of shipping a half-applied patch;
+- has a test that exercises the patched code in the build;
+- is listed in `packages/hotfix/register.nix`: what it fixes, the first release it is
+  qualified for, its test (or why there is none), its upstream report and the
+  condition for removing it;
+- is reported upstream, and removed once upstream's fix ships in a pinned release.
+
+`checks.hotfix-register` fails evaluation when a patch or test file is unregistered,
+an entry lacks a test reason, an upstream status or a removal condition, or the
+package's advertised markers (`passthru.hotfixes`) differ from the register. The
+register is also `passthru.hotfixRegister`. As of 2026.10.3 there are seven patches,
+none reported upstream yet, and one (the Codex stale-registration edit inside
+`patch-mcp-close-rejection.mjs`) without a test.
+
 Changes reach `main` only through pull requests whose `eval` and `build` checks pass on
 a branch up to date with `main`, with a code owner's review (`.github/CODEOWNERS`).
 Repository administrators may merge their own pull requests without that review, but
@@ -292,6 +313,12 @@ nix.settings = {
   Hosts then list only `s3://example-nix-cache?region=eu-west-1` in `substituters` and
   the contents of `cache.public` in `trusted-public-keys`. [Attic](https://github.com/zhaofengli/attic)
   works the same way for a self-hosted cache.
+
+## Security
+
+Report a vulnerability privately, as [SECURITY.md](SECURITY.md) describes, not in a
+public issue. It also sets out what is in scope here and what belongs to OpenClaw or
+nix-openclaw.
 
 ## License
 

@@ -77,6 +77,8 @@ in
             skillDeliveryDescription = ./test-skill-delivery-description.mjs;
             controlUiStoreHardlinks = ./test-control-ui-store-hardlinks.mjs;
           };
+          # What each patch fixes, its test, upstream status and removal condition.
+          hotfixRegister = import ./register.nix;
           unpatchedGateway = gateway;
           # A later layer that changes the tree (a plugin graft) can extend this
           # copy instead of making another one.
