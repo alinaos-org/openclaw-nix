@@ -23,6 +23,11 @@ the pull request by hand and CI starts on it (2026.10.3). While a release pull r
 stays open, each run rebases its branch onto a moved `main` and reruns CI, as long as
 the branch holds only the watcher's own commit; anything else it leaves for a person.
 
+Merging the release pull request needs a code owner's approval, and tags `<release>-r1`
+(the `tag-release` workflow). A later openclaw-nix fix on the same release is tagged
+`-r2` and up by dispatching that workflow. Hosts that pin tags move to the new tag
+instead of running `nix flake update`.
+
 Release-specific values are data, not gates: the `releases.nix` entry
 (`pnpmBootstrapVersion`, `tsdownHeapMb`, `buildTimestamp`) and the plugin pins.
 

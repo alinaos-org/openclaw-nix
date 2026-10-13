@@ -1,0 +1,63 @@
+name: tag-release
+
+# Tags what consumers pin. A tag is `<OpenClaw release>-r<N>`: r1 when a
+# release pull request moves release.nix's `current`, and the next N, by hand,
+# for an openclaw-nix fix on the same OpenClaw release. The gateway package
+# keeps its own build revision (`-nix.N`), which only changes when the gateway
+# does.
+on:
+  push:
+    branches: [main]
+    paths: [release.nix]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v31
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.34.8/install
+      - name: Tag and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHIX_CACHE: ${{ vars.CACHIX_CACHE }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          current=$(nix eval --raw -f release.nix current)
+          if git tag --points-at HEAD | grep -q .; then
+            echo "HEAD is already tagged: $(git tag --points-at HEAD | tr '\n' ' ')"
+            exit 0
+          fi
+          last=$(git tag --list "$current-r*" | sed "s/^$current-r//" | sort -n | tail -1)
+          if [ "$EVENT" = push ] && [ -n "$last" ]; then
+            echo "$current is already released as $current-r$last; dispatch this workflow for a fix release"
+            exit 0
+          fi
+          tag="$current-r$(( ${last:-0} + 1 ))"
+          previous=$(git tag --list '*-r*' --sort=-creatordate | head -1)
+          gateway=$(basename "$(nix eval --raw .#gateway.outPath)")
+          cat > notes.md <<NOTES
+          Builds [OpenClaw $current](https://github.com/openclaw/openclaw/releases/tag/v$current); gateway \`$gateway\`.
+
+          Pin it with \`openclaw-nix.url = "github:$REPO/$tag";\`. CI cached the gateway in the Cachix cache \`$CACHIX_CACHE\`; the README gives its public key and how to build without it.
+          NOTES
+          git tag "$tag" HEAD
+          git push origin "$tag"
+          if [ -n "$previous" ]; then
+            gh release create "$tag" --title "$tag" --verify-tag --notes-file notes.md --generate-notes --notes-start-tag "$previous"
+          else
+            gh release create "$tag" --title "$tag" --verify-tag --notes-file notes.md --generate-notes
+          fi
+          echo "released $tag"

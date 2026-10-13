@@ -28,7 +28,8 @@ CLI tool bundle and runtime-plugin builder, and adds:
 
 ```nix
 {
-  inputs.openclaw-nix.url = "github:alinaos-org/openclaw-nix";
+  # A release tag (see "Versions and support"); `main` moves with every merge.
+  inputs.openclaw-nix.url = "github:alinaos-org/openclaw-nix/2026.10.3-r1";
 
   outputs = {nixpkgs, openclaw-nix, ...}: {
     nixosConfigurations.host = nixpkgs.lib.nixosSystem {
@@ -196,6 +197,37 @@ repository.
 
 When a hotfix patch fails on a new release, upstream either fixed the bug (drop the
 patch and its test) or moved the code (re-port its anchors).
+
+Changes reach `main` only through pull requests whose `eval` and `build` checks pass on
+a branch up to date with `main`, with a code owner's review (`.github/CODEOWNERS`).
+Repository administrators may merge their own pull requests without that review, but
+no one pushes to `main` directly. Release pull requests from `release-watch` always
+need a code owner's approval.
+
+## Versions and support
+
+Pin a release tag rather than `main`. A tag is `<OpenClaw release>-r<N>`:
+
+- `r1` is cut automatically when a release pull request moves `release.nix`'s
+  `current` (the `tag-release` workflow), and later `r<N>` by hand for an openclaw-nix
+  fix on the same OpenClaw release. Each GitHub release names the OpenClaw release, the
+  gateway store path and what changed since the previous tag.
+- The gateway package's own revision (`openclaw-gateway-<release>-nix.<N>`) changes only
+  when the gateway build does, so a fix release that leaves the gateway alone keeps its
+  store path and its cached build.
+
+What is supported:
+
+- **The latest tag.** Fixes land on `main` and in the next tag only; there are no
+  backport branches.
+- **One release behind, for recovery.** `release.nix`'s `accepted` keeps the previous
+  OpenClaw release buildable, so a host can keep one instance a release behind (see the
+  upgrade skill's cadence).
+- **Stable OpenClaw releases only.** No betas, and no release published before its tag
+  peels to the release notes' release SHA.
+- **Interfaces** (`lib`, `overlays`, module options, `homeManagerModules`): a breaking
+  change is named in the release notes, and a renamed option keeps working, with a
+  warning, for at least one OpenClaw release line (about a month).
 
 ## CI and cache
 
