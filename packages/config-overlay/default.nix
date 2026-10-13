@@ -83,7 +83,11 @@
     # Copy plugins.load.paths under this root (outside the store) and point the
     # config at the copies.
     materializePluginsRoot ? null,
+    # Run the overlay engine and drift redaction with an empty environment, so a
+    # unit's credentials never reach them.
+    isolateTools ? false,
   }: let
+    toolEnv = lib.optionalString isolateTools "${coreutils}/bin/env -i PATH=${python3}/bin:${coreutils}/bin LANG=C.UTF-8 ";
     overlay = overlayPolicy != null;
     overlayCli = "${cli {
       inherit name stateDir;
@@ -112,7 +116,7 @@
         ${lib.optionalString overlay ''
           # Keep what the Control UI saved since the last start
           # (policy-filtered) before the runtime file is replaced.
-          ${overlayCli} capture || \
+          ${toolEnv}${overlayCli} capture || \
             echo "WARN ${name}: overlay capture failed; starting from the pure Nix render" >&2
         ''}
 
@@ -184,14 +188,14 @@
               if [ "$ws_drift" != '[]' ]; then
                 jq -n --argjson w "$ws_drift" --arg from "$old_version" --arg to "$new_version" \
                   '{from:$from, to:$to, note:"doctor wanted these workspace changes; they were applied to the copies only. Adopt them in the agent-file sources or reject them", workspaces:$w}' \
-                  | (umask 077; ${python3}/bin/python3 ${engine} redact > "$state_dir/upgrade-workspace-drift.json")
+                  | (umask 077; ${toolEnv}${python3}/bin/python3 ${engine} redact > "$state_dir/upgrade-workspace-drift.json")
                 echo "WARN ${name}: doctor proposed workspace changes; see $state_dir/upgrade-workspace-drift.json" >&2
               fi
               if ! cmp -s "$migration_source" "$mig_dir/doctor-config.after.json"; then
                 jq -n --slurpfile a "$migration_source" --slurpfile b "$mig_dir/doctor-config.after.json" \
                   --arg from "$old_version" --arg to "$new_version" \
                   '{from:$from, to:$to, note:"doctor wanted these config changes; adopt them in the Nix source", before:$a[0], after:$b[0]}' \
-                  | (umask 077; ${python3}/bin/python3 ${engine} redact > "$state_dir/upgrade-config-drift.json")
+                  | (umask 077; ${toolEnv}${python3}/bin/python3 ${engine} redact > "$state_dir/upgrade-config-drift.json")
                 echo "WARN ${name}: doctor proposed config changes; see $state_dir/upgrade-config-drift.json" >&2
               fi
               printf '%s\n' "$new_version" > "$marker"
@@ -281,7 +285,7 @@
           if overlay
           then ''
             overlay_out="$runtime_config.overlay.tmp"
-            ${overlayCli} apply --base "$tmp_config" --out "$overlay_out"
+            ${toolEnv}${overlayCli} apply --base "$tmp_config" --out "$overlay_out"
             mv "$overlay_out" "$runtime_config"
             rm -f "$tmp_config"
             if ! OPENCLAW_CONFIG_PATH="$runtime_config" OPENCLAW_STATE_DIR="$state_dir" \
