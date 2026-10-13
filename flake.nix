@@ -31,6 +31,31 @@
         (mkPackageSetOverlay args)
       ];
 
+    # The openclaw-upgrade skill (skills/openclaw-upgrade) with a host profile's files
+    # added: references/host.md, scripts/host.env and host-only scripts. A profile
+    # may add files, never replace the skill's own.
+    mkUpgradeSkill = {
+      pkgs,
+      hostProfile ? null,
+    }:
+      pkgs.runCommand "openclaw-upgrade-skill" {} (''
+          cp -r ${./skills/openclaw-upgrade} "$out"
+          chmod -R u+w "$out"
+        ''
+        + lib.optionalString (hostProfile != null) ''
+          while IFS= read -r -d "" f; do
+            if [ -e "$out/$f" ]; then
+              echo "openclaw-upgrade: the host profile may add files, not replace $f" >&2
+              exit 1
+            fi
+            install -D -m "$(stat -c %a "${hostProfile}/$f")" "${hostProfile}/$f" "$out/$f"
+          done < <(cd ${hostProfile} && find . -type f -printf '%P\0')
+          test -f "$out/references/host.md" || {
+            echo "openclaw-upgrade: the host profile has no references/host.md" >&2
+            exit 1
+          }
+        '');
+
     pkgsFor = system:
       import nixpkgs {
         inherit system;
@@ -38,7 +63,7 @@
       };
   in {
     lib = {
-      inherit mkOverlay mkPackageSetOverlay;
+      inherit mkOverlay mkPackageSetOverlay mkUpgradeSkill;
       release = import ./release.nix;
     };
 
@@ -51,6 +76,7 @@
       gateway = pkgs.openclaw-gateway;
       gateway-hotfixed = pkgs.openclawNix.hotfix pkgs.openclaw-gateway;
       openclaw = pkgs.openclaw;
+      upgrade-skill = mkUpgradeSkill {inherit pkgs;};
       runtime-plugins = pkgs.linkFarm "openclaw-runtime-plugins" (lib.mapAttrsToList (name: path: {inherit name path;}) (lib.filterAttrs (id: _: pkgs.openclawNix.pins.plugins ? ${id}) pkgs.openclawRuntimePlugins));
     });
 
@@ -92,6 +118,18 @@
           touch "$root/.customize-check"
         '';
       };
+      # The skill assembled with a fixture host profile: frontmatter, script syntax,
+      # and every relative link and anchor in its documents.
+      upgrade-skill = let
+        skill = mkUpgradeSkill {
+          inherit pkgs;
+          hostProfile = ./tests/upgrade-skill-host;
+        };
+      in
+        pkgs.runCommand "openclaw-upgrade-skill-check" {nativeBuildInputs = [pkgs.python3];} ''
+          python3 ${./tests/check-upgrade-skill.py} ${skill}
+          touch $out
+        '';
       formatting = pkgs.runCommand "openclaw-nix-formatting" {nativeBuildInputs = [pkgs.alejandra];} ''
         alejandra --check ${self}
         touch $out

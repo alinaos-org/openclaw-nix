@@ -105,6 +105,9 @@ in {
     # A consumer's changes as a copy layer over a gateway tree (packages/custom).
     customize = customizeGateway;
 
+    # The openclaw-upgrade skill with a host profile (lib.mkUpgradeSkill).
+    upgradeSkill = args: self.lib.mkUpgradeSkill ({pkgs = final;} // args);
+
     # The post-build fixes (packages/hotfix) over a gateway tree.
     hotfix = gw: final.callPackage ./packages/hotfix {gateway = gw;};
 

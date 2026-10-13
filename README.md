@@ -89,6 +89,23 @@ pkgs.openclawNix.stateFence {                         # a fenced entrypoint
 pkgs.openclawNix.checkSingleRelease { roots = [config.system.build.toplevel]; }
 ```
 
+## Upgrade skill
+
+`skills/openclaw-upgrade` is the agent procedure for upgrading a host: review and merge
+the release pull request, move the host's `openclaw-nix` input, build, qualify each
+gateway against copies of its state, activate, and verify. A host installs it with its
+own profile (who approves, its instances, commands, canaries and history):
+
+```nix
+skill = openclaw-nix.lib.mkUpgradeSkill {
+  inherit pkgs;
+  hostProfile = ./openclaw-upgrade-host; # references/host.md, scripts/host.env, ...
+};
+```
+
+then copies `skill` to wherever its agents load skills. See
+`skills/openclaw-upgrade/references/host-profile.md` for what a profile holds.
+
 ## Releases
 
 `scripts/new-release.py <version>` adds a release (tag, release-SHA cross-check, source

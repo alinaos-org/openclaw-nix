@@ -1,0 +1,141 @@
+# Lessons
+
+What broke or nearly broke OpenClaw upgrades on Nix hosts, folded into the step that
+catches it. Host-specific incidents and decisions are in the host profile.
+
+## Cadence
+
+- OpenClaw ships a stable release about every four days, plus a parallel older line.
+  Chasing each one is more risk than value: batch, every two to three weeks, sooner only
+  for a security fix or a bug you are actually hitting, and name that reason.
+- No betas on production. A `-beta.N` previews next month's schema changes.
+- A line's first stable carries the month's breaking work (2026.10.1 bumped the state
+  schema 19 to 20, removed plugin SDK subpaths and reshaped the worker bundle). Budget a
+  patch re-port; a later `.x` of the same line is usually routine.
+- Upgrade the cheapest instance first and production last, and keep one recovery
+  gateway a release behind, so a broken release always leaves a known-good one.
+- A version bump changes the gateway units, so activation itself restarts them and cuts
+  their running turns. Pick the window with whoever owns them.
+
+## Builds
+
+- The gateway's source build peaks around 15 GB: `--max 16G` and nothing else beside it.
+  With `sharedBuild` it downloads instead; each copy layer (customize, hotfix, a plugin
+  graft) then costs about 1.5 minutes and its size on disk.
+- Cap every heavy build in its own scope outside every gateway cgroup
+  (`scripts/build-capped.sh`): if the scope runs out, the kernel kills the build, not a
+  gateway. On ZFS the watchdog counts half the ARC above its floor as available;
+  `MemAvailable` alone once stopped builds with 7 GB of reclaimable cache on hand.
+- Long-running gateways are the main memory consumer (heap growth, and a Codex
+  app-server per agent per Control UI load that stays resident). Check `ps --sort=-rss`
+  before a heavy build; other agents' work (a `cargo test` in a gateway lane) counts too.
+- Split evaluation-heavy batches; one toplevel plus its contracts per call.
+- `systemd-run` expands `${VAR}` in its arguments, and an unset variable becomes empty:
+  pass Nix expressions without `${` (`builtins.getAttr n p`), or two failed evaluations
+  compare as "identical".
+- Scan `dist/` one file at a time: a whole-tree scan in Python reached 14 GB.
+- 2026.10.1's "Managed command exited while its process group remained active" in
+  `plugins:assets:build` had two causes: no `ps` in the build sandbox, and esbuild's
+  `stop()` returning before its service child was reaped. Both are fixed in the build;
+  retries stay off by default so a regression shows.
+- A host's closure build runs no flake checks. Main's checks can already be red from
+  other work: build the same check on main before blaming the candidate, and remember a
+  contract stops at its first false assertion, so an inherited failure can hide a new
+  one.
+
+## Qualifying on copies
+
+`scripts/qualify-candidate.sh <candidate-bin> <instance>...` snapshots each instance's
+live state (SQLite online backup of every database, read-only with a busy timeout, so a
+running gateway is fine; caches, logs, media, old backups, runtime-plugin trees, WAL and
+lock files skipped), records schema versions and row counts, runs the candidate's
+`doctor --fix` on the copy in a `ProtectHome=read-only` scope, counts again, and has the
+candidate open the migrated copy. PASS needs doctor and admission to exit 0, no lost
+records and no unreadable database. Never run the candidate against live state.
+
+- The copy drops every `*lease*` table's rows: they name the live gateway, which is
+  alive, so doctor would refuse with "An agent database is in use".
+- Only records may not shrink. Doctor drops derived caches (cached
+  `systemPromptReport` snapshots) and drains queues: reported as "trimmed (derived)".
+- Doctor exit 1 whose only errors are plugin dependencies missing from the copy is the
+  harness (the snapshot skips plugin `node_modules`), not a failure.
+- A fenced binary refuses to run without its own state: probe its version with a
+  scratch state.
+- Doctor rewrites the copy's config (`doctor-config.json` against `.before.json`): that
+  diff is what it would propose on the live gateway.
+- It refuses to start without twice the state size plus 20 GB free.
+
+## Doctor proposals
+
+Each version bump's first start runs the new doctor's migrations. Where the host keeps
+config in Nix, doctor's proposed config and workspace changes are not applied; collect
+them (from qualification, or the host's migration step), read the reason in doctor's
+log, check the live behavior, then adopt each in the Nix source or reject it on purpose.
+Record standing decisions in the host profile so the next release does not re-litigate
+them.
+
+## Restart hazards
+
+- Live agent work: activation restarts gateways, which cuts every in-flight turn and
+  kills whatever an agent launched in the gateway's cgroup (builds, tests, long `exec`
+  calls). Worktrees and transcripts survive; the turn does not. List running sessions
+  (`gateway call sessions.list --params '{"limit":60}'`, status `running`) on each
+  gateway and wait for them, or have them reach a checkpoint first.
+- Agents that work on the host's repository land commits on main, often unpushed:
+  rebase the candidate onto the newest local main just before activating, so a
+  fast-forward-only activation refuses rather than dropping their commits.
+- Exclusive databases: from 9.6 the first start on a new version runs a maintenance
+  migration that needs every agent database to itself. An interactive `openclaw` CLI
+  left open kept a gateway in a silent restart loop for 8 hours (`status=78/CONFIG`).
+  Before activating, `pgrep -a openclaw` and close stray CLIs; after, check each unit's
+  restart count and its log for "maintenance" or "database is in use".
+- Nix mode: a fenced wrapper defaults `OPENCLAW_NIX_MODE` to 1. Doctor under Nix mode
+  refuses ("config is immutable") and writes `.migration-failed-for-version`, after
+  which the gateway refuses to start. Every writable-instance or doctor path sets
+  `OPENCLAW_NIX_MODE=0` explicitly.
+- A failed migration marker is a stop sign: read the newest
+  `backups/pre-migrate-*/doctor.log` before removing it.
+- After freeing disk space, a unit stuck in `start-limit-hit` needs
+  `systemctl --user reset-failed <unit>` before `start`.
+
+## Native Control UI
+
+- Native plugin UI (manifest `controlUi`) loads only with Labs > Custom plugin UI
+  (`gateway.controlUi.experimental.customPlugins`) for non-bundled plugins, and only
+  from the Control UI the gateway itself serves over HTTPS or loopback.
+- After a start, `gateway call plugins.controlUi.list` lists every native UI the gateway
+  serves and its `diagnostics` (empty when healthy); `plugins.controlUi.status` shows
+  each connected client's activations (`activated`). Both are read-only.
+- The asset reader rejects symlinks and hard links. Nix store optimisation hard-links
+  every identical store file, so a store-served build needs openclaw-nix's hotfix; a
+  plugin materialized outside the store (link count 1) does not. Any other OpenClaw
+  reader with `hardlinks: "reject"` will hit the same wall.
+- A browser entry must be one plain module with no imports: the gateway serves the
+  declared entry and styles as an immutable revision, nothing beside them.
+
+## Hooks and skills
+
+- Store-to-runtime syncs need `rsync --checksum`: store files all have mtime 0 and
+  same-length store paths, so size and mtime skip changed files.
+- Hook wrappers must import the running gateway's own bundled handlers; a wrapper left
+  on an older release's handlers failed silently for 11 days on one host. After a start,
+  check that the bundled hooks (boot-md, session-memory) ran without errors.
+- Skill delivery to cloud workers carries two hotfixes (store hard links in skill trees,
+  descriptions over 1,024 characters); re-check both against a candidate.
+
+## Stray plugin installs
+
+- A Nix-owned gateway loads plugins only from its bundled copies and Nix load paths, so
+  OpenClaw's own install records (`plugins.installedIndex` in `state/openclaw.sqlite`)
+  should be empty.
+- Moving an install's directory aside does not uninstall it: the next start reinstalls
+  the configured plugins from npm (copies that shadow the bundled build) and leaves
+  `deferred-plugin-migration:<id>` rows in `migration_runs`, each printing "settings
+  cannot be checked until its data/settings upgrade finishes" at every start.
+- An npm copy links `node_modules/openclaw` to one gateway store path; the next gateway
+  rebuild breaks that link (`missing-openclaw-peer-link`) and the plugin is unavailable.
+- `update repair` treats the Nix package as an npm install and defers more rows;
+  `doctor --fix` relinks peers but keeps the stale code. Uninstall each record with
+  `--keep-files` against a throwaway config, quarantine the package directories, settle
+  the rows, and verify (the host profile may carry a script for this).
+- After every bump, each instance's `update status --json` has no `migrationWarnings`.
