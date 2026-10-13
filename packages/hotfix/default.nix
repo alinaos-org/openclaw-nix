@@ -50,6 +50,11 @@ in
         ${node} ${./patch-skill-delivery-description.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-skill-delivery-description.mjs} "${root}"
         ${node} ${./test-node-bootstrap-layout.mjs} "${root}"
+
+        # Native Control UI: serve bundled plugins' browser builds although Nix
+        # store optimisation hard-links their files.
+        ${node} ${./patch-control-ui-store-hardlinks.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-control-ui-store-hardlinks.mjs} "${root}"
       '';
       passthru =
         (gateway.passthru or {})
@@ -61,6 +66,7 @@ in
             cloudWorkerGatewayUrl = "openclaw-nix-cloud-worker-gateway-url-v1";
             skillTreeStoreHardlinks = "openclaw-nix-skill-tree-store-hardlinks-v1";
             skillDeliveryDescription = "openclaw-nix-skill-delivery-description-v1";
+            controlUiStoreHardlinks = "openclaw-nix-control-ui-store-hardlinks-v1";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
@@ -69,6 +75,7 @@ in
             cloudWorkerGatewayUrl = ./test-cloud-worker-gateway-url.mjs;
             skillTreeStoreHardlinks = ./test-skill-tree-store-hardlinks.mjs;
             skillDeliveryDescription = ./test-skill-delivery-description.mjs;
+            controlUiStoreHardlinks = ./test-control-ui-store-hardlinks.mjs;
           };
           unpatchedGateway = gateway;
           # A later layer that changes the tree (a plugin graft) can extend this

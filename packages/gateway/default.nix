@@ -232,6 +232,8 @@
       -e 's#node scripts/bundle-a2ui\.mjs#${tsxBuildRunner}/bin/openclaw-tsx scripts/bundle-a2ui.mts#g' \
       -e '/log_step "build: runtime-postbuild"/i log_step "build: tsdown-ai" ${tsxBuildRunner}/bin/openclaw-tsx scripts/tsdown-build.mts --config tsdown.ai.config.ts' \
       -e '/log_step "build: runtime-postbuild"/i log_step "build: external-plugins:local-dist" ${tsxBuildRunner}/bin/openclaw-tsx scripts/build-external-plugin-local-dist.mts' \
+      -e '/log_step "build: runtime-postbuild"/i log_step "build: plugins:assets:copy" ${tsxBuildRunner}/bin/openclaw-tsx scripts/bundled-plugin-assets.mts --phase copy' \
+      -e '/log_step "build: plugins:assets:copy"/c\  : # plugins:assets:copy runs before runtime-postbuild (above)' \
       -e ${lib.escapeShellArg ''/log_step "build: plugins:assets:build"/i log_step "build: retain esbuild shutdown ownership" node ${./fix-esbuild-shutdown.mjs}''} \
       -e '/log_step "build: plugin-sdk dts"/d' \
       -e '/log_step "build: write-plugin-sdk-entry-dts"/d' \
@@ -520,6 +522,43 @@ in
             cp "$cjs_target" "$cjs_link"
           done < <(${findutils}/bin/find "$out/lib/openclaw/dist-runtime/extensions" -mindepth 2 -maxdepth 2 -type l -name '*.cjs' -print0)
           test -z "$(${findutils}/bin/find "$out/lib/openclaw/dist-runtime/extensions" -mindepth 2 -maxdepth 2 -type l -name '*.cjs' -print -quit)"
+
+          # Bundled native Control UI (workboard, slack, discord): the runtime
+          # overlay stages every file as a link into dist/extensions, and the
+          # Control UI asset reader skips links, so each declared browser build
+          # must be regular files under dist-runtime/extensions. Fail the build
+          # if one is missing.
+          $node --input-type=module - "$out/lib/openclaw" <<'EOF'
+          import { cpSync, existsSync, lstatSync, readdirSync, readFileSync, rmSync } from "node:fs";
+          import path from "node:path";
+          const root = process.argv[2];
+          const materialized = [];
+          for (const id of readdirSync(path.join(root, "dist", "extensions"))) {
+            const manifestPath = path.join(root, "dist", "extensions", id, "openclaw.plugin.json");
+            if (!existsSync(manifestPath)) continue;
+            const { controlUi } = JSON.parse(readFileSync(manifestPath, "utf8"));
+            if (!controlUi?.entry) continue;
+            const runtimePlugin = path.join(root, "dist-runtime", "extensions", id);
+            if (!existsSync(runtimePlugin)) continue;
+            const build = path.posix.dirname(controlUi.entry);
+            rmSync(path.join(runtimePlugin, build), { recursive: true, force: true });
+            cpSync(path.join(root, "dist", "extensions", id, build), path.join(runtimePlugin, build), {
+              recursive: true,
+              dereference: true,
+            });
+            for (const asset of [controlUi.entry, ...(controlUi.styles ?? [])]) {
+              const file = path.join(runtimePlugin, asset);
+              if (!lstatSync(file, { throwIfNoEntry: false })?.isFile()) {
+                throw new Error(`''${id}: declared Control UI asset ''${asset} is not a regular file in dist-runtime`);
+              }
+            }
+            materialized.push(id);
+          }
+          if (!materialized.includes("workboard")) {
+            throw new Error(`no bundled Control UI materialized (found: ''${materialized.join(", ") || "none"})`);
+          }
+          console.log(`bundled Control UI materialized in dist-runtime: ''${materialized.join(", ")}`);
+          EOF
 
           # Load the repaired artifacts the way discovery and the channel loader
           # do, so a layout change fails the build instead of the gateway.
