@@ -1095,16 +1095,21 @@ in {
                 if agent ? id && sk.agents ? ${agent.id}
                 then agent // {skills = lib.unique (lib.subtractLists inst.deniedSkills (visibleBaseline ++ sk.agents.${agent.id}));}
                 else agent;
+              # Only what the host sets: an explicit empty skills list would hide
+              # every skill, and an empty agents.list leaves no agent (not even
+              # the implicit main).
               agents' =
                 (base.agents or {})
                 // {
                   defaults =
                     (base.agents.defaults or {})
-                    // {skills = visibleBaseline;}
+                    // lib.optionalAttrs (sk.baseline != [] || inst.deniedSkills != []) {skills = visibleBaseline;}
                     // lib.optionalAttrs cfg.skipBootstrap {
                       skipBootstrap = true;
                     };
-                  list = map applyAgent (base.agents.list or []);
+                }
+                // lib.optionalAttrs (base.agents ? list) {
+                  list = map applyAgent base.agents.list;
                 };
             in
               base // {agents = agents';};
