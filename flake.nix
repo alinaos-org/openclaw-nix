@@ -441,19 +441,24 @@
       # The workstation module in a VM: one gateway as a user unit of a desktop
       # user, started at boot through linger, with its secrets from the shared env
       # file, the Icon library copied into its state, and one agent turn against a
-      # stub model provider.
+      # stub model provider; its workspace files, their heartbeat checklist, and
+      # the nightly fold of a Control UI edit into a git commit.
       workstation = pkgs.testers.runNixOSTest {
         name = "openclaw-workstation";
         # The module adds its package-set overlays, as on a real host.
         node.pkgsReadOnly = false;
-        nodes.machine = {pkgs, ...}: {
+        nodes.machine = {
+          lib,
+          pkgs,
+          ...
+        }: {
           imports = [
             nix-openclaw.inputs.home-manager.nixosModules.home-manager
             self.nixosModules.workstation
           ];
           virtualisation.memorySize = 4096;
           virtualisation.cores = 2;
-          environment.systemPackages = [pkgs.curl pkgs.jq];
+          environment.systemPackages = [pkgs.curl pkgs.git pkgs.jq];
           users.users.alice.isNormalUser = true;
           home-manager.users.alice.home.stateVersion = "25.11";
           # A test file; a real host points at a secret only the user can read.
@@ -478,43 +483,8 @@
             sharedEnvironmentFile = "/etc/openclaw-test.env";
             interactiveInstance = "main";
             instances.main = {
-              configFile = pkgs.writeText "openclaw-main.json" (builtins.toJSON {
-                gateway = {
-                  mode = "local";
-                  port = 18789;
-                  bind = "loopback";
-                  auth = {
-                    mode = "token";
-                    token = "$OPENCLAW_GATEWAY_TOKEN";
-                  };
-                };
-                models = {
-                  mode = "merge";
-                  providers.stub = {
-                    baseUrl = "http://127.0.0.1:9999/v1";
-                    api = "openai-completions";
-                    apiKey = {
-                      source = "env";
-                      provider = "default";
-                      id = "STUB_API_KEY";
-                    };
-                    models = [
-                      {
-                        id = "stub-model";
-                        name = "Stub";
-                        input = ["text"];
-                        contextWindow = 32768;
-                        maxTokens = 1024;
-                        reasoning = false;
-                      }
-                    ];
-                  };
-                };
-                agents.defaults = {
-                  workspace = "/home/alice/.openclaw-main/workspace";
-                  model.primary = "stub/stub-model";
-                };
-              });
+              # A file in the repository, as uiSync folds into it.
+              configFile = ./tests/workstation/main.json;
               gatewayPort = 18789;
               runtimePlugins = ["session-icons"];
               materializeRuntimePlugins = true;
@@ -523,12 +493,29 @@
               runtimeConfigJqFilter = ''.gateway.controlUi.experimental = {"customPlugins": true}'';
               uiOverlay.enable = true;
             };
+            agentFiles = {
+              enable = true;
+              workspaces.main = {
+                workspace = "/home/alice/.openclaw-main/workspace";
+                files = lib.genAttrs ["AGENTS.md" "SOUL.md" "USER.md" "IDENTITY.md" "HEARTBEAT.md"] (
+                  name: ./tests/workstation + "/workspace-${name}"
+                );
+              };
+            };
+            heartbeatChecklists.enable = true;
+            uiSync = {
+              enable = true;
+              repo = "/home/alice/config";
+              sourceFile = name: "tests/workstation/${name}.json";
+            };
           };
         };
         testScript = {nodes, ...}: ''
           import json
 
           state = "/home/alice/.openclaw-main"
+          as_alice = "runuser -u alice -- env HOME=/home/alice XDG_RUNTIME_DIR=/run/user/$(id -u alice) "
+          workspace = f"{state}/workspace"
 
           def openclaw(args):
               # The interactive instance's CLI, as the desktop user runs it.
@@ -575,7 +562,6 @@
 
           with subtest("the operator commands: overlay and restore"):
               machine.succeed("test -x /etc/profiles/per-user/alice/bin/openclaw-overlay-main")
-              as_alice = "runuser -u alice -- env XDG_RUNTIME_DIR=/run/user/$(id -u alice) "
               restore = as_alice + "/etc/profiles/per-user/alice/bin/openclaw-main-restore"
               # A fresh state has never migrated: nothing to list, and no error.
               print(machine.succeed(f"{restore} list"))
@@ -583,6 +569,63 @@
               status, output = machine.execute(f"{restore} restore latest 2>&1")
               print(output)
               assert status != 0 and "is running" in output, output
+
+          with subtest("agentFiles: the workspace files, single-link copies the user owns"):
+              for name in ["AGENTS.md", "SOUL.md", "USER.md", "IDENTITY.md", "HEARTBEAT.md"]:
+                  machine.succeed(f"grep -qx 'ws-test {name}' {workspace}/{name}")
+                  machine.succeed(f"test \"$(stat -c '%U %h' {workspace}/{name})\" = 'alice 1'")
+              print(machine.succeed("openclaw-agent-files-audit"))
+              # A retired name: the audit fails until activation moves it aside.
+              machine.succeed(f"runuser -u alice -- sh -c 'echo notes > {workspace}/TOOLS.md'")
+              machine.fail("openclaw-agent-files-audit")
+              machine.succeed("/run/current-system/activate")
+              machine.succeed(f"test ! -e {workspace}/TOOLS.md")
+              machine.succeed("grep -qx notes /home/alice/.local/share/openclaw/retired-agent-files/*/workspace/TOOLS.md")
+              print(machine.succeed("openclaw-agent-files-audit"))
+
+          with subtest("heartbeatChecklists: synced after the gateway start, and no drift"):
+              unit = "openclaw-main-heartbeat-checklists.service"
+              machine.wait_until_succeeds(
+                  as_alice + f"systemctl --user show -p SubState --value {unit} | grep -qx -e exited -e failed", timeout=420
+              )
+              print(machine.succeed(f"journalctl --no-pager _SYSTEMD_USER_UNIT={unit}"))
+              result = machine.succeed(as_alice + f"systemctl --user show -p Result --value {unit}").strip()
+              assert result == "success", result
+              tool = "${nodes.machine.services.openclaw.workstation.heartbeatChecklists.tool}/bin/openclaw-heartbeat-checklists"
+              # The interactive instance's token comes from the shared env file.
+              drift = machine.succeed(as_alice + f"env -u OPENCLAW_GATEWAY_TOKEN {tool} check main")
+              assert drift.strip() == "", drift
+
+          with subtest("uiSync: a Control UI edit becomes a commit on main-ui-sync"):
+              repo = "/home/alice/config"
+              machine.succeed(
+                  "runuser -u alice -- sh -c '"
+                  "git config --global user.name Alice && git config --global user.email alice@example.test && "
+                  f"mkdir -p {repo}/tests/workstation && cp ${./tests/workstation/main.json} {repo}/tests/workstation/main.json && "
+                  f"chmod u+w {repo}/tests/workstation/main.json && "
+                  f"git -C {repo} init -q -b main && git -C {repo} add -A && git -C {repo} commit -q -m init'"
+              )
+              def git(args):
+                  return machine.succeed(as_alice + f"git -C {repo} {args}").strip()
+
+              main = git("rev-parse main")
+              sync = as_alice + "systemctl --user start openclaw-main-ui-sync.service"
+              machine.succeed(sync)
+              # Nothing to fold: no branch yet, or one equal to main.
+              status, branch = machine.execute(as_alice + f"git -C {repo} rev-parse -q --verify main-ui-sync")
+              assert status != 0 or branch.strip() == main, branch
+              # What the Control UI does when it saves a setting its policy allows:
+              # a hot-applied edit to the runtime file.
+              machine.succeed(
+                  f"runuser -u alice -- sh -c 'jq \".agents.defaults.thinkingDefault = \\\"high\\\"\" {state}/openclaw-runtime.json > {state}/edit.json "
+                  f"&& mv {state}/edit.json {state}/openclaw-runtime.json'"
+              )
+              machine.succeed(sync)
+              print(machine.succeed("journalctl --no-pager _SYSTEMD_USER_UNIT=openclaw-main-ui-sync.service"))
+              print(git("log --format=%s%n%b -1 main-ui-sync"))
+              folded = json.loads(git("show main-ui-sync:tests/workstation/main.json"))
+              assert folded["agents"]["defaults"]["thinkingDefault"] == "high", folded
+              assert git("rev-parse main-ui-sync~1") == main
         '';
       };
       # The Home Manager module over nix-openclaw's: a writable instance gets the

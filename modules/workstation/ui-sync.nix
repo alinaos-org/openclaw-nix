@@ -116,6 +116,9 @@ in {
     systemd.user.services = lib.mapAttrs' (name: inst:
       lib.nameValuePair "openclaw-${name}-ui-sync" {
         description = "Fold ${name}'s Control UI overlay into a ${name}-ui-sync commit (no push, no activation)";
+        # NixOS user units are every user's; only the workstation user owns the
+        # checkout and the gateways' state.
+        unitConfig.ConditionUser = workstation.user;
         serviceConfig = {
           Type = "oneshot";
           ExecStart = "${syncFor name inst}/bin/openclaw-${name}-ui-sync";
@@ -125,6 +128,7 @@ in {
     systemd.user.timers = lib.mapAttrs' (name: _:
       lib.nameValuePair "openclaw-${name}-ui-sync" {
         description = "Nightly ${name} Control UI overlay -> git branch";
+        unitConfig.ConditionUser = workstation.user;
         wantedBy = ["timers.target"];
         timerConfig = {
           OnCalendar = cfg.schedule.${name} or "03:10";

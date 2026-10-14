@@ -246,7 +246,7 @@
         twin=${unitNameFor name}-declarative.service
         # LESSONS 2026-07-27: a lane inside this gateway must never restart it.
         if grep -q "openclaw-gateway" /proc/self/cgroup 2>/dev/null; then
-          echo "refusing: running inside an OpenClaw gateway cgroup; ask Matt to run this from a terminal" >&2
+          echo "refusing: running inside an OpenClaw gateway cgroup; run it from a terminal outside the gateway" >&2
           exit 78
         fi
         state() { systemctl --user is-active "$1" 2>/dev/null || true; }
@@ -338,8 +338,8 @@
           else "1"
         }
         unset OPENCLAW_GATEWAY_TOKEN
-        # Without its config the CLI falls back to the default port, which is
-        # another gateway's (prod's 18789); refuse instead of misrouting.
+        # Without its config the CLI falls back to the default port (18789),
+        # usually another gateway's; refuse instead of misrouting.
         if [ ! -f "$OPENCLAW_CONFIG_PATH" ]; then
           echo "oc-${name}: $OPENCLAW_CONFIG_PATH does not exist yet; start openclaw-gateway-${name} once to render it" >&2
           exit 1
@@ -525,8 +525,7 @@ in {
         the instance's state directory (`~/.openclaw-<name>`) and with
         `runtimeConfigJqFilter` (`openclaw.json` vs `openclaw-runtime.json`),
         so any hardcoded copy is correct on at most one host and silently stale
-        everywhere else — which is exactly how the bar's model pill ended up
-        reading an orphaned alina-era path on nova (2026-09-06).
+        everywhere else.
       '';
     };
     interactiveUnit = lib.mkOption {
@@ -618,7 +617,7 @@ in {
             description = ''
               Function applied to the imported profile JSON before the
               skills matrix merge. Lets hosts graft toggled config blocks
-              (e.g. the alina Slack failover channel) onto a profile
+              (e.g. a failover channel) onto a profile
               without forking the JSON file.
             '';
           };
@@ -726,9 +725,8 @@ in {
             type = lib.types.bool;
             default = true;
             description = ''
-              Attach the host-wide SOPS EnvironmentFile to this instance.
-              Disable this for isolated gateways that must not receive the
-              production or Merlin credential bundle.
+              Attach sharedEnvironmentFile to this instance. Disable this for
+              isolated gateways that must not receive the shared credentials.
             '';
           };
           environmentFile = lib.mkOption {
@@ -737,7 +735,7 @@ in {
             description = ''
               Optional instance-scoped SOPS EnvironmentFile. Use this for an
               isolated gateway that needs a narrow credential subset without
-              inheriting the shared production/Merlin bundle.
+              inheriting sharedEnvironmentFile.
             '';
           };
           unsetOpenAIApiKey = lib.mkOption {
