@@ -5,17 +5,21 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     # Upstream Nix packaging. Used for its source build recipe, CLI tool bundle
     # and runtime-plugin builder; its own OpenClaw pin is replaced by ours.
+    # Upstream nix-openclaw plus one change on the alinaos-org fork's openclaw-nix
+    # branch: its Home Manager module takes the typed config options from
+    # `openclawConfigOptionsFile`, which openclaw-nix generates per release
+    # (pins/openclaw-config-options.nix). Offered upstream; drop the fork once
+    # merged there.
     nix-openclaw = {
-      url = "github:openclaw/nix-openclaw/e72fe70f6d23cf2efe8a2a693f0788090af9bde0";
+      url = "github:alinaos-org/nix-openclaw/openclaw-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # Upstream's runtime-plugin builder scripts and lock generator, newer than the
-    # pin above: packages/runtime-plugin/builder.nix and
-    # scripts/generate-plugin-locks.sh use them (the package-lock dependency mode
-    # the release's plugins need). Its Home Manager module (typed options from
-    # 9.5's schema) and gateway recipe (build:package) are not used yet.
-    nix-openclaw-plugins = {
-      url = "github:openclaw/nix-openclaw/f62d33f760bcbdbc6a52ac589eae22bf99201f90";
+    # The gateway's source recipe and build scripts only, from the nix-openclaw
+    # revision packages/gateway's repairs are written against. Upstream's later
+    # recipe (build:package, filtered rebuilds) breaks the @openclaw/ai step on
+    # 10.3; moving the gateway to it is its own change.
+    nix-openclaw-gateway = {
+      url = "github:openclaw/nix-openclaw/e72fe70f6d23cf2efe8a2a693f0788090af9bde0";
       flake = false;
     };
   };
@@ -24,7 +28,7 @@
     self,
     nixpkgs,
     nix-openclaw,
-    nix-openclaw-plugins,
+    nix-openclaw-gateway,
   }: let
     lib = nixpkgs.lib;
     systems = ["x86_64-linux"];
@@ -34,7 +38,7 @@
     # gateway or trim the CLI bundle: (mkOverlay { sharedBuild = true; customize = ...; }).
     # mkPackageSetOverlay leaves out nix-openclaw's overlay, for consumers
     # that already apply it.
-    mkPackageSetOverlay = args: import ./overlay.nix {inherit nix-openclaw nix-openclaw-plugins self;} args;
+    mkPackageSetOverlay = args: import ./overlay.nix {inherit nix-openclaw nix-openclaw-gateway self;} args;
     mkOverlay = args:
       lib.composeManyExtensions [
         nix-openclaw.overlays.default
@@ -81,6 +85,10 @@
       release = import ./release.nix;
       # The workstation module with its options at another path, for a host
       # that keeps its own namespace.
+      # The typed OpenClaw config options for the current release
+      # (scripts/generate-config-options.sh); nix-openclaw's Home Manager module
+      # takes it as `_module.args.openclawConfigOptionsFile`.
+      configOptionsFile = ./pins/openclaw-config-options.nix;
       mkWorkstationModule = {optionPath ? ["services" "openclaw" "workstation"]}:
         import ./modules/workstation/module.nix {inherit self nix-openclaw optionPath;};
     };
@@ -646,12 +654,65 @@
       # The Home Manager module over nix-openclaw's: a writable instance gets the
       # prepare step, the runtime config and Nix mode off (after nix-openclaw's
       # own environment), its operator command, and the nightly sync timer.
+      # The per-agent skills merge on the current schema's roster
+      # (agents.entries), through nix-openclaw's typed config: baseline minus the
+      # instance's denied skills, plus each listed agent's extras.
+      workstation-skills = let
+        agents =
+          (lib.nixosSystem {
+            inherit system;
+            modules = [
+              nix-openclaw.inputs.home-manager.nixosModules.home-manager
+              self.nixosModules.workstation
+              {
+                boot.isContainer = true;
+                system.stateVersion = "25.11";
+                users.users.alice.isNormalUser = true;
+                home-manager.users.alice.home.stateVersion = "25.11";
+                services.openclaw.workstation = {
+                  user = "alice";
+                  skills = {
+                    baseline = ["shared" "hidden"];
+                    agents.coder = ["code" "shared"];
+                  };
+                  instances.main = {
+                    configFile = builtins.toFile "main.json" (builtins.toJSON {
+                      agents.entries = {
+                        main.name = "MAIN";
+                        coder.name = "CODER";
+                      };
+                    });
+                    gatewayPort = 18789;
+                    deniedSkills = ["hidden"];
+                  };
+                };
+              }
+            ];
+          })
+          .config
+          .home-manager
+          .users
+          .alice
+          .programs
+          .openclaw
+          .instances
+          .main
+          .config
+          .agents;
+      in
+        assert agents.defaults.skills == ["shared"];
+        assert agents.entries.coder.skills == ["shared" "code"];
+        # Typed options default to null; only the merge sets skills.
+        assert (agents.entries.main.skills or null) == null;
+        assert agents.entries.coder.name == "CODER";
+          pkgs.runCommand "openclaw-workstation-skills-test" {} "touch $out";
       config-overlay-home-manager = let
         stub = pkgs.writeShellScriptBin "openclaw" "exit 0";
         home = nix-openclaw.inputs.home-manager.lib.homeManagerConfiguration {
           inherit pkgs;
           modules = [
             nix-openclaw.homeManagerModules.openclaw
+            {_module.args.openclawConfigOptionsFile = self.lib.configOptionsFile;}
             self.homeManagerModules.configOverlay
             {
               home = {
@@ -681,7 +742,9 @@
         };
         cfg = home.config;
         service = cfg.systemd.user.services."openclaw-gateway-demo".Service;
-        env = service.Environment;
+        # nix-openclaw writes each entry JSON-quoted ("\"NAME=value\""), ours plain;
+        # systemd reads both the same.
+        env = map (e: lib.removeSuffix "\"" (lib.removePrefix "\"" e)) service.Environment;
         prepare = lib.head (lib.toList service.ExecStartPre);
         sync = lib.head (lib.toList cfg.systemd.user.services."openclaw-demo-ui-sync".Service.ExecStart);
       in
@@ -698,8 +761,9 @@
             test -x ${sync}
             touch $out
           '';
+      # The generated typed options are left as generated (scripts/generate-config-options.sh).
       formatting = pkgs.runCommand "openclaw-nix-formatting" {nativeBuildInputs = [pkgs.alejandra];} ''
-        alejandra --check ${self}
+        alejandra --check --exclude ${self}/pins/openclaw-config-options.nix ${self}
         touch $out
       '';
     });

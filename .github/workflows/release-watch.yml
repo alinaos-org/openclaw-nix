@@ -52,6 +52,8 @@ jobs:
           python3 scripts/new-release.py "$v" --skip-pnpm
           # Every plugin OpenClaw's catalogs list, at this release.
           scripts/generate-plugin-locks.sh "$v" | tee -a "$GITHUB_STEP_SUMMARY"
+          # The typed config options from this release's schema.
+          scripts/generate-config-options.sh "$v" | tee -a "$GITHUB_STEP_SUMMARY"
           # Then the few pinned by hand outside the catalogs.
           rc=0; python3 scripts/pin-runtime-plugins.py "$v" || rc=$?
           [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || exit "$rc"

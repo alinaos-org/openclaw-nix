@@ -493,8 +493,8 @@ in {
         default = {};
         description = ''
           Extra skills per agent id, merged as baseline ++ extras into that
-          agent's agents.list[].skills entry. Ids not present in an instance's
-          agents.list are ignored.
+          agent's skills (agents.entries.<id>.skills, or agents.list[].skills in
+          the older roster shape). Ids an instance does not have are ignored.
         '';
       };
     };
@@ -1056,7 +1056,11 @@ in {
         nix-openclaw.overlays.default
         (self.lib.mkPackageSetOverlay {inherit (cfg.packageSet) sharedBuild customize gatewayArgs excludeToolNames;})
       ];
-      home-manager.sharedModules = [nix-openclaw.homeManagerModules.openclaw];
+      home-manager.sharedModules = [
+        nix-openclaw.homeManagerModules.openclaw
+        # Every instance's config is typed by the release's own schema.
+        {_module.args.openclawConfigOptionsFile = self.lib.configOptionsFile;}
+      ];
       # The overlays above must reach Home Manager, and the user's packages
       # /etc/profiles/per-user/<user>/bin, which the units' PATH includes.
       home-manager.useGlobalPkgs = true;
@@ -1101,9 +1105,10 @@ in {
               base = inst.configTransform (lib.importJSON inst.configFile);
               sk = cfg.skills;
               visibleBaseline = lib.subtractLists inst.deniedSkills sk.baseline;
+              skillsFor = id: lib.unique (lib.subtractLists inst.deniedSkills (visibleBaseline ++ sk.agents.${id}));
               applyAgent = agent:
                 if agent ? id && sk.agents ? ${agent.id}
-                then agent // {skills = lib.unique (lib.subtractLists inst.deniedSkills (visibleBaseline ++ sk.agents.${agent.id}));}
+                then agent // {skills = skillsFor agent.id;}
                 else agent;
               # Only what the host sets: an explicit empty skills list would hide
               # every skill, and an empty agents.list leaves no agent (not even
@@ -1120,6 +1125,17 @@ in {
                 }
                 // lib.optionalAttrs (base.agents ? list) {
                   list = map applyAgent base.agents.list;
+                }
+                # The current schema's roster: entries keyed by agent id.
+                // lib.optionalAttrs (base.agents ? entries) {
+                  entries =
+                    lib.mapAttrs (
+                      id: agent:
+                        if sk.agents ? ${id}
+                        then agent // {skills = skillsFor id;}
+                        else agent
+                    )
+                    base.agents.entries;
                 };
             in
               base // {agents = agents';};
