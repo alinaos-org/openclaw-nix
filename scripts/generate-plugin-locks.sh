@@ -6,9 +6,9 @@
 # Every plugin OpenClaw's catalogs list (official external plugins, channels and
 # providers), at the release: pins/runtime-plugin-locks/, one .nix lock per plugin,
 # package-lock.json files for the plugins that ship one, and report.json (what was
-# supported or skipped, and why). It runs the generator of this flake's pinned
-# nix-openclaw (nix/scripts/update-openclaw-runtime-plugin-locks.mjs), the version
-# whose builder packages/runtime-plugin/builder.nix copies, against the release's
+# supported or skipped, and why). It runs the generator of this flake's
+# nix-openclaw-plugins input (nix/scripts/update-openclaw-runtime-plugin-locks.mjs),
+# the version whose builder packages/runtime-plugin/builder.nix copies, against the release's
 # exact source from releases.nix. release-watch runs it for every new release, so
 # no plugin is ever older than the gateway.
 #
@@ -22,7 +22,7 @@ out=$repo/pins/runtime-plugin-locks
 entry=$(nix eval --json --file "$repo/releases.nix" --apply "r: r.\"$version\"")
 rev=$(jq -r .rev <<<"$entry")
 hash=$(jq -r .sourceHash <<<"$entry")
-upstream=$(nix flake archive --json "$repo" | jq -r '.inputs["nix-openclaw"].path')
+upstream=$(nix flake archive --json "$repo" | jq -r '.inputs["nix-openclaw-plugins"].path')
 
 work=$(mktemp -d)
 trap 'chmod -R u+w "$work"; rm -rf "$work"' EXIT
