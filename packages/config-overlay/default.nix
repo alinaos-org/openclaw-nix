@@ -402,8 +402,10 @@
           echo "usage: openclaw-${name}-restore-state list | restore <pre-migrate-...|latest> [--force]" >&2
           exit 64
         }
+        # No backups/ yet (a state that never migrated) lists nothing.
         snapshots() {
-          find "$backups" -mindepth 1 -maxdepth 1 -type d -name 'pre-migrate-*' -printf '%f\n' 2>/dev/null | sort -r
+          [ -d "$backups" ] || return 0
+          find "$backups" -mindepth 1 -maxdepth 1 -type d -name 'pre-migrate-*' -printf '%f\n' | sort -r
         }
         case "''${1:-}" in
           list)

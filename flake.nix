@@ -576,12 +576,13 @@
           with subtest("the operator commands: overlay and restore"):
               machine.succeed("test -x /etc/profiles/per-user/alice/bin/openclaw-overlay-main")
               as_alice = "runuser -u alice -- env XDG_RUNTIME_DIR=/run/user/$(id -u alice) "
-              # The first start migrated (and snapshotted) the fresh state.
-              listing = machine.succeed(as_alice + "/etc/profiles/per-user/alice/bin/openclaw-main-restore list")
-              print(listing)
-              assert "pre-migrate-" in listing, listing
+              restore = as_alice + "/etc/profiles/per-user/alice/bin/openclaw-main-restore"
+              # A fresh state has never migrated: nothing to list, and no error.
+              print(machine.succeed(f"{restore} list"))
               # Never against a running gateway.
-              machine.fail(as_alice + "/etc/profiles/per-user/alice/bin/openclaw-main-restore restore latest")
+              status, output = machine.execute(f"{restore} restore latest 2>&1")
+              print(output)
+              assert status != 0 and "is running" in output, output
         '';
       };
       # The Home Manager module over nix-openclaw's: a writable instance gets the
