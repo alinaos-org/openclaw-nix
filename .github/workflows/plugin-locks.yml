@@ -1,0 +1,50 @@
+name: plugin-locks
+
+# Regenerate pins/runtime-plugin-locks (every runtime plugin OpenClaw's catalogs
+# list, at a release) on a branch, commit the result there and run CI on it. The
+# generator downloads every plugin and the dependency trees of those that ship a
+# lockfile, which takes minutes here and hours on a slow link. release-watch does
+# the same for each new release; this is for fixing or refreshing a branch.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: OpenClaw release (default release.nix current)
+        required: false
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.34.8/install
+      - name: Generate
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -o pipefail
+          v=${VERSION:-$(nix eval --raw -f release.nix current)}
+          scripts/generate-plugin-locks.sh "$v" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+      - name: Commit and run CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add -A pins/runtime-plugin-locks
+          if git diff --cached --quiet; then
+            echo "Lock set already current." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "plugin locks: every runtime plugin at OpenClaw $VERSION"
+          git push origin "HEAD:$GITHUB_REF_NAME"
+          # A push made with GITHUB_TOKEN starts no workflows; a dispatch does.
+          gh workflow run ci.yml --ref "$GITHUB_REF_NAME"
