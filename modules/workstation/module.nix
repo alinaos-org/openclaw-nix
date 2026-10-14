@@ -422,6 +422,14 @@
   # The units' PATH: the user's local bin and Nix profiles, then the system's.
   unitPath = "PATH=${cfg.home}/.local/bin:/run/wrappers/bin:${cfg.home}/.nix-profile/bin:/nix/profile/bin:${cfg.home}/.local/state/nix/profile/bin:/etc/profiles/per-user/${cfg.user}/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin";
 in {
+  # The workspace files, their heartbeat checklists and the nightly UI sync, at
+  # <optionPath>.{agentFiles,heartbeatChecklists,uiSync}.
+  imports = map (file: import file {inherit optionPath;}) [
+    ./agent-files.nix
+    ./heartbeat-checklists.nix
+    ./ui-sync.nix
+  ];
+
   options = lib.setAttrByPath optionPath {
     user = lib.mkOption {
       type = lib.types.str;
@@ -468,7 +476,12 @@ in {
     skipBootstrap = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Set agents.defaults.skipBootstrap in every instance (its workspace files are managed elsewhere).";
+      description = ''
+        Set agents.defaults.skipBootstrap in every instance: the gateway no longer
+        seeds missing workspace files. Turn it on only after agentFiles (or
+        something else) has delivered every workspace's complete file set and
+        openclaw-agent-files-audit passes.
+      '';
     };
     skills = {
       baseline = lib.mkOption {
