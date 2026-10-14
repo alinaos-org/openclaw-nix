@@ -149,12 +149,35 @@ Per instance:
   `<stateDir>/hooks-state/canary.json` for a health check. The instance needs a
   password, because `oc-<name>` clears the shared token.
 
+For the host, beside the instances:
+
+- **Workspace files.** `agentFiles.workspaces.<name> = {workspace; files;}` copies each
+  agent's `AGENTS.md`, `SOUL.md`, `USER.md`, `IDENTITY.md` and `HEARTBEAT.md` (and
+  optionally `BOOT.md`) from the repository into its workspace at activation. They
+  are single-link copies, because the gateway refuses store files. A retired
+  `TOOLS.md` moves to a dated quarantine, and `openclaw-agent-files-audit` reports
+  drift. Once every workspace has its full set, `skipBootstrap = true` stops the
+  gateway from seeding its own.
+- **Heartbeat checklists.** Since 9.x a heartbeat reads its cron job's scratch, not
+  `HEARTBEAT.md`. With `heartbeatChecklists.enable`, a user unit writes each ticking
+  heartbeat's Nix `HEARTBEAT.md` into its scratch after every gateway start. A
+  replaced scratch is kept under `~/.local/share/openclaw/retired-heartbeat-scratch`.
+  `heartbeatChecklists.tool`'s `check <instance>` prints drift for a health report.
+- **Nightly UI sync.** With `uiSync = {enable; repo; sourceFile;}`, each `uiOverlay`
+  instance's Control UI edits become a commit on the branch `<name>-ui-sync` of the
+  host's checkout every night. It never pushes, merges or activates. Merge the branch,
+  and the overlay entries prune themselves at the next start. `schedule`, `renames`
+  and `exclude` tune it.
+
 `checks.workstation` boots a VM and checks:
 - a user's gateway, running as that user's unit and started at boot;
 - secrets from the shared env file, kept out of the configs;
 - the Icon library, served from state;
 - an agent turn against a stub model provider;
-- the restore command.
+- the restore command;
+- the workspace files and the retirement of `TOOLS.md`;
+- the heartbeat checklist sync;
+- a Control UI edit folded into a commit.
 
 `lib.mkWorkstationModule {optionPath = [...];}` puts the options at another path, for a
 host that keeps its own namespace.

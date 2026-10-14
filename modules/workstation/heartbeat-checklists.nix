@@ -133,7 +133,7 @@
       fi
 
       cron=$(rpc cron.status)
-      # Only the heartbeat jobs, so prod's long job list never becomes an argument.
+      # Only the heartbeat jobs, so a long job list never becomes an argument.
       jobs='[]'
       offset=0
       while :; do

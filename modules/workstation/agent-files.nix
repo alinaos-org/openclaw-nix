@@ -260,8 +260,12 @@ in {
           filename="$2"
           source_file="$3"
 
+          # Missing parents as the user (a workspace inside a state directory
+          # that does not exist yet must not become root's), then the
+          # workspace's own owner and mode.
+          ${pkgs.util-linux}/bin/runuser -u ${user} -- ${pkgs.coreutils}/bin/mkdir -p "$destination_root"
           ${pkgs.coreutils}/bin/install -d -m 0700 -o ${user} -g ${group} "$destination_root"
-          stage_dir=$(${pkgs.coreutils}/bin/mktemp -d "$destination_root/.csa-agent-file.XXXXXX")
+          stage_dir=$(${pkgs.coreutils}/bin/mktemp -d "$destination_root/.openclaw-agent-file.XXXXXX")
           ${pkgs.rsync}/bin/rsync --archive --copy-links "$source_file" "$stage_dir/$filename"
           ${pkgs.coreutils}/bin/chown ${user}:${group} "$stage_dir/$filename"
           ${pkgs.coreutils}/bin/chmod 0644 "$stage_dir/$filename"

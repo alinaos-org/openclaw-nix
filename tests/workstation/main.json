@@ -1,0 +1,43 @@
+{
+  "gateway": {
+    "mode": "local",
+    "port": 18789,
+    "bind": "loopback",
+    "auth": {
+      "mode": "token",
+      "token": "$OPENCLAW_GATEWAY_TOKEN"
+    }
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "stub": {
+        "baseUrl": "http://127.0.0.1:9999/v1",
+        "api": "openai-completions",
+        "apiKey": {
+          "source": "env",
+          "provider": "default",
+          "id": "STUB_API_KEY"
+        },
+        "models": [
+          {
+            "id": "stub-model",
+            "name": "Stub",
+            "input": ["text"],
+            "contextWindow": 32768,
+            "maxTokens": 1024,
+            "reasoning": false
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "/home/alice/.openclaw-main/workspace",
+      "model": {
+        "primary": "stub/stub-model"
+      }
+    }
+  }
+}
