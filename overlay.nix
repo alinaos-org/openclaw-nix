@@ -11,7 +11,7 @@
 # `final.openclaw-gateway` too, so a closure never mixes OpenClaw releases.
 {
   nix-openclaw,
-  nix-openclaw-plugins,
+  nix-openclaw-gateway,
   self,
 }: {
   # Arguments for packages/gateway: extraSourcePatches, extraTests,
@@ -48,7 +48,14 @@
       assert lib.assertMsg (gatewayArgs == {})
       "openclaw-nix: sharedBuild uses this flake's own gateway build; express gatewayArgs as customize";
         self.packages.${final.stdenv.hostPlatform.system}.gateway
-    else final.callPackage ./packages/gateway ({inherit nix-openclaw;} // gatewayArgs);
+    else
+      final.callPackage ./packages/gateway ({
+          nix-openclaw = nix-openclaw-gateway;
+          # The recipe's own pnpm (the newer nix-openclaw overlay no longer
+          # exports it, and nixpkgs' pnpm_11 is built on another Node).
+          inherit (import "${nix-openclaw-gateway}/nix/packages" {pkgs = prev;}) pnpm_11;
+        }
+        // gatewayArgs);
   customizeGateway = args: final.callPackage ./packages/custom args;
   gateway =
     if customize == {}
@@ -75,6 +82,17 @@
       bundledPackageRoots = map (dep: "node_modules/${dep}") pin.bundleDependencies;
     };
 
+  # The builder runs nix-openclaw's nix/scripts and nothing else of it. Only that
+  # directory is its source, so a nix-openclaw change elsewhere (its Home Manager
+  # module, say) does not rebuild every plugin.
+  nixOpenclawScripts = builtins.path {
+    name = "nix-openclaw-scripts";
+    path = nix-openclaw.outPath;
+    filter = path: _: let
+      rel = lib.removePrefix "${nix-openclaw.outPath}/" (toString path);
+    in
+      rel == "nix" || rel == "nix/scripts" || lib.hasPrefix "nix/scripts/" rel;
+  };
   # nix-openclaw's plugin builder, reading package-lock files from the release's
   # lock set (packages/runtime-plugin/builder.nix).
   buildRuntimePlugin = {
@@ -82,8 +100,8 @@
     linkOpenClawPeer ? openclawPackage != null,
   }:
     final.callPackage ./packages/runtime-plugin/builder.nix {
-      nix-openclaw = nix-openclaw-plugins;
       inherit openclawPackage linkOpenClawPeer;
+      nix-openclaw = nixOpenclawScripts;
       packageLockDir = releaseLocksDir;
     };
   mkRuntimePlugin = buildRuntimePlugin {};

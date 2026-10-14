@@ -1,10 +1,11 @@
 name: plugin-locks
 
-# Regenerate pins/runtime-plugin-locks (every runtime plugin OpenClaw's catalogs
-# list, at a release) on a branch, commit the result there and run CI on it. The
-# generator downloads every plugin and the dependency trees of those that ship a
-# lockfile, which takes minutes here and hours on a slow link. release-watch does
-# the same for each new release; this is for fixing or refreshing a branch.
+# Regenerate a release's generated pins on a branch, commit them there and run CI
+# on it: pins/runtime-plugin-locks (every runtime plugin OpenClaw's catalogs list)
+# and pins/openclaw-config-options.nix (the typed config options, from the
+# release's schema). The generators download every plugin, several dependency
+# trees and the release's source dependencies: minutes here, hours on a slow link.
+# release-watch does the same for each new release; this is for a branch.
 on:
   workflow_dispatch:
     inputs:
@@ -32,19 +33,20 @@ jobs:
           set -o pipefail
           v=${VERSION:-$(nix eval --raw -f release.nix current)}
           scripts/generate-plugin-locks.sh "$v" | tee -a "$GITHUB_STEP_SUMMARY"
+          scripts/generate-config-options.sh "$v" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "VERSION=$v" >> "$GITHUB_ENV"
       - name: Commit and run CI
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          git add -A pins/runtime-plugin-locks
+          git add -A pins/runtime-plugin-locks pins/openclaw-config-options.nix
           if git diff --cached --quiet; then
             echo "Lock set already current." | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "plugin locks: every runtime plugin at OpenClaw $VERSION"
+          git commit -m "release pins: every runtime plugin and the typed config options at OpenClaw $VERSION"
           git push origin "HEAD:$GITHUB_REF_NAME"
           # A push made with GITHUB_TOKEN starts no workflows; a dispatch does.
           gh workflow run ci.yml --ref "$GITHUB_REF_NAME"

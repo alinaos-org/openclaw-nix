@@ -1,10 +1,10 @@
 # nix-openclaw's runtime-plugin builder (nix/lib/openclaw-runtime-plugin.nix at the
-# nix-openclaw-plugins input), with one change: a package-lock plugin's lockfile is
+# nix-openclaw input), with one change: a package-lock plugin's lockfile is
 # read from `packageLockDir`, the lock set it was generated with, instead of
 # nix-openclaw's own generated directory. openclaw-nix generates its lock set
 # per release (pins/runtime-plugin-locks), so the upstream path would name the
 # wrong release's lockfiles. Everything else is upstream's, and the scripts are
-# nix-openclaw's own. Re-copy it when nix-openclaw-plugins moves.
+# nix-openclaw's own. Re-copy it when nix-openclaw moves.
 {
   lib,
   stdenvNoCC,
