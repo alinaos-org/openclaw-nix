@@ -100,10 +100,9 @@
   # Symptom key: "openKeyedStore is only available for trusted plugins" in
   # gateway logs => add that plugin id to bundledRuntimePlugins.
   graftIds = cfg.bundledRuntimePlugins;
-  runtimePluginLocks = import "${nix-openclaw}/nix/generated/openclaw-runtime-plugins";
-  buildGraftPlugin = pkgs.callPackage "${nix-openclaw}/nix/lib/openclaw-runtime-plugin.nix" {
-    linkOpenClawPeer = false;
-  };
+  # The release's lock set and builder (openclaw-nix overlay), not nix-openclaw's own.
+  runtimePluginLocks = pkgs.openclawNix.runtimePluginLocks;
+  buildGraftPlugin = pkgs.openclawNix.buildRuntimePlugin {openclawPackage = null;};
   graftPluginFor = id:
     if builtins.hasAttr id cfg.bundledRuntimePluginPackages
     then cfg.bundledRuntimePluginPackages.${id}
@@ -598,9 +597,9 @@ in {
             default = [];
             example = ["discord" "codex"];
             description = ''
-              Upstream-supported OpenClaw runtime plugin ids for this
-              instance (see nix-openclaw's
-              nix/generated/openclaw-runtime-plugins/report.json).
+              OpenClaw runtime plugin ids for this instance, built at the
+              release (openclaw-nix pins/runtime-plugin-locks/report.json lists
+              them, and why any were skipped).
             '';
           };
           deniedSkills = lib.mkOption {

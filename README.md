@@ -8,8 +8,10 @@ It builds on [nix-openclaw](https://github.com/openclaw/nix-openclaw)'s source r
 CLI tool bundle and runtime-plugin builder, and adds:
 
 - **The current stable release** (`release.nix`, `releases.nix`), pinned to the exact
-  commit the release tag peels to, plus the npm runtime plugins pinned to the same
-  release (`pins/runtime-plugins.json`).
+  commit the release tag peels to, plus every runtime plugin OpenClaw's catalogs list,
+  locked at the same release (`pins/runtime-plugin-locks`, generated per release) and
+  the few outside the catalogs (`pins/runtime-plugins.json`). Evaluation fails while the
+  lock set is for another release, so no plugin falls behind the gateway.
 - **One release everywhere.** The overlay's gateway, its CLI bundle and every pinned
   plugin (whose `openclaw/plugin-sdk` peer links that gateway) derive from one build;
   `checkSingleRelease` fails a closure that carries any other OpenClaw release.
@@ -348,9 +350,14 @@ then copies `skill` to wherever its agents load skills. See
 ## Releases
 
 `scripts/new-release.py <version>` adds a release (tag, release-SHA cross-check, source
-and pnpm hashes) and `scripts/pin-runtime-plugins.py <version>` re-pins the plugins.
-The `release-watch` workflow runs both daily and opens a pull request when OpenClaw
-publishes a new stable release; CI builds and tests it there. It needs "Allow GitHub
+and pnpm hashes), `scripts/generate-plugin-locks.sh <version>` locks every catalog
+plugin at it (nix-openclaw's generator, at the pinned nix-openclaw, against the release's
+source) and `scripts/pin-runtime-plugins.py <version>` re-pins the few outside the
+catalogs. The `release-watch` workflow runs all three daily and opens a pull request
+when OpenClaw publishes a new stable release; CI builds and tests it there, every plugin
+included (`.#runtime-plugins`). The `plugin-locks` workflow regenerates the lock set on
+any branch. Plugins are built by `packages/runtime-plugin/builder.nix`, nix-openclaw's
+builder with the lockfile directory as a parameter; re-copy it when nix-openclaw moves. It needs "Allow GitHub
 Actions to create and approve pull requests" enabled for the organization and the
 repository.
 

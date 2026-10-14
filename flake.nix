@@ -104,7 +104,12 @@
       upgrade-skill = mkUpgradeSkill {inherit pkgs;};
       # The session menu's Custom icons library (native Control UI plugin).
       session-icons = pkgs.openclawRuntimePlugins.session-icons;
-      runtime-plugins = pkgs.linkFarm "openclaw-runtime-plugins" (lib.mapAttrsToList (name: path: {inherit name path;}) (lib.filterAttrs (id: _: pkgs.openclawNix.pins.plugins ? ${id}) pkgs.openclawRuntimePlugins));
+      # Every runtime plugin at the release (CI builds them all).
+      runtime-plugins = pkgs.linkFarm "openclaw-runtime-plugins" (map (name: {
+        inherit name;
+        path = pkgs.openclawRuntimePlugins.${name};
+      })
+      pkgs.openclawNix.runtimePluginIds);
     });
 
     checks = forAllSystems (system: let
