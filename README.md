@@ -355,11 +355,12 @@ plugin at it (nix-openclaw's generator, at the pinned nix-openclaw, against the 
 source) and `scripts/pin-runtime-plugins.py <version>` re-pins the few outside the
 catalogs. The `release-watch` workflow runs all three daily and opens a pull request
 when OpenClaw publishes a new stable release; CI builds and tests it there, every plugin
-included (`.#runtime-plugins`). The `plugin-locks` workflow regenerates the lock set on
-any branch. Plugins are built by `packages/runtime-plugin/builder.nix`, nix-openclaw's
-builder with the lockfile directory as a parameter; re-copy it when nix-openclaw moves. It needs "Allow GitHub
-Actions to create and approve pull requests" enabled for the organization and the
-repository.
+included (`.#runtime-plugins`). It needs "Allow GitHub Actions to create and approve
+pull requests" enabled for the organization and the repository. The `plugin-locks`
+workflow regenerates the lock set on any branch. Plugins are built by nix-openclaw's
+builder (`nix/lib/openclaw-runtime-plugin.nix`), called with this flake's lock set and
+with only nix-openclaw's `nix/scripts` as its scripts, so a nix-openclaw change elsewhere
+never rebuilds a plugin.
 
 When a hotfix patch fails on a new release, upstream either fixed the bug (drop the
 patch and its test) or moved the code (re-port its anchors).
@@ -509,7 +510,7 @@ release:
 |---|---|---|
 | `gateway` (and every layer over it) | `nix/gateway-recipe/packages/openclaw-gateway-source.nix` and the files it reads | the source recipe, called and overridden |
 | `gateway` | `nix/gateway-recipe/scripts/gateway-build.sh`, `gateway-prebuild.sh` | copied into the build and edited (`packages/gateway`) |
-| `runtime-plugins`, `pkgs.openclawRuntimePlugins` | `nix/lib/openclaw-runtime-plugin.nix`, `nix/generated/openclaw-runtime-plugins` | the plugin builder and its generated locks |
+| `runtime-plugins`, `pkgs.openclawRuntimePlugins` | `nix/lib/openclaw-runtime-plugin.nix`, `nix/scripts` | the plugin builder, called with this flake's lock set, and the lock generator |
 | `overlays.default` | `overlays.default` | applied first, for the CLI tool bundle |
 | `homeManagerModules.configOverlay` | `homeManagerModules.openclaw` | extends its `programs.openclaw.instances` options |
 
