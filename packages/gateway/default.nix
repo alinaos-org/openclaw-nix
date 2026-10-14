@@ -1,5 +1,6 @@
 # OpenClaw gateway built from source at a pinned release commit (releases.nix),
-# on top of upstream nix-openclaw's source recipe. Supports stable 2026.10.x on.
+# on top of nix-openclaw's source recipe (our fork's nix/gateway-recipe, passed
+# as gatewayRecipe). Supports stable 2026.10.x on.
 #
 # What this adds to the upstream recipe, each a repair for the Nix store layout
 # with a check that fails the build when a release moves the code it targets:
@@ -30,7 +31,7 @@
   sqlite,
   nodejs_24,
   pnpm_11,
-  nix-openclaw,
+  gatewayRecipe,
   releases ? import ../../releases.nix,
   release ? (import ../../release.nix).current,
   # Appended to the version: <release>-<localRevision>. Bump when this build
@@ -174,7 +175,7 @@
       "openclaw-nix: could not isolate the fetchPnpmDeps v4 completeness check"; hostPreFixup;
     });
 
-  baseGateway = callPackage "${nix-openclaw}/nix/packages/openclaw-gateway-source.nix" {
+  baseGateway = callPackage "${gatewayRecipe}/packages/openclaw-gateway-source.nix" {
     inherit sourceInfo pnpmDepsHash;
     nodejs_22 = node;
     gatewaySrc = src;
@@ -224,7 +225,7 @@
   tests = ["src/plugins/hardlink-policy.test.ts"] ++ extraTests;
 
   gatewayBuild = runCommand "openclaw-gateway-build" {} ''
-    cp ${nix-openclaw}/nix/scripts/gateway-build.sh $out
+    cp ${gatewayRecipe}/scripts/gateway-build.sh $out
     chmod u+w $out
     sed -i \
       -e 's#scripts/bundled-plugin-assets\.mjs#scripts/bundled-plugin-assets.mts#g' \
@@ -267,7 +268,7 @@
   '';
 
   gatewayPrebuild = runCommand "openclaw-gateway-prebuild" {} ''
-    cp ${nix-openclaw}/nix/scripts/gateway-prebuild.sh $out
+    cp ${gatewayRecipe}/scripts/gateway-prebuild.sh $out
     chmod u+w $out
     ${node}/bin/node --input-type=module - "$out" <<'EOF'
     import fs from "node:fs";
