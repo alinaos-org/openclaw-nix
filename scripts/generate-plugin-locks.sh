@@ -51,5 +51,7 @@ got=$(jq -r .openclawVersion "$generated/report.json")
 [ "$got" = "$version" ] || { echo "generated locks are for $got, not $version" >&2; exit 1; }
 mkdir -p "$out"
 rsync -a --delete "$generated/" "$out/"
+# In this repository's style, so the formatting check holds for every release.
+nix run --inputs-from "$repo" nixpkgs#alejandra -- -q "$out"
 jq -r '"\(.openclawVersion): \(.supported | length) plugins locked, \(.skipped | length) skipped"' "$out/report.json"
 jq -r '.skipped[] | "  skipped \(.id // .name): \(.reason // .skipReason // "")"' "$out/report.json"

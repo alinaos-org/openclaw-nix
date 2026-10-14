@@ -26,14 +26,14 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
-  contracts = { };
+  channels = [];
+  contracts = {};
   dependencies = {
     "@openclaw/fs-safe" = "0.24.2";
     p-limit = "7.3.3";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@openclaw/fs-safe"
     "p-limit"

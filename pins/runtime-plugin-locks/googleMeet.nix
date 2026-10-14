@@ -26,7 +26,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     tools = [
       "google_meet"
@@ -39,7 +39,7 @@
     jszip = "3.10.2";
     typebox = "1.3.34";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "jszip"
     "typebox"

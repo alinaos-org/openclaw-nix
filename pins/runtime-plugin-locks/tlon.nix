@@ -40,7 +40,7 @@
   channels = [
     "tlon"
   ];
-  contracts = { };
+  contracts = {};
   dependencies = {
     "@aws-sdk/client-s3" = "3.1136.0";
     "@aws-sdk/s3-request-presigner" = "3.1136.0";
@@ -48,7 +48,7 @@
     "@urbit/aura" = "3.0.0";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

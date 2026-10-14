@@ -26,8 +26,8 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
-  contracts = { };
+  channels = [];
+  contracts = {};
   dependencies = {
     "@opentelemetry/api" = "1.9.1";
     "@opentelemetry/api-logs" = "0.222.0";
@@ -44,7 +44,7 @@
     "@opentelemetry/sdk-trace-base" = "2.11.0";
     "@opentelemetry/semantic-conventions" = "1.43.0";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@opentelemetry/api"
     "@opentelemetry/api-logs"

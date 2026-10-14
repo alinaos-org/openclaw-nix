@@ -26,10 +26,10 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
-  contracts = { };
-  dependencies = { };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  channels = [];
+  contracts = {};
+  dependencies = {};
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

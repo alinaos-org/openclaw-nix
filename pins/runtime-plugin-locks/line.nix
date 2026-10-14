@@ -29,13 +29,13 @@
   channels = [
     "line"
   ];
-  contracts = { };
+  contracts = {};
   dependencies = {
     "@line/bot-sdk" = "11.2.0";
     typebox = "1.3.34";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@line/bot-sdk"
     "typebox"

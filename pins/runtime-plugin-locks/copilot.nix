@@ -37,12 +37,12 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
-  contracts = { };
+  channels = [];
+  contracts = {};
   dependencies = {
     "@github/copilot-sdk" = "1.0.14";
   };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

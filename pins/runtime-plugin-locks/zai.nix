@@ -26,7 +26,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     mediaUnderstandingProviders = [
       "zai"
@@ -38,8 +38,8 @@
       "zai"
     ];
   };
-  dependencies = { };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  dependencies = {};
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

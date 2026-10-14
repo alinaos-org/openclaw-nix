@@ -26,7 +26,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = "./dist/setup-api.js";
-  channels = [ ];
+  channels = [];
   contracts = {
     tools = [
       "voice_call"
@@ -36,7 +36,7 @@
     typebox = "1.3.34";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "typebox"
     "zod"

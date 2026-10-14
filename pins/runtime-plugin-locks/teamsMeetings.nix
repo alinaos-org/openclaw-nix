@@ -26,7 +26,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     tools = [
       "teams_meetings"
@@ -35,8 +35,8 @@
       "teams"
     ];
   };
-  dependencies = { };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  dependencies = {};
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

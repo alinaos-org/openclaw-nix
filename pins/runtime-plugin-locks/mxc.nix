@@ -26,13 +26,13 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
-  contracts = { };
+  channels = [];
+  contracts = {};
   dependencies = {
     "@microsoft/mxc-sdk" = "0.8.0";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@microsoft/mxc-sdk"
     "zod"

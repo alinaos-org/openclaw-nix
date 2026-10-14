@@ -29,7 +29,7 @@
   channels = [
     "slack"
   ];
-  contracts = { };
+  contracts = {};
   dependencies = {
     "@slack/bolt" = "5.1.0";
     "@slack/types" = "3.1.0";
@@ -39,7 +39,7 @@
     undici = "8.11.2";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@slack/bolt"
     "@slack/types"

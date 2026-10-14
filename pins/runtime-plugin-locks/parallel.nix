@@ -26,15 +26,15 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     webSearchProviders = [
       "parallel"
       "parallel-free"
     ];
   };
-  dependencies = { };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  dependencies = {};
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

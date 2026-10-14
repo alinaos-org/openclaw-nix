@@ -56,7 +56,7 @@
     typebox = "1.3.34";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@larksuiteoapi/node-sdk"
     "@openclaw/fs-safe"

@@ -26,7 +26,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     webSearchProviders = [
       "tavily"
@@ -39,7 +39,7 @@
   dependencies = {
     typebox = "1.3.34";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "typebox"
   ];

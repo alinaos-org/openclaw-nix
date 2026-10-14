@@ -26,7 +26,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     imageGenerationProviders = [
       "comfy"
@@ -38,8 +38,8 @@
       "comfy"
     ];
   };
-  dependencies = { };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  dependencies = {};
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

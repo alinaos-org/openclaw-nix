@@ -40,7 +40,7 @@
     baileys = "7.0.0-rc14";
     typebox = "1.3.34";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "audio-decode"
     "baileys"

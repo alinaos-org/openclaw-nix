@@ -29,7 +29,7 @@
   channels = [
     "matrix"
   ];
-  contracts = { };
+  contracts = {};
   dependencies = {
     "@matrix-org/matrix-sdk-crypto-nodejs" = "0.6.6";
     "@matrix-org/matrix-sdk-crypto-wasm" = "18.8.0";
@@ -41,7 +41,7 @@
     typebox = "1.3.34";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@matrix-org/matrix-sdk-crypto-nodejs"
     "@matrix-org/matrix-sdk-crypto-wasm"

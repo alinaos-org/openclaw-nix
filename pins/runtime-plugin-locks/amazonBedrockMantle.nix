@@ -26,13 +26,13 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
-  contracts = { };
+  channels = [];
+  contracts = {};
   dependencies = {
     "@anthropic-ai/sdk" = "0.128.0";
     "@aws/bedrock-token-generator" = "1.1.0";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@anthropic-ai/sdk"
     "@aws/bedrock-token-generator"

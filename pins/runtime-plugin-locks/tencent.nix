@@ -26,10 +26,10 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = "./dist/setup-api.js";
-  channels = [ ];
-  contracts = { };
-  dependencies = { };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  channels = [];
+  contracts = {};
+  dependencies = {};
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

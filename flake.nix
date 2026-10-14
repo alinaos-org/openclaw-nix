@@ -114,10 +114,10 @@
       session-icons = pkgs.openclawRuntimePlugins.session-icons;
       # Every runtime plugin at the release (CI builds them all).
       runtime-plugins = pkgs.linkFarm "openclaw-runtime-plugins" (map (name: {
-        inherit name;
-        path = pkgs.openclawRuntimePlugins.${name};
-      })
-      pkgs.openclawNix.runtimePluginIds);
+          inherit name;
+          path = pkgs.openclawRuntimePlugins.${name};
+        })
+        pkgs.openclawNix.runtimePluginIds);
     });
 
     checks = forAllSystems (system: let

@@ -40,14 +40,14 @@
   channels = [
     "twitch"
   ];
-  contracts = { };
+  contracts = {};
   dependencies = {
     "@twurple/api-call" = "8.2.0";
     "@twurple/auth" = "8.2.0";
     "@twurple/chat" = "8.2.0";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

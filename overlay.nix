@@ -55,16 +55,9 @@
     then compiledGateway
     else customizeGateway ({gateway = compiledGateway;} // customize);
 
-  # The shape of a pinned plugin the catalogs do not describe.
-  manualLocks.voyage = {
-    id = "voyage";
-    packageName = "@openclaw/voyage-provider";
-    dependencyMode = "none";
-    runtimeExtensions = ["./dist/index.js"];
-    dependencies = {};
-    optionalDependencies = {};
-    bundledPackageRoots = [];
-  };
+  # The lock shape of a plugin pinned by hand outside the catalogs: add one here
+  # with its pins/runtime-plugins.json entry (none today; the catalogs cover them).
+  manualLocks = {};
 
   pinnedLock = id: let
     pin = pins.plugins.${id};

@@ -45,7 +45,7 @@
     ws = "8.21.3";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@discord/embedded-app-sdk"
     "@discordjs/voice"

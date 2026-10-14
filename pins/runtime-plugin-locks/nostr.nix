@@ -29,12 +29,12 @@
   channels = [
     "nostr"
   ];
-  contracts = { };
+  contracts = {};
   dependencies = {
     nostr-tools = "2.25.2";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "nostr-tools"
     "zod"
