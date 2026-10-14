@@ -43,18 +43,20 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "home-manager": "home-manager",
-        "nix-openclaw-tools": "nix-openclaw-tools",
+        "nix-openclaw-tools": [
+          "nix-openclaw-tools"
+        ],
         "nixpkgs": [
           "nixpkgs"
         ],
         "qmd": "qmd"
       },
       "locked": {
-        "lastModified": 1792002439,
-        "narHash": "sha256-QgRU/xPEKT1ra2KeSQARsSTNDCDoGpcrRlLyoscmrfI=",
+        "lastModified": 1792010491,
+        "narHash": "sha256-a/Sy81pzZlhHtVIElIuV5qMvp4wQLfMOH7GBOpTEL1s=",
         "owner": "alinaos-org",
         "repo": "nix-openclaw",
-        "rev": "612c18efa439958e38a576f1fd822b365ba4e25e",
+        "rev": "f4c57bdef340f94d42bda6e5f06bf0af1d1d6065",
         "type": "github"
       },
       "original": {
@@ -71,13 +73,13 @@
       "locked": {
         "lastModified": 1790151707,
         "narHash": "sha256-buJkQpTHNMawudMv2p00KwPAIuHMtK4CZXk7DgfHkx0=",
-        "owner": "openclaw",
+        "owner": "alinaos-org",
         "repo": "nix-openclaw-tools",
         "rev": "8b674893eb3dfddc55ac76fa532a3b11b4330575",
         "type": "github"
       },
       "original": {
-        "owner": "openclaw",
+        "owner": "alinaos-org",
         "repo": "nix-openclaw-tools",
         "type": "github"
       }
@@ -143,6 +145,7 @@
     "root": {
       "inputs": {
         "nix-openclaw": "nix-openclaw",
+        "nix-openclaw-tools": "nix-openclaw-tools",
         "nixpkgs": "nixpkgs_2"
       }
     },

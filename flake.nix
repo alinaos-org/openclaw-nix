@@ -3,23 +3,27 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    # Upstream Nix packaging. Used for its source build recipe, CLI tool bundle
-    # and runtime-plugin builder; its own OpenClaw pin is replaced by ours.
-    # Upstream nix-openclaw plus one change on the alinaos-org fork's openclaw-nix
-    # branch: its Home Manager module takes the typed config options from
-    # `openclawConfigOptionsFile`, which openclaw-nix generates per release
-    # (pins/openclaw-config-options.nix). Offered upstream; drop the fork once
-    # merged there.
+    # Our nix-openclaw (alinaos-org's, started from upstream's and diverging as
+    # we need): the gateway's source recipe (nix/gateway-recipe), the CLI tool
+    # bundle, the runtime-plugin builder and the Home Manager module, which types
+    # each instance's config with this release's options (openclawConfigOptionsFile,
+    # pins/openclaw-config-options.nix). Its own OpenClaw pin is replaced by ours.
     nix-openclaw = {
       url = "github:alinaos-org/nix-openclaw/openclaw-nix";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nix-openclaw-tools.follows = "nix-openclaw-tools";
     };
+    # The CLI tools and the bundled plugins' flakes (alinaos-org's, updated from
+    # each tool's own releases). nix-openclaw follows this input, so this lock
+    # picks the tools version; release-watch moves it with every release.
+    nix-openclaw-tools.url = "github:alinaos-org/nix-openclaw-tools";
   };
 
   outputs = {
     self,
     nixpkgs,
     nix-openclaw,
+    nix-openclaw-tools,
   }: let
     lib = nixpkgs.lib;
     systems = ["x86_64-linux"];

@@ -50,6 +50,8 @@ jobs:
           set -o pipefail
           v=${{ steps.latest.outputs.latest }}
           python3 scripts/new-release.py "$v" --skip-pnpm
+          # The CLI tools at their latest releases, qualified with this release.
+          nix flake update nix-openclaw-tools
           # Every plugin OpenClaw's catalogs list, at this release.
           scripts/generate-plugin-locks.sh "$v" | tee -a "$GITHUB_STEP_SUMMARY"
           # The typed config options from this release's schema.
@@ -68,7 +70,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "release-$v"
-          git add -A release.nix releases.nix pins
+          git add -A release.nix releases.nix pins flake.lock
           git commit -m "openclaw: $v"
           git push origin "release-$v"
           note=""
