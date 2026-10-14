@@ -26,7 +26,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     webFetchProviders = [
       "firecrawl"
@@ -43,7 +43,7 @@
   dependencies = {
     typebox = "1.3.34";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "typebox"
   ];

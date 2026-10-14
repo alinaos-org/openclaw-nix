@@ -26,7 +26,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     embeddingProviders = [
       "bedrock"
@@ -39,7 +39,7 @@
     "@smithy/node-http-handler" = "4.12.1";
     "@smithy/types" = "4.18.0";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@aws-sdk/client-bedrock"
     "@aws-sdk/client-bedrock-runtime"

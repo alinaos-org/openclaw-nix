@@ -26,7 +26,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     gatewayMethodDispatch = [
       "authenticated-request"
@@ -35,7 +35,7 @@
   dependencies = {
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "zod"
   ];

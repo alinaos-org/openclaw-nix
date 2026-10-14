@@ -37,7 +37,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     embeddingProviders = [
       "local"
@@ -46,7 +46,7 @@
   dependencies = {
     "@openclaw/fs-safe" = "0.24.2";
   };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

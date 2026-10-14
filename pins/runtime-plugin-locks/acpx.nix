@@ -37,8 +37,8 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
-  contracts = { };
+  channels = [];
+  contracts = {};
   dependencies = {
     "@agentclientprotocol/claude-agent-acp" = "0.79.0";
     "@agentclientprotocol/codex-acp" = "1.12.0";
@@ -47,7 +47,7 @@
     smol-toml = "1.8.0";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

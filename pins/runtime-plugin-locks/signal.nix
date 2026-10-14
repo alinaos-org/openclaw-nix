@@ -29,13 +29,13 @@
   channels = [
     "signal"
   ];
-  contracts = { };
+  contracts = {};
   dependencies = {
     "@openclaw/fs-safe" = "0.24.2";
     ws = "8.21.3";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@openclaw/fs-safe"
     "ws"

@@ -39,7 +39,7 @@
     zca-js = "2.2.0";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "typebox"
     "zca-js"

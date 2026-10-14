@@ -26,7 +26,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     tools = [
       "facetime_call"
@@ -35,7 +35,7 @@
   dependencies = {
     typebox = "1.3.34";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "typebox"
   ];

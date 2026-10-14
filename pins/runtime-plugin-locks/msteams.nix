@@ -40,7 +40,7 @@
   channels = [
     "msteams"
   ];
-  contracts = { };
+  contracts = {};
   dependencies = {
     "@azure/identity" = "4.13.3";
     "@microsoft/teams.api" = "2.1.0";
@@ -49,7 +49,7 @@
     typebox = "1.3.34";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

@@ -26,7 +26,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     tools = [
       "lobster"
@@ -36,7 +36,7 @@
     "@clawdbot/lobster" = "2026.9.14";
     typebox = "1.3.34";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@clawdbot/lobster"
     "typebox"

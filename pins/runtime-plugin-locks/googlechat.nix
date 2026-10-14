@@ -29,12 +29,12 @@
   channels = [
     "googlechat"
   ];
-  contracts = { };
+  contracts = {};
   dependencies = {
     google-auth-library = "11.1.0";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "google-auth-library"
     "zod"

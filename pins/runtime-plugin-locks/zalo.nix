@@ -29,11 +29,11 @@
   channels = [
     "zalo"
   ];
-  contracts = { };
+  contracts = {};
   dependencies = {
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "zod"
   ];

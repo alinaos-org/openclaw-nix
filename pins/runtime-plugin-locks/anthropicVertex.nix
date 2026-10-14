@@ -26,14 +26,14 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
-  contracts = { };
+  channels = [];
+  contracts = {};
   dependencies = {
     "@anthropic-ai/vertex-sdk" = "0.19.10";
     google-auth-library = "11.1.0";
     undici = "8.11.2";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "@anthropic-ai/vertex-sdk"
     "google-auth-library"

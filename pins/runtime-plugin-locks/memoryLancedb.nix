@@ -37,7 +37,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     tools = [
       "memory_forget"
@@ -59,6 +59,6 @@
     "@lancedb/lancedb-win32-arm64-msvc" = "0.39.0";
     "@lancedb/lancedb-win32-x64-msvc" = "0.39.0";
   };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

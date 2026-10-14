@@ -29,12 +29,12 @@
   channels = [
     "imessage"
   ];
-  contracts = { };
+  contracts = {};
   dependencies = {
     typebox = "1.3.34";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "typebox"
     "zod"

@@ -26,7 +26,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     agentToolResultMiddleware = [
       "openclaw"
@@ -37,7 +37,7 @@
   dependencies = {
     tokenjuice = "0.8.5";
   };
-  optionalDependencies = { };
+  optionalDependencies = {};
   bundleDependencies = [
     "tokenjuice"
   ];

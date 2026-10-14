@@ -37,7 +37,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     decisionProviders = [
       "onnx"
@@ -50,6 +50,6 @@
   optionalDependencies = {
     onnxruntime-node = "1.30.0";
   };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }

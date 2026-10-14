@@ -37,7 +37,7 @@
     "./dist/index.js"
   ];
   runtimeSetupEntry = null;
-  channels = [ ];
+  channels = [];
   contracts = {
     mediaUnderstandingProviders = [
       "codex"
@@ -67,7 +67,7 @@
     ws = "8.21.3";
     zod = "4.6.5";
   };
-  optionalDependencies = { };
-  bundleDependencies = [ ];
-  bundledPackageRoots = [ ];
+  optionalDependencies = {};
+  bundleDependencies = [];
+  bundledPackageRoots = [];
 }
