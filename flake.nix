@@ -9,12 +9,20 @@
       url = "github:openclaw/nix-openclaw/f62d33f760bcbdbc6a52ac589eae22bf99201f90";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # The gateway's source recipe and build scripts only, from the nix-openclaw
+    # revision packages/gateway's repairs are written against. Upstream's later
+    # recipe (build:package, filtered rebuilds) needs those repairs requalified.
+    nix-openclaw-gateway = {
+      url = "github:openclaw/nix-openclaw/e72fe70f6d23cf2efe8a2a693f0788090af9bde0";
+      flake = false;
+    };
   };
 
   outputs = {
     self,
     nixpkgs,
     nix-openclaw,
+    nix-openclaw-gateway,
   }: let
     lib = nixpkgs.lib;
     systems = ["x86_64-linux"];
@@ -24,7 +32,7 @@
     # gateway or trim the CLI bundle: (mkOverlay { sharedBuild = true; customize = ...; }).
     # mkPackageSetOverlay leaves out nix-openclaw's overlay, for consumers
     # that already apply it.
-    mkPackageSetOverlay = args: import ./overlay.nix {inherit nix-openclaw self;} args;
+    mkPackageSetOverlay = args: import ./overlay.nix {inherit nix-openclaw nix-openclaw-gateway self;} args;
     mkOverlay = args:
       lib.composeManyExtensions [
         nix-openclaw.overlays.default

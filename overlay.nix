@@ -11,6 +11,7 @@
 # `final.openclaw-gateway` too, so a closure never mixes OpenClaw releases.
 {
   nix-openclaw,
+  nix-openclaw-gateway,
   self,
 }: {
   # Arguments for packages/gateway: extraSourcePatches, extraTests,
@@ -47,7 +48,7 @@
       assert lib.assertMsg (gatewayArgs == {})
       "openclaw-nix: sharedBuild uses this flake's own gateway build; express gatewayArgs as customize";
         self.packages.${final.stdenv.hostPlatform.system}.gateway
-    else final.callPackage ./packages/gateway ({inherit nix-openclaw;} // gatewayArgs);
+    else final.callPackage ./packages/gateway ({nix-openclaw = nix-openclaw-gateway;} // gatewayArgs);
   customizeGateway = args: final.callPackage ./packages/custom args;
   gateway =
     if customize == {}
