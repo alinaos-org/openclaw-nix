@@ -9,12 +9,16 @@ release newer than `release.nix`'s `current`, it runs:
   release notes' "release SHA"; the source hash; the pnpm bootstrap version; the pnpm
   dependency hash (from `.#gateway.pnpmDeps`); the `releases.nix` entry and
   `release.nix`.
-- `scripts/pin-runtime-plugins.py <v>`: the npm runtime plugins in
-  `pins/runtime-plugins.json`, at the same release. Exit 2 means a plugin's dependencies
-  changed: check its lock shape (`overlay.nix`, `manualLocks`).
+- `scripts/generate-plugin-locks.sh <v>`: every runtime plugin OpenClaw's catalogs list,
+  locked at the same release, into `pins/runtime-plugin-locks` (`report.json` says which
+  were skipped and why). Evaluation fails while the set is for another release.
+- `scripts/pin-runtime-plugins.py <v>`: the few plugins outside the catalogs
+  (`pins/runtime-plugins.json`), at the same release. Exit 2 means a plugin's
+  dependencies changed: check its lock shape (`overlay.nix`, `manualLocks`).
 
 It pushes `release-<v>`, opens a pull request and dispatches CI on it. To do it by hand,
-run the same two scripts in a clone.
+run the same three scripts in a clone (the lock generation takes hours on a slow link;
+the `plugin-locks` workflow runs it on a branch instead).
 
 Opening the pull request needs "Allow GitHub Actions to create and approve pull requests"
 (Settings, Actions, General: the organization first, then the repository). Without it the
@@ -29,7 +33,7 @@ Merging the release pull request needs a code owner's approval, and tags `<relea
 instead of running `nix flake update`.
 
 Release-specific values are data, not gates: the `releases.nix` entry
-(`pnpmBootstrapVersion`, `tsdownHeapMb`, `buildTimestamp`) and the plugin pins.
+(`pnpmBootstrapVersion`, `tsdownHeapMb`, `buildTimestamp`) and the plugin locks.
 
 ## CI and the cache
 

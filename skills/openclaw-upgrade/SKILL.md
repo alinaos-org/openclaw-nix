@@ -8,7 +8,7 @@ description: "Upgrade OpenClaw on a host that builds it with openclaw-nix: revie
 One procedure for every agent that moves a host to a new OpenClaw release. A release is
 made in [openclaw-nix](https://github.com/alinaos-org/openclaw-nix): its `release-watch`
 workflow opens a pull request for each stable release, and CI builds the gateway from
-source with its hotfix layer, the customize layer and the pinned plugins, runs their
+source with its hotfix layer, the customize layer and every runtime plugin at the release, runs their
 tests, and pushes the source build and its pnpm dependency set to the binary cache. A
 host then moves its `openclaw-nix` input, builds only its own layers, qualifies,
 activates and verifies.

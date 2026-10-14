@@ -30,8 +30,16 @@
 }: final: prev: let
   inherit (final) lib;
   release = import ./release.nix;
+  # Every runtime plugin OpenClaw's catalogs list, locked at the release
+  # (scripts/generate-plugin-locks.sh, run by release-watch for each release).
+  releaseLocksDir = ./pins/runtime-plugin-locks;
+  releaseLocksFor = (builtins.fromJSON (builtins.readFile ./pins/runtime-plugin-locks/report.json)).openclawVersion;
+  releaseLocks =
+    if releaseLocksFor != release.current
+    then throw "openclaw-nix: pins/runtime-plugin-locks is for ${releaseLocksFor}, release.nix is ${release.current}; run scripts/generate-plugin-locks.sh ${release.current}"
+    else import releaseLocksDir;
+  # Plugins outside those catalogs, pinned to the release by scripts/pin-runtime-plugins.py.
   pins = builtins.fromJSON (builtins.readFile ./pins/runtime-plugins.json);
-  upstreamLocks = import "${nix-openclaw}/nix/generated/openclaw-runtime-plugins";
 
   compiledGateway =
     if sharedBuild
@@ -46,7 +54,7 @@
     then compiledGateway
     else customizeGateway ({gateway = compiledGateway;} // customize);
 
-  # Plugins nix-openclaw's generated lock set does not describe.
+  # The shape of a pinned plugin the catalogs do not describe.
   manualLocks.voyage = {
     id = "voyage";
     packageName = "@openclaw/voyage-provider";
@@ -61,7 +69,7 @@
     pin = pins.plugins.${id};
     compat = ">=${pins.version}";
   in
-    (upstreamLocks.${id} or manualLocks.${id} or (throw "openclaw-nix: no lock shape for runtime plugin ${id}"))
+    (manualLocks.${id} or (throw "openclaw-nix: no lock shape for runtime plugin ${id}"))
     // {
       version = pins.version;
       inherit (pin) tarballUrl npmIntegrity npmShasum nixHash dependencies;
@@ -73,21 +81,32 @@
       bundledPackageRoots = map (dep: "node_modules/${dep}") pin.bundleDependencies;
     };
 
-  mkRuntimePlugin = lock:
-    final.callPackage "${nix-openclaw}/nix/lib/openclaw-runtime-plugin.nix" {
-      openclawPackage = gateway;
-    }
-    lock;
+  # nix-openclaw's plugin builder, reading package-lock files from the release's
+  # lock set (packages/runtime-plugin/builder.nix).
+  buildRuntimePlugin = {
+    openclawPackage ? gateway,
+    linkOpenClawPeer ? openclawPackage != null,
+  }:
+    final.callPackage ./packages/runtime-plugin/builder.nix {
+      inherit nix-openclaw openclawPackage linkOpenClawPeer;
+      packageLockDir = releaseLocksDir;
+    };
+  mkRuntimePlugin = buildRuntimePlugin {};
 
+  releasePlugins = lib.mapAttrs (_: mkRuntimePlugin) releaseLocks;
+  # A catalog plugin is never also pinned by hand: the release's lock wins.
+  manualPins = removeAttrs pins.plugins (lib.attrNames releaseLocks);
   pinnedPlugins =
-    if pins.version != release.current
-    then throw "openclaw-nix: pins/runtime-plugins.json is for ${pins.version}, release.nix is ${release.current}; run scripts/pin-runtime-plugins.py"
-    else lib.mapAttrs (id: _: mkRuntimePlugin (pinnedLock id)) pins.plugins;
+    if manualPins != {} && pins.version != release.current
+    then throw "openclaw-nix: pins/runtime-plugins.json is for ${pins.version}, release.nix is ${release.current}; run scripts/pin-runtime-plugins.py ${release.current}"
+    else lib.mapAttrs (id: _: mkRuntimePlugin (pinnedLock id)) manualPins;
+  # Every plugin this package set builds at the release.
+  runtimePluginIds = lib.attrNames releasePlugins ++ lib.attrNames pinnedPlugins;
 
   # OpenClaw's own packages carry the release in their names, after any layer
   # suffixes (openclaw-gateway-custom-fenced-<release>). Plugins with an
   # independent version scheme (third-party npm plugins) are not matched.
-  coreNamePattern = "^/nix/store/[a-z0-9]{32}-openclaw(-gateway(-[a-z]+)*|-runtime-plugin-(${lib.concatStringsSep "|" (lib.attrNames pins.plugins ++ ["acpx" "codex"])}))?-(20[0-9]{2}\\.[0-9]+\\.[0-9]+)";
+  coreNamePattern = "^/nix/store/[a-z0-9]{32}-openclaw(-gateway(-[a-z]+)*|-runtime-plugin-(${lib.concatStringsSep "|" (runtimePluginIds ++ ["acpx" "codex"])}))?-(20[0-9]{2}\\.[0-9]+\\.[0-9]+)";
 in {
   openclaw-gateway = gateway;
 
@@ -101,6 +120,7 @@ in {
   # and its SDK peer links the gateway in the closure.
   openclawRuntimePlugins =
     (prev.openclawRuntimePlugins or {})
+    // releasePlugins
     // pinnedPlugins
     // {
       # The session menu's Custom icons library: a native Control UI dialog that saves a
@@ -117,7 +137,10 @@ in {
     };
 
   openclawNix = {
-    inherit release pins gateway compiledGateway mkRuntimePlugin;
+    inherit release pins gateway compiledGateway mkRuntimePlugin buildRuntimePlugin runtimePluginIds;
+    # The release's lock set ({id = lock;}) and the directory it was generated in.
+    runtimePluginLocks = releaseLocks;
+    runtimePluginLocksDir = releaseLocksDir;
     pinnedLock = pinnedLock;
 
     # A consumer's changes as a copy layer over a gateway tree (packages/custom).
