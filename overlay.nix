@@ -11,7 +11,6 @@
 # `final.openclaw-gateway` too, so a closure never mixes OpenClaw releases.
 {
   nix-openclaw,
-  nix-openclaw-gateway,
   self,
 }: {
   # Arguments for packages/gateway: extraSourcePatches, extraTests,
@@ -42,6 +41,15 @@
   # Plugins outside those catalogs, pinned to the release by scripts/pin-runtime-plugins.py.
   pins = builtins.fromJSON (builtins.readFile ./pins/runtime-plugins.json);
 
+  # The gateway's source recipe: our nix-openclaw's nix/gateway-recipe (the
+  # August recipe packages/gateway's repairs are written against; upstream's
+  # later one breaks the @openclaw/ai step on 2026.10.x). Only that directory,
+  # so a nix-openclaw change elsewhere never rebuilds the gateway.
+  gatewayRecipe = builtins.path {
+    name = "openclaw-gateway-recipe";
+    path = "${nix-openclaw.outPath}/nix/gateway-recipe";
+    filter = path: _: baseNameOf path != "README.md";
+  };
   compiledGateway =
     if sharedBuild
     then
@@ -50,10 +58,10 @@
         self.packages.${final.stdenv.hostPlatform.system}.gateway
     else
       final.callPackage ./packages/gateway ({
-          nix-openclaw = nix-openclaw-gateway;
-          # The recipe's own pnpm (the newer nix-openclaw overlay no longer
-          # exports it, and nixpkgs' pnpm_11 is built on another Node).
-          inherit (import "${nix-openclaw-gateway}/nix/packages" {pkgs = prev;}) pnpm_11;
+          inherit gatewayRecipe;
+          # The recipe's own pnpm (nix-openclaw's overlay no longer exports it,
+          # and nixpkgs' pnpm_11 is built on another Node).
+          pnpm_11 = prev.callPackage "${gatewayRecipe}/packages/pnpm-11.nix" {};
         }
         // gatewayArgs);
   customizeGateway = args: final.callPackage ./packages/custom args;

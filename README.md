@@ -499,15 +499,16 @@ nix-openclaw.
 ## License
 
 openclaw-nix's own files are MIT (`LICENSE`). OpenClaw itself is MIT. Several outputs
-are built with [nix-openclaw](https://github.com/openclaw/nix-openclaw), which is
+are built with [nix-openclaw](https://github.com/alinaos-org/nix-openclaw) (our fork of
+[upstream's](https://github.com/openclaw/nix-openclaw)), which is
 AGPL-3.0 with no additional permissions, so an organization with an AGPL policy should
 review this before deploying. The parts that come from nix-openclaw, as of this
 release:
 
 | openclaw-nix output | nix-openclaw part | How it is used |
 |---|---|---|
-| `gateway` (and every layer over it) | `nix/packages/openclaw-gateway-source.nix` | the source recipe, called and overridden |
-| `gateway` | `nix/scripts/gateway-build.sh`, `gateway-prebuild.sh` | copied into the build and edited (`packages/gateway`) |
+| `gateway` (and every layer over it) | `nix/gateway-recipe/packages/openclaw-gateway-source.nix` and the files it reads | the source recipe, called and overridden |
+| `gateway` | `nix/gateway-recipe/scripts/gateway-build.sh`, `gateway-prebuild.sh` | copied into the build and edited (`packages/gateway`) |
 | `runtime-plugins`, `pkgs.openclawRuntimePlugins` | `nix/lib/openclaw-runtime-plugin.nix`, `nix/generated/openclaw-runtime-plugins` | the plugin builder and its generated locks |
 | `overlays.default` | `overlays.default` | applied first, for the CLI tool bundle |
 | `homeManagerModules.configOverlay` | `homeManagerModules.openclaw` | extends its `programs.openclaw.instances` options |
