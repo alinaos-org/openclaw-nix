@@ -6,7 +6,7 @@
     # Upstream Nix packaging. Used for its source build recipe, CLI tool bundle
     # and runtime-plugin builder; its own OpenClaw pin is replaced by ours.
     nix-openclaw = {
-      url = "github:openclaw/nix-openclaw/e72fe70f6d23cf2efe8a2a693f0788090af9bde0";
+      url = "github:openclaw/nix-openclaw/f62d33f760bcbdbc6a52ac589eae22bf99201f90";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

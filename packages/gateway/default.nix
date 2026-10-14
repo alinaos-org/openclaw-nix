@@ -176,7 +176,7 @@
 
   baseGateway = callPackage "${nix-openclaw}/nix/packages/openclaw-gateway-source.nix" {
     inherit sourceInfo pnpmDepsHash;
-    nodejs_22 = node;
+    nodejs_24 = node;
     gatewaySrc = src;
     inherit pnpm_11;
     fetchPnpmDeps = hostPlatformFetchPnpmDeps;
