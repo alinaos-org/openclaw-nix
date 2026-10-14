@@ -114,7 +114,7 @@ another machine can reproduce that setup by declaring its instances:
       gatewayPort = 18789;
       runtimePlugins = ["session-icons"];
       materializeRuntimePlugins = true;
-      # Labs > Custom plugin UI for the Icon library; nix-openclaw's typed
+      # Labs > Custom plugin UI for the Custom icons library; nix-openclaw's typed
       # options reject the key, so it rides the runtime filter.
       runtimeConfigJqFilter = ''.gateway.controlUi.experimental = {"customPlugins": true}'';
       uiOverlay.enable = true; # the Control UI may save, within its policy
@@ -172,7 +172,7 @@ For the host, beside the instances:
 `checks.workstation` boots a VM and checks:
 - a user's gateway, running as that user's unit and started at boot;
 - secrets from the shared env file, kept out of the configs;
-- the Icon library, served from state;
+- the Custom icons library, served from state;
 - an agent turn against a stub model provider;
 - the restore command;
 - the workspace files and the retirement of `TOOLS.md`;
@@ -291,7 +291,7 @@ old ones off the host once a release has been accepted.
 - the hardening score;
 - one agent turn against a stub OpenAI-compatible provider, whose API key arrives only
   through the instance's credential;
-- the Icon library served from the state directory;
+- the Custom icons library served from the state directory;
 - a Control UI edit surviving a restart;
 - the rollback above.
 

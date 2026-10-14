@@ -13,11 +13,11 @@
     instances.main = {
       configFile = ./main.json;
       gatewayPort = 18789;
-      # The session menu's Icon library, copied into the instance's state.
+      # The session menu's Custom icons library, copied into the instance's state.
       runtimePlugins = ["session-icons"];
       materializeRuntimePlugins = true;
       # Render a writable runtime config at each start, so the Control UI can
-      # save within its policy. Labs > Custom plugin UI, which the Icon library
+      # save within its policy. Labs > Custom plugin UI, which the Custom icons library
       # needs, rides this filter: nix-openclaw's typed options reject the key.
       runtimeConfigJqFilter = ''.gateway.controlUi.experimental = {"customPlugins": true}'';
       uiOverlay.enable = true;

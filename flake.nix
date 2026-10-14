@@ -440,7 +440,7 @@
       };
       # The workstation module in a VM: one gateway as a user unit of a desktop
       # user, started at boot through linger, with its secrets from the shared env
-      # file, the Icon library copied into its state, and one agent turn against a
+      # file, the Custom icons library copied into its state, and one agent turn against a
       # stub model provider; its workspace files, their heartbeat checklist, and
       # the nightly fold of a Control UI edit into a git commit.
       workstation = pkgs.testers.runNixOSTest {
@@ -488,7 +488,7 @@
               gatewayPort = 18789;
               runtimePlugins = ["session-icons"];
               materializeRuntimePlugins = true;
-              # Labs > Custom plugin UI, which the Icon library needs; nix-openclaw's
+              # Labs > Custom plugin UI, which the Custom icons library needs; nix-openclaw's
               # typed options reject this key, so it rides the runtime filter.
               runtimeConfigJqFilter = ''.gateway.controlUi.experimental = {"customPlugins": true}'';
               uiOverlay.enable = true;
@@ -542,7 +542,7 @@
               for secret in ["ws-test-token", "ws-stub-key"]:
                   machine.fail(f"grep -q {secret} {state}/openclaw.json {state}/openclaw-runtime.json")
 
-          with subtest("the Icon library loads from the state directory"):
+          with subtest("the Custom icons library loads from the state directory"):
               listed = openclaw("gateway call plugins.controlUi.list --json --timeout 30000 --params '{}'")
               print(listed)
               assert "session-icons" in listed, listed
