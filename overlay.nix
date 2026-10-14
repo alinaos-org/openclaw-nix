@@ -101,15 +101,15 @@
     in
       rel == "nix" || rel == "nix/scripts" || lib.hasPrefix "nix/scripts/" rel;
   };
-  # nix-openclaw's plugin builder, reading package-lock files from the release's
-  # lock set (packages/runtime-plugin/builder.nix).
+  # nix-openclaw's plugin builder (nix/lib/openclaw-runtime-plugin.nix), with
+  # the scripts above and the package-lock files of the release's lock set.
   buildRuntimePlugin = {
     openclawPackage ? gateway,
     linkOpenClawPeer ? openclawPackage != null,
   }:
-    final.callPackage ./packages/runtime-plugin/builder.nix {
+    final.callPackage "${nix-openclaw}/nix/lib/openclaw-runtime-plugin.nix" {
       inherit openclawPackage linkOpenClawPeer;
-      nix-openclaw = nixOpenclawScripts;
+      scripts = "${nixOpenclawScripts}/nix/scripts";
       packageLockDir = releaseLocksDir;
     };
   mkRuntimePlugin = buildRuntimePlugin {};

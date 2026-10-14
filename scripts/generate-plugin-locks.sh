@@ -8,7 +8,7 @@
 # package-lock.json files for the plugins that ship one, and report.json (what was
 # supported or skipped, and why). It runs the generator of this flake's
 # nix-openclaw input (nix/scripts/update-openclaw-runtime-plugin-locks.mjs),
-# the version whose builder packages/runtime-plugin/builder.nix copies, against the release's
+# the version whose builder (nix/lib/openclaw-runtime-plugin.nix) builds the plugins, against the release's
 # exact source from releases.nix. release-watch runs it for every new release, so
 # no plugin is ever older than the gateway.
 #
