@@ -1,5 +1,14 @@
 {
   "plugins": {
+    "brave": {
+      "bundleDependencies": [],
+      "dependencies": {},
+      "nixHash": "sha256-I/aL+IAJz1KgsbNX55mfBLl8e8laqpRQKhc32r261PQ=",
+      "npmIntegrity": "sha512-eBzYZeHH3YB/uqscKR/ylrM99TGy5q2YZNB2my0Y1+C0CJMtvQbjUOL1ao1uPwC1jvu5Dzbjz/QyjK+daODErQ==",
+      "npmShasum": "91214cfc99ebb48d621391e9fb2c614e053e5bae",
+      "package": "@openclaw/brave-plugin",
+      "tarballUrl": "https://registry.npmjs.org/@openclaw/brave-plugin/-/brave-plugin-2026.10.3.tgz"
+    },
     "firecrawl": {
       "bundleDependencies": [
         "typebox"
