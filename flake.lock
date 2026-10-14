@@ -64,6 +64,23 @@
         "type": "github"
       }
     },
+    "nix-openclaw-gateway": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785850766,
+        "narHash": "sha256-XhRpZOEFZ8xiz49PeYjcRAwdIWp0mo6IR9l0IqXsjkw=",
+        "owner": "openclaw",
+        "repo": "nix-openclaw",
+        "rev": "e72fe70f6d23cf2efe8a2a693f0788090af9bde0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "openclaw",
+        "repo": "nix-openclaw",
+        "rev": "e72fe70f6d23cf2efe8a2a693f0788090af9bde0",
+        "type": "github"
+      }
+    },
     "nix-openclaw-tools": {
       "inputs": {
         "nixpkgs": "nixpkgs"
@@ -143,6 +160,7 @@
     "root": {
       "inputs": {
         "nix-openclaw": "nix-openclaw",
+        "nix-openclaw-gateway": "nix-openclaw-gateway",
         "nixpkgs": "nixpkgs_2"
       }
     },
