@@ -6,14 +6,16 @@
     # Upstream Nix packaging. Used for its source build recipe, CLI tool bundle
     # and runtime-plugin builder; its own OpenClaw pin is replaced by ours.
     nix-openclaw = {
-      url = "github:openclaw/nix-openclaw/f62d33f760bcbdbc6a52ac589eae22bf99201f90";
+      url = "github:openclaw/nix-openclaw/e72fe70f6d23cf2efe8a2a693f0788090af9bde0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # The gateway's source recipe and build scripts only, from the nix-openclaw
-    # revision packages/gateway's repairs are written against. Upstream's later
-    # recipe (build:package, filtered rebuilds) needs those repairs requalified.
-    nix-openclaw-gateway = {
-      url = "github:openclaw/nix-openclaw/e72fe70f6d23cf2efe8a2a693f0788090af9bde0";
+    # Upstream's runtime-plugin builder scripts and lock generator, newer than the
+    # pin above: packages/runtime-plugin/builder.nix and
+    # scripts/generate-plugin-locks.sh use them (the package-lock dependency mode
+    # the release's plugins need). Its Home Manager module (typed options from
+    # 9.5's schema) and gateway recipe (build:package) are not used yet.
+    nix-openclaw-plugins = {
+      url = "github:openclaw/nix-openclaw/f62d33f760bcbdbc6a52ac589eae22bf99201f90";
       flake = false;
     };
   };
@@ -22,7 +24,7 @@
     self,
     nixpkgs,
     nix-openclaw,
-    nix-openclaw-gateway,
+    nix-openclaw-plugins,
   }: let
     lib = nixpkgs.lib;
     systems = ["x86_64-linux"];
@@ -32,7 +34,7 @@
     # gateway or trim the CLI bundle: (mkOverlay { sharedBuild = true; customize = ...; }).
     # mkPackageSetOverlay leaves out nix-openclaw's overlay, for consumers
     # that already apply it.
-    mkPackageSetOverlay = args: import ./overlay.nix {inherit nix-openclaw nix-openclaw-gateway self;} args;
+    mkPackageSetOverlay = args: import ./overlay.nix {inherit nix-openclaw nix-openclaw-plugins self;} args;
     mkOverlay = args:
       lib.composeManyExtensions [
         nix-openclaw.overlays.default
