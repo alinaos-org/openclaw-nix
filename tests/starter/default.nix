@@ -75,6 +75,9 @@ in
           assert len(token) == 64, len(token)
 
       with subtest("the secrets stay out of the configs"):
+          # Both configs exist first, so the negated grep cannot pass on a missing file.
+          for config in ["openclaw.json", "openclaw-runtime.json"]:
+              machine.succeed(f"test -s {state}/{config}")
           for secret in [token, "sk-starter-provider"]:
               machine.fail(f"grep -qF {secret} {state}/openclaw.json {state}/openclaw-runtime.json")
 
