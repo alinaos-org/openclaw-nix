@@ -115,7 +115,8 @@
       gateway-hotfixed = pkgs.openclawNix.hotfix pkgs.openclaw-gateway;
       openclaw = pkgs.openclaw;
       upgrade-skill = mkUpgradeSkill {inherit pkgs;};
-      # The session menu's Custom icons library (native Control UI plugin).
+      # Deprecated: the session menu's Custom icons library (native Control UI plugin),
+      # now part of the built-in picker (README, "Session icons").
       session-icons = pkgs.openclawRuntimePlugins.session-icons;
       # Every runtime plugin at the release (CI builds them all).
       runtime-plugins = pkgs.linkFarm "openclaw-runtime-plugins" (map (name: {

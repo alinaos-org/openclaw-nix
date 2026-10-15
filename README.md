@@ -114,11 +114,6 @@ another machine can reproduce that setup by declaring its instances:
     instances.main = {
       configFile = ./openclaw.json; # the instance's config; agents, models, channels
       gatewayPort = 18789;
-      runtimePlugins = ["session-icons"];
-      materializeRuntimePlugins = true;
-      # Labs > Custom plugin UI for the Custom icons library; nix-openclaw's typed
-      # options reject the key, so it rides the runtime filter.
-      runtimeConfigJqFilter = ''.gateway.controlUi.experimental = {"customPlugins": true}'';
       uiOverlay.enable = true; # the Control UI may save, within its policy
     };
   };
@@ -174,7 +169,7 @@ For the host, beside the instances:
 `checks.workstation` boots a VM and checks:
 - a user's gateway, running as that user's unit and started at boot;
 - secrets from the shared env file, kept out of the configs;
-- the Custom icons library, served from state;
+- a native Control UI plugin (session-icons), served from state;
 - an agent turn against a stub model provider;
 - the restore command;
 - the workspace files and the retirement of `TOOLS.md`;
@@ -235,9 +230,9 @@ Each instance is `openclaw-<name>.service`:
   `serviceConfig` rather than turning it off;
 - the gateway's own stop semantics: it drains active work for up to about five minutes
   before it exits (`KillMode=mixed`, `TimeoutStopSec=360s`);
-- `sessionIcons.enable` for the session menu's Custom icons library
-  ([`packages/openclaw-session-icons`](packages/openclaw-session-icons/README.md)),
-  copied into the state directory before it loads (`materializePlugins`).
+- `sessionIcons.enable` (deprecated, see [Session icons](#session-icons)) for the
+  session-icons plugin, copied into the state directory before it loads
+  (`materializePlugins`).
 
 The port stays closed unless `openFirewall` is set: terminate TLS and authenticate users
 in a reverse proxy on the same host.
@@ -293,7 +288,7 @@ old ones off the host once a release has been accepted.
 - the hardening score;
 - one agent turn against a stub OpenAI-compatible provider, whose API key arrives only
   through the instance's credential;
-- the Custom icons library served from the state directory;
+- a native Control UI plugin (session-icons) served from the state directory;
 - a Control UI edit surviving a restart;
 - the rollback above.
 
@@ -330,6 +325,27 @@ drops or promotes entries (`promote` prints a merge patch for the source). The b
 (`pkgs.openclawNix.configOverlay` or `lib.mkConfigOverlay pkgs`: `cli`,
 `prepareConfig`, `sync`) serve hosts that wire their own units.
 
+## Session icons
+
+The gateway build changes one Control UI surface
+(`packages/gateway/patches/session-icon-picker.patch`): a session's **Icon & color**
+picker offers every emoji through Emoji 16.0 (about 1,900, by category, with search and
+recent choices first) and, under **Icons**, the six built-in glyphs and this repository's
+library of 72 bold icons in nine groups (aerospace and simulation, AI, code, home lab,
+security, business, finance, creative, life). A choice is saved as before, an emoji, a
+glyph id or an SVG data URL in the session's `icon`, so every client shows it, and icons
+saved by the earlier session-icons plugin still show as selected.
+
+`scripts/generate-session-emoji.mjs` generates the emoji catalog from Unicode's
+`emoji-test.txt`; run it with the gateway's Node, so it lists only emoji the gateway
+accepts as an icon, then re-create the patch. The patch carries its own tests (the
+picker's, the session menu's), which the build runs; a release that moves the picker's
+code fails `patch` there, and the patch is re-ported.
+
+The session-icons plugin (`runtimePlugins = ["session-icons"]`, the NixOS module's
+`sessionIcons.enable`) is deprecated: its Custom icons… dialog duplicates the picker. It
+goes after the 2026.11 releases.
+
 ## Upgrade skill
 
 `skills/openclaw-upgrade` is the agent procedure for upgrading a host: review and merge
@@ -363,7 +379,8 @@ with only nix-openclaw's `nix/scripts` as its scripts, so a nix-openclaw change 
 never rebuilds a plugin.
 
 When a hotfix patch fails on a new release, upstream either fixed the bug (drop the
-patch and its test) or moved the code (re-port its anchors).
+patch and its test) or moved the code (re-port its anchors). The same goes for this
+repository's own source patches (`packages/gateway/patches`), which fail `patch -F0`.
 
 ### Hotfix layer
 

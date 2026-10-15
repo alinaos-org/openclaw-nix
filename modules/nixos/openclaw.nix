@@ -299,9 +299,9 @@ in {
 
           sessionIcons = {
             enable = lib.mkEnableOption ''
-              the session menu's Custom icons library: 72 colour icons for session titles, saved
-              through the gateway's own sessions.patch (native Control UI plugin; turns on
-              Labs > Custom plugin UI)
+              the session menu's Custom icons library (deprecated: the built-in session icon
+              picker has these 72 icons under Icons since 2026.10.3-r3; this option and the
+              session-icons plugin are removed after the 2026.11 releases)
             '';
             package = lib.mkOption {
               type = lib.types.package;
@@ -387,6 +387,12 @@ in {
           message = "services.openclaw.instances: each instance needs its own port";
         }
       ];
+
+    warnings =
+      lib.mapAttrsToList (
+        name: _: "services.openclaw.instances.${name}.sessionIcons is deprecated: the built-in session icon picker has the icon library under Icons now, and the plugin's Custom icons… action duplicates it. Remove the option; it goes after the 2026.11 releases."
+      )
+      (lib.filterAttrs (_: inst: inst.sessionIcons.enable) enabled);
 
     users.users = lib.mapAttrs' (name: inst:
       lib.nameValuePair inst.user {

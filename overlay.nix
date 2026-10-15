@@ -144,8 +144,9 @@ in {
     // releasePlugins
     // pinnedPlugins
     // {
-      # The session menu's Custom icons library: a native Control UI dialog that saves a
-      # colour SVG icon through the gateway's own sessions.patch. No config.
+      # Deprecated: the built-in session icon picker has this library now (README,
+      # "Session icons"). The session menu's Custom icons library: a native Control UI
+      # dialog that saves a colour SVG icon through the gateway's own sessions.patch.
       session-icons =
         final.runCommand "openclaw-runtime-plugin-session-icons-0.2.0" {
           nativeBuildInputs = [final.nodejs_22];
