@@ -171,10 +171,12 @@ def provider_key(args, variable):
 
 
 def write_secrets(target, values, key_file):
+    # One key per variable the gateway needs, under its lower-case name
+    # (templates/workstation/openclaw.nix).
     plain = {"openclaw_gateway_token": secrets.token_hex(32)}
     if values["PROVIDER_KEY_VARIABLE"]:
         # An empty key stays a visible placeholder that openclaw-doctor reports.
-        plain["provider_api_key"] = values.pop("_provider_key") or "REPLACE-ME"
+        plain[values["PROVIDER_KEY_VARIABLE"].lower()] = values.pop("_provider_key") or "REPLACE-ME"
     env = dict(os.environ, SOPS_AGE_KEY_FILE=str(key_file))
     subprocess.run(
         ["sops", "--encrypt", "--filename-override", "secrets/openclaw.yaml",
@@ -224,6 +226,7 @@ def main():
     provider = ask(args, "provider", "Model provider", "openai", choices=sorted(PROVIDERS))
     auth = ask(args, "auth", "Sign in with", "subscription", choices=["subscription", "api-key"])
     variable, model = PROVIDERS[provider]
+    values["PROVIDER"] = provider
     values["MODEL"] = ask(args, "model", "Default model", model)
     values["PROVIDER_KEY_VARIABLE"] = variable if auth == "api-key" else ""
     values["OPENCLAW_NIX_REF"] = args.openclaw_nix_ref or latest_release() or "main"
@@ -258,7 +261,7 @@ Next, in {target}:
   sudo nixos-rebuild switch --flake .#{values['HOSTNAME']}
   openclaw-doctor""")
     if auth == "subscription":
-        print(f"  oc-main models auth login --provider {provider} --device-code")
+        print(f"  openclaw models auth login --provider {provider} --device-code")
 
 
 if __name__ == "__main__":

@@ -17,6 +17,9 @@
   ...
 }: let
   cfg = lib.getAttrFromPath optionPath config;
+  envReferencesOf = import ./env-references.nix lib;
+  # What an instance's gateway process does not get from its env files.
+  strippedEnvironmentFor = inst: lib.optional inst.unsetOpenAIApiKey "OPENAI_API_KEY" ++ inst.unsetEnvironment;
   stateFenceType = lib.types.submodule {
     options = {
       hostname = lib.mkOption {
@@ -355,6 +358,51 @@
         exec ${packageFor name inst}/bin/openclaw "$@"
       '';
     };
+  # `openclaw-doctor [instance...]`: what each gateway still needs (doctor.py) - its
+  # requiredEnvironment set in its env files, the unit ready, `secrets audit` and
+  # `models status` clean - by name only, never a secret's value.
+  doctorManifest = pkgs.writeText "openclaw-doctor.json" (builtins.toJSON {
+    inherit (cfg) user;
+    instances =
+      lib.mapAttrs (name: inst: {
+        unit = "${unitNameFor name}.service";
+        port = inst.gatewayPort;
+        environmentFiles =
+          lib.optional (inst.useSharedEnvironmentFile && cfg.sharedEnvironmentFile != null) cfg.sharedEnvironmentFile
+          ++ lib.optional (inst.environmentFile != null) inst.environmentFile;
+        required = inst.requiredEnvironment;
+        unset = strippedEnvironmentFor inst;
+        # The instance's own CLI and the environment its gateway runs with (as
+        # oc-<name>, but keeping the token its config references).
+        openclaw = "${packageFor name inst}/bin/openclaw";
+        environment =
+          removeAttrs inst.environment ["PATH"]
+          // {
+            OPENCLAW_STATE_DIR = stateDirFor name;
+            OPENCLAW_CONFIG_PATH =
+              if inst.runtimeConfigJqFilter != null
+              then runtimeConfigPathFor name
+              else "${stateDirFor name}/openclaw.json";
+            OPENCLAW_NIX_MODE =
+              if inst.uiOverlay.enable
+              then "0"
+              else "1";
+          };
+        # What its user types for the same command.
+        command =
+          if name == interactiveInstance
+          then "openclaw"
+          else "oc-${name}";
+      })
+      cfg.instances;
+  });
+  doctor = pkgs.runCommand "openclaw-doctor" {nativeBuildInputs = [pkgs.makeWrapper];} ''
+    install -Dm644 ${./doctor.py} $out/libexec/openclaw-doctor.py
+    makeWrapper ${pkgs.python3}/bin/python3 $out/bin/openclaw-doctor \
+      --add-flags "-I $out/libexec/openclaw-doctor.py" \
+      --set OPENCLAW_DOCTOR_MANIFEST ${doctorManifest} \
+      --prefix PATH : ${lib.makeBinPath [pkgs.systemd]}
+  '';
   # `openclaw-<name>-restore list|restore <snapshot|latest>`: roll the state back
   # to a pre-migration snapshot (configOverlay.restoreState) with the gateway
   # stopped. Run the one from the generation being rolled back to; switching to
@@ -556,7 +604,11 @@ in {
       '';
     };
     instances = lib.mkOption {
-      type = lib.types.attrsOf (lib.types.submodule ({name, ...}: {
+      type = lib.types.attrsOf (lib.types.submodule ({
+        name,
+        config,
+        ...
+      }: {
         options = {
           # Where the instance lives, for every module that needs its paths
           # (cron, workflow-control, the config guard, heartbeat checklists).
@@ -590,6 +642,39 @@ in {
               Sanitized OpenClaw config JSON (secrets referenced via
               secretref-env:* / {source = "env"} shapes only). Imported with
               lib.importJSON into programs.openclaw.instances.<name>.config.
+            '';
+          };
+          extraRequiredEnvironment = lib.mkOption {
+            type = lib.types.listOf (lib.types.strMatching "[A-Z_][A-Z0-9_]*");
+            default = [];
+            example = ["OPENAI_API_KEY"];
+            description = ''
+              Environment variables the gateway needs that configFile does not
+              name, such as a model provider's API key OpenClaw reads
+              implicitly. They join requiredEnvironment.
+            '';
+          };
+          requiredEnvironment = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            readOnly = true;
+            # Less what the unit itself sets: its environment, the host's
+            # extraUnitEnvironment and a derived or file-read gateway password.
+            default =
+              lib.subtractLists (
+                builtins.attrNames config.environment
+                ++ map (entry: builtins.head (lib.splitString "=" entry)) cfg.extraUnitEnvironment
+                ++ lib.optional (config.deriveGatewayPassword || config.gatewayPasswordFile != null) "OPENCLAW_GATEWAY_PASSWORD"
+              ) (lib.sort lib.lessThan (lib.unique (
+                envReferencesOf (lib.importJSON config.configFile) ++ config.extraRequiredEnvironment
+              )));
+            defaultText = lib.literalMD "the references in `configFile` (`lib.envReferencesOf`) and `extraRequiredEnvironment`, less what the unit sets itself";
+            description = ''
+              Every environment variable this gateway needs from its env files,
+              for a secrets layer to provide (for example as sops.templates
+              lines) and for openclaw-doctor to check, by name only. Variables
+              the unit sets itself (environment, extraUnitEnvironment, a derived
+              or file-read gateway password) are left out, and references a
+              runtimeConfigJqFilter or configTransform adds are not seen.
             '';
           };
           runtimePlugins = lib.mkOption {
@@ -1005,6 +1090,15 @@ in {
         else "${unitNameFor interactiveInstance}.service";
     })
     {
+      # A reference whose variable the unit removes stays unresolved in the
+      # gateway: a deliberate credential boundary, or a key that never arrives
+      # (OPENAI_API_KEY under unsetOpenAIApiKey). openclaw-doctor fails on it too.
+      warnings = lib.concatLists (lib.mapAttrsToList (name: inst: let
+        stripped = lib.intersectLists inst.requiredEnvironment (strippedEnvironmentFor inst);
+      in
+        lib.optional (stripped != []) "OpenClaw instance ${name}: its config needs ${lib.concatStringsSep ", " stripped}, which its unit removes (unsetEnvironment, or unsetOpenAIApiKey for OPENAI_API_KEY), so the reference stays unresolved")
+      cfg.instances);
+
       assertions =
         lib.optional (interactiveInstance != null) {
           assertion = builtins.hasAttr interactiveInstance cfg.instances;
@@ -1073,7 +1167,8 @@ in {
       home-manager.users.${cfg.user} = lib.mkIf (cfg.instances != {}) {
         # `openclaw-overlay-<instance> list|promote|drop <n|all>|check`
         home.packages =
-          lib.mapAttrsToList overlayToolFor (lib.filterAttrs (_: inst: inst.uiOverlay.enable) cfg.instances)
+          [doctor]
+          ++ lib.mapAttrsToList overlayToolFor (lib.filterAttrs (_: inst: inst.uiOverlay.enable) cfg.instances)
           ++ lib.mapAttrsToList instanceCliFor (lib.filterAttrs (name: _: name != interactiveInstance) cfg.instances)
           ++ lib.mapAttrsToList modeToolFor (lib.filterAttrs (_: inst: inst.declarativeTwin.enable) cfg.instances)
           ++ lib.mapAttrsToList restoreToolFor (lib.filterAttrs (_: inst: inst.migrateStateOnUpgrade && inst.runtimeConfigJqFilter != null) cfg.instances);
