@@ -10,6 +10,7 @@
   age,
   ssh-to-age,
   git,
+  mkpasswd,
   template,
 }:
 runCommand "openclaw-nix-init" {
@@ -19,6 +20,6 @@ runCommand "openclaw-nix-init" {
   install -Dm644 ${./init.py} $out/libexec/openclaw-nix-init.py
   makeWrapper ${python3}/bin/python3 $out/bin/openclaw-nix-init \
     --add-flags "-I $out/libexec/openclaw-nix-init.py" \
-    --prefix PATH : ${lib.makeBinPath [sops age ssh-to-age git]} \
+    --prefix PATH : ${lib.makeBinPath [sops age ssh-to-age git mkpasswd]} \
     --set-default OPENCLAW_NIX_TEMPLATE ${template}
 ''
