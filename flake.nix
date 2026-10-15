@@ -17,6 +17,12 @@
     # each tool's own releases). nix-openclaw follows this input, so this lock
     # picks the tools version; release-watch moves it with every release.
     nix-openclaw-tools.url = "github:alinaos-org/nix-openclaw-tools";
+    # Secrets for the starter template (templates/workstation, `init`): a laptop's
+    # flake follows this input, and checks.starter decrypts with it.
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
@@ -24,6 +30,7 @@
     nixpkgs,
     nix-openclaw,
     nix-openclaw-tools,
+    sops-nix,
   }: let
     lib = nixpkgs.lib;
     systems = ["x86_64-linux"];
@@ -101,11 +108,21 @@
     # Home Manager module, for workstations (modules/workstation/module.nix).
     nixosModules.workstation = self.lib.mkWorkstationModule {};
 
-    # `nix flake init -t github:alinaos-org/openclaw-nix#workstation`
+    # One person's NixOS laptop with an OpenClaw gateway as their user unit. Fill it
+    # in with `nix run github:alinaos-org/openclaw-nix#init -- <dir>`, which also
+    # creates the encrypted secrets (README, "A teammate's laptop").
     templates.workstation = {
       path = ./templates/workstation;
-      description = "A workstation with OpenClaw gateways as user units of one desktop user";
+      description = "One person's NixOS laptop with an OpenClaw gateway (fill it in with the init app)";
     };
+    templates.default = self.templates.workstation;
+
+    apps = forAllSystems (system: {
+      init = {
+        type = "app";
+        program = lib.getExe self.packages.${system}.init;
+      };
+    });
 
     packages = forAllSystems (system: let
       pkgs = pkgsFor system;
@@ -115,6 +132,8 @@
       gateway-hotfixed = pkgs.openclawNix.hotfix pkgs.openclaw-gateway;
       openclaw = pkgs.openclaw;
       upgrade-skill = mkUpgradeSkill {inherit pkgs;};
+      # A laptop flake from the starter template (packages/init).
+      init = pkgs.callPackage ./packages/init {template = ./templates/workstation;};
       # Deprecated: the session menu's Custom icons library (native Control UI plugin),
       # now part of the built-in picker (README, "Session icons").
       session-icons = pkgs.openclawRuntimePlugins.session-icons;
@@ -758,6 +777,12 @@
             touch $out
           '';
       # The generated typed options are left as generated (scripts/generate-config-options.sh).
+      # A laptop from the starter template, as init generates it (tests/starter).
+      starter = import ./tests/starter {
+        inherit pkgs self nix-openclaw sops-nix;
+        inherit (p) init;
+      };
+
       formatting = pkgs.runCommand "openclaw-nix-formatting" {nativeBuildInputs = [pkgs.alejandra];} ''
         alejandra --check --exclude ${self}/pins/openclaw-config-options.nix ${self}
         touch $out

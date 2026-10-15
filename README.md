@@ -179,12 +179,49 @@ For the host, beside the instances:
 `lib.mkWorkstationModule {optionPath = [...];}` puts the options at another path, for a
 host that keeps its own namespace.
 
-A new machine can start from the template, which includes a host flake, the gateway
-declarations and an instance config:
+A new machine starts from the starter, next section.
+
+## A teammate's laptop
+
+`init` turns a NixOS laptop into one person's OpenClaw workstation. Run it on that
+machine, as that person:
 
 ```sh
-nix flake init -t github:alinaos-org/openclaw-nix#workstation
+nix run github:alinaos-org/openclaw-nix#init -- ~/laptop
 ```
+
+It asks only what that person decides: their user and full name, the machine's name
+and time zone, the model provider, and whether they sign in with a subscription or an
+API key. Then it writes a flake from `templates/workstation`:
+
+| File | What it holds |
+| --- | --- |
+| `flake.nix` | openclaw-nix pinned to its newest release tag; nixpkgs, Home Manager and sops-nix follow it |
+| `host.nix` | the machine and its user |
+| `openclaw.nix` | the gateway (a user unit) and its secrets, from sops-nix |
+| `openclaw/main.json` | the instance config; secrets only as `${VAR}` references |
+| `secrets/openclaw.yaml` | a generated gateway token and the provider key, encrypted |
+| `.sops.yaml` | who can decrypt: the machine's SSH host key and the person's own age key |
+| `hardware-configuration.nix` | from `/etc/nixos`, or `nixos-generate-config` |
+
+Secrets never pass through the command line or touch the disk unencrypted. The
+provider key comes from a hidden prompt, or stdin with `--provider-key-stdin`. A
+missing age key is created at `~/.config/sops/age/keys.txt`, and the person backs it up.
+A subscription needs no secret: after the first switch, `oc-main models auth login
+--provider <provider> --device-code` signs that person in.
+
+`--template FLAKE#NAME` generates from another flake's template, for example a team's
+own, which layers shared agents, skills and policy over this module. Every question has
+a flag, and `--non-interactive` uses the defaults, for provisioning. `init --help`
+lists them all.
+
+CI generates a laptop with `init` on every change. `tests/starter/eval-generated.sh`
+evaluates its whole NixOS system, for both sign-in modes. `checks.starter` boots one in
+a VM and checks four things:
+- sops-nix renders the env file for that user alone;
+- the secrets stay out of the configs;
+- the gateway accepts the generated token and no other;
+- the template's model and workspace reach the runtime config.
 
 ## Servers: the NixOS module
 
