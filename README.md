@@ -134,6 +134,17 @@ Per instance:
 - **Secrets.** These come from the shared env file, minus `unsetEnvironment`, or from a
   per-instance `environmentFile`. The gateway password comes from a file or is derived
   from the shared token.
+- **What it needs.** `requiredEnvironment` (read-only) lists every variable the gateway
+  needs from those files.
+  - It covers the config's references (`lib.envReferencesOf`): `${VAR}` without a
+    `:-` fallback, the whole-string `$VAR` shorthand, env SecretRefs and the legacy
+    markers. It adds `extraRequiredEnvironment`, for keys OpenClaw reads implicitly,
+    such as a provider's API key.
+  - It leaves out what the unit sets itself (`environment`, `extraUnitEnvironment`, a
+    derived or file-read password).
+  - A secrets layer can render exactly these, as the starter template does with
+    sops-nix. A required variable that `unsetEnvironment` or `unsetOpenAIApiKey`
+    removes is an evaluation warning.
 - **Unit tuning.** `memoryHigh`/`memoryMax`, `stopTimeout`,
   `inaccessiblePaths`/`readOnlyPaths`, `keepRunningOnActivation` (keep-old) and a
   strict-Nix `declarativeTwin`.
@@ -142,6 +153,15 @@ Per instance:
 - **Rollback.** `openclaw-<name>-restore` rolls the state back, as in "Upgrade and
   rollback" below. Use `systemctl --user stop`, then the target generation's restore
   command, then switch to that generation.
+- **Doctor.** `openclaw-doctor [instance...]`, run as the user, checks four things for
+  every instance and prints the fix for each failure:
+  - **environment:** each required variable is set, not empty and not a placeholder;
+  - **gateway:** the unit is active and `/readyz` answers;
+  - **secrets:** `openclaw secrets audit --check` passes;
+  - **models:** each default route has a sign-in or key, from `openclaw models status`.
+
+  It names variables, never values, and masks any piece of a secret in OpenClaw's own
+  output.
 - **Canary.** `canary.enable` runs a weekly agent turn through `oc-<name>` and writes
   `<stateDir>/hooks-state/canary.json` for a health check. The instance needs a
   password, because `oc-<name>` clears the shared token.
@@ -207,13 +227,19 @@ API key. Then it writes a flake from `templates/workstation`:
 Secrets never pass through the command line or touch the disk unencrypted. The
 provider key comes from a hidden prompt, or stdin with `--provider-key-stdin`. A
 missing age key is created at `~/.config/sops/age/keys.txt`, and the person backs it up.
-A subscription needs no secret: after the first switch, `oc-main models auth login
+A subscription needs no secret: after the first switch, `openclaw models auth login
 --provider <provider> --device-code` signs that person in.
 
 `--template FLAKE#NAME` generates from another flake's template, for example a team's
 own, which layers shared agents, skills and policy over this module. Every question has
 a flag, and `--non-interactive` uses the defaults, for provisioning. `init --help`
 lists them all.
+
+Each `${VAR}` in `openclaw/main.json` becomes a key of `secrets/openclaw.yaml` under its
+lower-case name. The template renders the gateway's env file from the instance's
+`requiredEnvironment`, so a reference without its key fails the build and names the
+key. After the first switch, `openclaw-doctor` checks the rest. OpenAI's models run
+through the Codex harness, so the template bundles the `codex` plugin for that provider.
 
 CI generates a laptop with `init` on every change. `tests/starter/eval-generated.sh`
 evaluates its whole NixOS system, for both sign-in modes. `checks.starter` boots one in
@@ -222,6 +248,10 @@ a VM and checks four things:
 - the secrets stay out of the configs;
 - the gateway accepts the generated token and no other;
 - the template's model and workspace reach the runtime config.
+
+The same VM checks `openclaw-doctor`: it passes on a healthy laptop, and fails with the
+variable's name once a key is removed. It also checks that the gateway process gets the
+provider key.
 
 ## Servers: the NixOS module
 

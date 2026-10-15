@@ -1,0 +1,18 @@
+{
+  "substitution": "${SUBSTITUTED}",
+  "embedded": "https://example.test/${EMBEDDED}/path",
+  "fallback": "${WITH_FALLBACK:-60}",
+  "emptyFallback": "${EMPTY_FALLBACK:-}",
+  "escaped": "$${ESCAPED}",
+  "shorthand": "$SHORTHAND",
+  "notShorthand": "costs $NOT_A_REF today",
+  "secretRef": {"source": "env", "provider": "default", "id": "SECRET_REF"},
+  "fileRef": {"source": "file", "provider": "filemain", "id": "/providers/openai/apiKey"},
+  "legacyMarker": "secretref-env:LEGACY_MARKER",
+  "doubleUnderscoreMarker": "__env__:DOUBLE_UNDERSCORE",
+  "nested": [{"deeper": ["${NESTED}", "${SUBSTITUTED}"]}],
+  "lowercase": "${not_uppercase}",
+  "number": 1,
+  "flag": true,
+  "nothing": null
+}

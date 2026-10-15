@@ -91,6 +91,10 @@
       # (scripts/generate-config-options.sh); nix-openclaw's Home Manager module
       # takes it as `_module.args.openclawConfigOptionsFile`.
       configOptionsFile = ./pins/openclaw-config-options.nix;
+      # The environment variables an OpenClaw config reads, sorted
+      # (modules/workstation/env-references.nix); each workstation instance's
+      # requiredEnvironment starts from it.
+      envReferencesOf = import ./modules/workstation/env-references.nix lib;
       mkWorkstationModule = {optionPath ? ["services" "openclaw" "workstation"]}:
         import ./modules/workstation/module.nix {inherit self nix-openclaw optionPath;};
     };
@@ -777,6 +781,15 @@
             touch $out
           '';
       # The generated typed options are left as generated (scripts/generate-config-options.sh).
+      # lib.envReferencesOf on every reference shape OpenClaw resolves, and the ones
+      # it does not (tests/workstation/env-references.json).
+      env-references = let
+        found = self.lib.envReferencesOf (lib.importJSON ./tests/workstation/env-references.json);
+        expected = ["DOUBLE_UNDERSCORE" "EMBEDDED" "LEGACY_MARKER" "NESTED" "SECRET_REF" "SHORTHAND" "SUBSTITUTED"];
+      in
+        assert lib.assertMsg (found == expected) "envReferencesOf found ${builtins.toJSON found}";
+          pkgs.runCommand "openclaw-env-references" {} "touch $out";
+
       # A laptop from the starter template, as init generates it (tests/starter).
       starter = import ./tests/starter {
         inherit pkgs self nix-openclaw sops-nix;

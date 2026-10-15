@@ -56,9 +56,13 @@ in
       virtualisation.cores = 2;
       environment.systemPackages = [pkgs.curl pkgs.jq];
     };
-    testScript = ''
+    testScript = {nodes, ...}: ''
+      import json
+
       state = "/home/alice/.openclaw-main"
       env = "/run/secrets/rendered/openclaw.env"
+      as_alice = "runuser -u alice -- env HOME=/home/alice XDG_RUNTIME_DIR=/run/user/1000 "
+      required = json.loads('${builtins.toJSON nodes.machine.services.openclaw.workstation.instances.main.requiredEnvironment}')
 
       machine.wait_for_unit("multi-user.target")
       machine.wait_for_unit("openclaw-gateway-main.service", "alice")
@@ -83,6 +87,30 @@ in
           )
           print(machine.succeed(call.format(token)))
           machine.fail(call.format("not-the-token"))
+
+      with subtest("requiredEnvironment: the config's token reference and the provider key"):
+          assert required == ["OPENAI_API_KEY", "OPENCLAW_GATEWAY_TOKEN"], required
+          machine.succeed(f"test \"$(grep -c = {env})\" = {len(required)}")
+
+      with subtest("the gateway process gets the provider key (unsetOpenAIApiKey off for it)"):
+          pid = machine.succeed(as_alice + "systemctl --user show -p MainPID --value openclaw-gateway-main.service").strip()
+          machine.succeed(f"tr '\\0' '\\n' < /proc/{pid}/environ | grep -qx OPENAI_API_KEY=sk-starter-provider")
+
+      with subtest("openclaw-doctor passes, and names a missing variable"):
+          doctor = as_alice + "/etc/profiles/per-user/alice/bin/openclaw-doctor"
+          out = machine.succeed(doctor)
+          print(out)
+          for check in ["environment", "gateway", "secrets"]:
+              assert f"ok   main: {check}" in out, out
+          # The key is found; the VM's CLI cannot load Codex's runtime: a warning.
+          assert "warn main: models: signed in; the CLI cannot load the runtime for openai via codex" in out, out
+          for piece in ["sk-starter-provider", "sk-start", "provider", token, token[:8], token[-8:]]:
+              assert piece not in out, (piece, out)
+          machine.succeed(f"cp -p {env} /tmp/openclaw.env.saved && sed -i '/^OPENAI_API_KEY=/d' {env}")
+          status, out = machine.execute(doctor)
+          print(out)
+          assert status == 1 and "FAIL main: environment: OPENAI_API_KEY not set" in out, out
+          machine.succeed(f"cp -p /tmp/openclaw.env.saved {env}")
 
       with subtest("the template's model and workspace reach the runtime config"):
           machine.succeed(

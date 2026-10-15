@@ -23,14 +23,17 @@ If you sign in with a subscription instead of an API key, do it once after the
 first switch, as yourself:
 
 ```sh
-oc-main models auth login --provider openai --device-code
+openclaw models auth login --provider openai --device-code
 ```
 
 ## Secrets
 
 `sops secrets/openclaw.yaml` opens the secrets decrypted in your editor and encrypts
-them again on save. Never commit a decrypted copy. The gateway reads them from
-`/run/secrets/rendered/openclaw.env`, which only you can read.
+them again on save. Never commit a decrypted copy. Each `${VAR}` in
+`openclaw/main.json` is a key there under its lower-case name (`${SLACK_BOT_TOKEN}`
+is `slack_bot_token`): add the key, and the next switch puts it in
+`/run/secrets/rendered/openclaw.env`, which only you can read. A reference without
+its key fails the build and names the key. `openclaw-doctor` checks them all.
 
 ## Updates
 
