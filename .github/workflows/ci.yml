@@ -27,6 +27,10 @@ jobs:
           nix eval --json .#checks.x86_64-linux --apply 'builtins.mapAttrs (_: c: c.drvPath)'
       - name: Formatting
         run: nix build -L .#checks.x86_64-linux.formatting
+      # init generates a laptop flake as a teammate's machine would, and its whole
+      # NixOS system evaluates against this checkout (both sign-in modes).
+      - name: A generated laptop flake evaluates
+        run: tests/starter/eval-generated.sh
 
   build:
     needs: eval
@@ -68,8 +72,8 @@ jobs:
           CACHIX_CACHE: ${{ vars.CACHIX_CACHE }}
         run: cachix push "$CACHIX_CACHE" "$(nix eval --raw .#gateway.pnpmDeps.outPath)" "$(nix eval --raw .#gateway.outPath)"
 
-  # The NixOS and workstation modules in VMs (checks.nixos-module,
-  # checks.workstation). Not a required check until it
+  # The NixOS and workstation modules and the starter laptop in VMs
+  # (checks.nixos-module, checks.workstation, checks.starter). Not a required check until it
   # has proven stable on hosted runners.
   nixos-module:
     needs: eval
@@ -95,3 +99,5 @@ jobs:
         run: nix build -L .#checks.x86_64-linux.nixos-module
       - name: Workstation module VM test
         run: nix build -L .#checks.x86_64-linux.workstation
+      - name: Starter laptop VM test
+        run: nix build -L .#checks.x86_64-linux.starter
