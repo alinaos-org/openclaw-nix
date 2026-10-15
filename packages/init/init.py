@@ -8,6 +8,18 @@ provider), copies the template, fills it in, brings over this machine's
 hardware-configuration.nix, and creates secrets/openclaw.yaml encrypted for this
 machine's SSH host key and your own age key. Secrets never touch the command line
 or the disk unencrypted. --template takes another flake's template (a team's).
+
+A template may carry `.openclaw-nix-init.json` at its root, which init reads and then
+leaves out of the generated flake:
+
+    {"secretsFile": "secrets/personal.yaml",
+     "prompt": [{"key": "password_hash", "kind": "yescrypt", "label": "Your login password"}]}
+
+secretsFile is where the secrets go (default secrets/openclaw.yaml). Each prompt
+entry adds one secret: `yescrypt` asks for a password twice and stores its yescrypt
+hash, `secret` asks once and stores the value, `generated` stores 32 random bytes in
+hex. Without a terminal, a prompted value comes from the environment variable
+OPENCLAW_NIX_INIT_<KEY> (upper case), never from the command line.
 """
 import argparse
 import getpass
@@ -29,6 +41,9 @@ PROVIDERS = {
     "google": ("GEMINI_API_KEY", "google/gemini-3.1-pro"),
 }
 TOKEN = re.compile(r"@([A-Z][A-Z0-9_]*)@")
+MANIFEST = ".openclaw-nix-init.json"
+KINDS = ("yescrypt", "secret", "generated")
+SECRET_KEY = re.compile(r"^[a-z0-9_]{1,64}$")
 NAME = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,62}$")
 
@@ -170,20 +185,65 @@ def provider_key(args, variable):
     return ""
 
 
-def write_secrets(target, values, key_file):
+def read_manifest(source):
+    path = Path(source) / MANIFEST
+    if not path.is_file():
+        return {"secretsFile": "secrets/openclaw.yaml", "prompt": []}
+    try:
+        manifest = json.loads(path.read_text())
+    except ValueError as error:
+        die(f"{MANIFEST}: {error}")
+    secrets_file = manifest.get("secretsFile", "secrets/openclaw.yaml")
+    if not isinstance(secrets_file, str) or secrets_file.startswith("/") or ".." in Path(secrets_file).parts:
+        die(f"{MANIFEST}: secretsFile must be a relative path inside the flake")
+    prompts = manifest.get("prompt", [])
+    for entry in prompts:
+        if not isinstance(entry, dict) or not SECRET_KEY.match(str(entry.get("key", ""))) or entry.get("kind") not in KINDS:
+            die(f"{MANIFEST}: each prompt needs a key matching {SECRET_KEY.pattern} and a kind of {', '.join(KINDS)}")
+    return {"secretsFile": secrets_file, "prompt": prompts}
+
+
+def prompted(args, entry):
+    key, kind = entry["key"], entry["kind"]
+    label = entry.get("label") or key
+    if kind == "generated":
+        return secrets.token_hex(32)
+    if args.interactive:
+        while True:
+            value = getpass.getpass(f"{label} (input hidden): ")
+            if kind != "yescrypt" or value == getpass.getpass(f"{label} again: "):
+                break
+            print("  they differ; again")
+    else:
+        value = os.environ.get(f"OPENCLAW_NIX_INIT_{key.upper()}", "")
+    if not value:
+        # A visible placeholder that the build or openclaw-doctor reports.
+        return "REPLACE-ME"
+    if kind == "yescrypt":
+        return subprocess.run(["mkpasswd", "--method=yescrypt", "--stdin"], input=value + "\n", text=True,
+                              check=True, capture_output=True).stdout.strip()
+    return value
+
+
+def write_secrets(target, values, key_file, manifest, args):
     # One key per variable the gateway needs, under its lower-case name
-    # (templates/workstation/openclaw.nix).
+    # (templates/workstation/openclaw.nix), and the template's prompted ones.
     plain = {"openclaw_gateway_token": secrets.token_hex(32)}
     if values["PROVIDER_KEY_VARIABLE"]:
         # An empty key stays a visible placeholder that openclaw-doctor reports.
         plain[values["PROVIDER_KEY_VARIABLE"].lower()] = values.pop("_provider_key") or "REPLACE-ME"
+    for entry in manifest["prompt"]:
+        plain[entry["key"]] = prompted(args, entry)
+    secrets_file = manifest["secretsFile"]
+    (target / secrets_file).parent.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, SOPS_AGE_KEY_FILE=str(key_file))
     subprocess.run(
-        ["sops", "--encrypt", "--filename-override", "secrets/openclaw.yaml",
-         "--input-type", "json", "--output-type", "yaml", "--output", "secrets/openclaw.yaml", "/dev/stdin"],
+        ["sops", "--encrypt", "--filename-override", secrets_file,
+         "--input-type", "json", "--output-type", "yaml", "--output", secrets_file, "/dev/stdin"],
         input=json.dumps(plain), text=True, check=True, cwd=target, env=env, capture_output=True,
     )
-    return sorted(plain)
+    placeholders = sorted(k for k, v in plain.items() if v == "REPLACE-ME")
+    return secrets_file, sorted(plain), placeholders
 
 
 def main():
@@ -214,6 +274,7 @@ def main():
     if target.exists() and any(target.iterdir()):
         die(f"{target} exists and is not empty")
     source = template_path(args.template)
+    manifest = read_manifest(source)
 
     user = ask(args, "user", "Your user name", os.environ.get("USER"), check=NAME)
     values = {
@@ -231,7 +292,7 @@ def main():
     values["PROVIDER_KEY_VARIABLE"] = variable if auth == "api-key" else ""
     values["OPENCLAW_NIX_REF"] = args.openclaw_nix_ref or latest_release() or "main"
 
-    shutil.copytree(source, target, dirs_exist_ok=True)
+    shutil.copytree(source, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns(MANIFEST))
     for path in [target, *target.rglob("*")]:
         path.chmod(path.stat().st_mode | stat.S_IWUSR | (stat.S_IXUSR if path.is_dir() else 0))
     print(f"init: {target} from {args.template or 'openclaw-nix#workstation'}, openclaw-nix {values['OPENCLAW_NIX_REF']}")
@@ -245,9 +306,10 @@ def main():
         fill(target, values)
         if values["PROVIDER_KEY_VARIABLE"]:
             values["_provider_key"] = provider_key(args, variable)
-        (target / "secrets").mkdir(exist_ok=True)
-        names = write_secrets(target, values, key_file)
-        print(f"  secrets/openclaw.yaml: {', '.join(names)}, encrypted for this machine and {key_file}")
+        secrets_file, names, placeholders = write_secrets(target, values, key_file, manifest, args)
+        print(f"  {secrets_file}: {', '.join(names)}, encrypted for this machine and {key_file}")
+        if placeholders:
+            print(f"  still to fill with `sops {secrets_file}`: {', '.join(placeholders)}")
     unknown = fill(target, values)
     if unknown - ({"HOST_AGE_RECIPIENT", "USER_AGE_RECIPIENT"} if args.no_secrets else set()):
         die(f"the template uses tokens init does not know: {', '.join(sorted(unknown))}")

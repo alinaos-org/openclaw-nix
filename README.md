@@ -231,7 +231,25 @@ A subscription needs no secret: after the first switch, `openclaw models auth lo
 --provider <provider> --device-code` signs that person in.
 
 `--template FLAKE#NAME` generates from another flake's template, for example a team's
-own, which layers shared agents, skills and policy over this module. Every question has
+own, which layers shared agents, skills and policy over this module. Such a template
+can carry `.openclaw-nix-init.json` at its root; init reads it and leaves it out of the
+generated flake:
+
+```json
+{"secretsFile": "secrets/personal.yaml",
+ "prompt": [{"key": "password_hash", "kind": "yescrypt", "label": "Your login password"}]}
+```
+
+- **`secretsFile`** is where the secrets go. The default is `secrets/openclaw.yaml`.
+- **Each `prompt` entry** adds a key to that file, in one of three kinds:
+  - `yescrypt` asks for a password twice and stores its hash, for
+    `hashedPasswordFile`;
+  - `secret` asks once and stores the value;
+  - `generated` stores 32 random bytes in hex.
+- **Without a terminal,** a prompted value comes from `OPENCLAW_NIX_INIT_<KEY>` in the
+  environment, never from the command line.
+- **An empty value** stays the placeholder `REPLACE-ME`, and init lists those keys for
+  the person to fill with `sops`. Every question has
 a flag, and `--non-interactive` uses the defaults, for provisioning. `init --help`
 lists them all.
 
@@ -240,6 +258,9 @@ lower-case name. The template renders the gateway's env file from the instance's
 `requiredEnvironment`, so a reference without its key fails the build and names the
 key. After the first switch, `openclaw-doctor` checks the rest. OpenAI's models run
 through the Codex harness, so the template bundles the `codex` plugin for that provider.
+
+`checks.init-manifest` runs init on a team-style template with all three prompt
+kinds, then decrypts the result.
 
 CI generates a laptop with `init` on every change. `tests/starter/eval-generated.sh`
 evaluates its whole NixOS system, for both sign-in modes. `checks.starter` boots one in

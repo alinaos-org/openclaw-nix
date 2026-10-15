@@ -790,6 +790,37 @@
         assert lib.assertMsg (found == expected) "envReferencesOf found ${builtins.toJSON found}";
           pkgs.runCommand "openclaw-env-references" {} "touch $out";
 
+      # A team template's .openclaw-nix-init.json: init writes its secretsFile, asks
+      # for its prompts (values from OPENCLAW_NIX_INIT_<KEY> without a terminal), hashes
+      # a yescrypt one, and leaves the manifest out of the flake.
+      init-manifest = pkgs.runCommand "openclaw-init-manifest" {nativeBuildInputs = [pkgs.age pkgs.sops pkgs.jq];} ''
+        export HOME=$TMPDIR
+        cp -r ${./templates/workstation} template && chmod -R u+w template
+        cat > template/.openclaw-nix-init.json <<'JSON'
+        {"secretsFile": "secrets/personal.yaml",
+         "prompt": [{"key": "password_hash", "kind": "yescrypt", "label": "Login password"},
+                    {"key": "team_relay_token", "kind": "secret"},
+                    {"key": "session_secret", "kind": "generated"},
+                    {"key": "left_empty", "kind": "secret"}]}
+        JSON
+        age-keygen -o key.txt 2> /dev/null
+        OPENCLAW_NIX_INIT_PASSWORD_HASH=hunter2 OPENCLAW_NIX_INIT_TEAM_RELAY_TOKEN=relay-test-token \
+          ${p.init}/bin/openclaw-nix-init laptop --template "$PWD/template" --non-interactive \
+          --user alice --full-name 'Alice Example' --hostname laptop --time-zone UTC \
+          --provider anthropic --auth subscription --state-version 25.11 --openclaw-nix-ref test \
+          --hardware-config ${pkgs.writeText "hardware-configuration.nix" "{}"} \
+          --host-age-recipient "$(age-keygen -y key.txt)" --age-key-file key.txt --no-git < /dev/null | tee init.log
+        test ! -e laptop/.openclaw-nix-init.json
+        test ! -e laptop/secrets/openclaw.yaml
+        grep -q 'still to fill with `sops secrets/personal.yaml`: left_empty' init.log
+        SOPS_AGE_KEY_FILE=key.txt sops -d --output-type json laptop/secrets/personal.yaml > plain.json
+        jq -e 'keys == ["left_empty", "openclaw_gateway_token", "password_hash", "session_secret", "team_relay_token"]' plain.json
+        jq -e '(.password_hash | startswith("$y$")) and .password_hash != "hunter2"' plain.json
+        jq -e '.team_relay_token == "relay-test-token" and .left_empty == "REPLACE-ME"' plain.json
+        jq -e '(.session_secret | test("^[0-9a-f]{64}$")) and (.openclaw_gateway_token | test("^[0-9a-f]{64}$"))' plain.json
+        touch $out
+      '';
+
       # A laptop from the starter template, as init generates it (tests/starter).
       starter = import ./tests/starter {
         inherit pkgs self nix-openclaw sops-nix;
