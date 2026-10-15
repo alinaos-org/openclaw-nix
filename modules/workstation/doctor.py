@@ -149,29 +149,56 @@ def secrets_audit(name, spec, env):
 
 
 def models(name, spec, env):
-    # Each route of the default model: its sign-in or key (authStatus) decides; a
-    # runtime the CLI cannot load from outside the gateway (owner-plugin-degraded,
-    # e.g. Codex's harness) is only a warning, since the gateway checks it itself.
+    # Each route of the default model. Signed in when OpenClaw calls its auth usable,
+    # or, when it does not say, when it found a key or profile for the route's
+    # provider. A runtime the CLI cannot load from outside the gateway
+    # (owner-plugin-degraded, e.g. Codex's harness) is only a warning: the gateway
+    # checks it itself.
     code, output, tail = openclaw(name, spec, env, ["models", "status", "--json"])
     cli = spec["command"]
     try:
-        routes = json.loads(output[output.index("{"):output.rindex("}") + 1])["auth"]["runtimeAuthRoutes"]
-    except (ValueError, KeyError, TypeError):
+        auth = json.loads(output[output.index("{"):output.rindex("}") + 1])["auth"]
+        routes = auth.get("runtimeAuthRoutes") or []
+    except (ValueError, KeyError, TypeError, AttributeError):
         report(None, name, "models", f"could not read `models status` (exit {code})", f"{cli} models status")
         show(tail)
         return
-    unsigned = [r for r in routes if r.get("authStatus") != "usable"]
-    unseen = [r for r in routes if r.get("authStatus") == "usable" and r.get("runtimeStatus") not in (None, "available", "usable")]
-    if unsigned:
-        for route in unsigned:
-            report(False, name, "models", f"{route.get('provider')} has no usable sign-in or key ({route.get('authStatus')})",
-                   f"`{cli} models auth login --provider {route.get('provider')} --device-code`, or add its API key")
-    elif unseen:
-        detail = ", ".join(f"{r.get('provider')} via {r.get('runtime')}" for r in unseen)
-        report(None, name, "models", f"signed in; the CLI cannot load the runtime for {detail} "
-               "from outside the gateway, which checks it at the first turn")
-    else:
-        report(True, name, "models", f"{len(routes)} route(s) signed in" if routes else "no model route configured")
+    providers = {p.get("provider"): p for p in auth.get("providers") or [] if isinstance(p, dict)}
+
+    def signed(route):
+        status = route.get("authStatus")
+        if status == "usable":
+            return True
+        if status in ("missing", "expired", "unusable", "invalid"):
+            return False
+        found = providers.get(route.get("authProvider") or route.get("provider")) or {}
+        if (found.get("effective") or {}).get("kind") not in (None, "", "none", "missing"):
+            return True
+        return None
+
+    def fields(route):
+        # Non-secret fields only (never `effective`, which carries masked key text).
+        keys = ("provider", "runtime", "authStatus", "runtimeStatus", "runtimeReason")
+        return ", ".join(f"{k}={route.get(k)}" for k in keys if route.get(k) is not None)
+
+    states = [(route, signed(route)) for route in routes]
+    unsigned = [route for route, ok in states if ok is False]
+    unknown = [route for route, ok in states if ok is None]
+    unseen = [route for route, ok in states
+              if ok and route.get("runtimeStatus") not in (None, "available", "usable", "ok")]
+    for route in unsigned:
+        report(False, name, "models", f"{route.get('provider')} has no usable sign-in or key ({fields(route)})",
+               f"`{cli} models auth login --provider {route.get('provider')} --device-code`, or add its API key")
+    for route in unknown:
+        report(None, name, "models", f"could not tell whether {route.get('provider')} is signed in ({fields(route)})",
+               f"{cli} models status")
+    for route in unseen:
+        report(None, name, "models", f"signed in; the CLI cannot load the runtime for {route.get('provider')} via "
+               f"{route.get('runtime')} from outside the gateway, which checks it at the first turn")
+    if routes and not (unsigned or unknown or unseen):
+        report(True, name, "models", f"{len(routes)} route(s) signed in")
+    elif not routes:
+        report(None, name, "models", "no model route configured", f"{cli} models status")
 
 
 def main():
