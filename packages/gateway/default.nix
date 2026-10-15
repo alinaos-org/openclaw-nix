@@ -12,6 +12,12 @@
 #   plugin entries as regular files, the managed Codex app-server links, a
 #   plain `bin/openclaw` launcher on the gateway's Node.
 #
+# And openclaw-nix's own source changes (patches/, applied before a consumer's),
+# each with the upstream tests it changes run in the build:
+# - session-icon-picker.patch: the Control UI's session icon picker offers every
+#   emoji (search, categories, recent choices) and openclaw-nix's 72-icon library
+#   under Icons. Its emoji catalog is scripts/generate-session-emoji.mjs's output.
+#
 # Host identity (which state directory a host may use) is not part of this
 # build: see ../state-fence.nix. Consumer-specific changes go through
 # `extraSourcePatches`, `extraTests` and `extraInstallCommands`.
@@ -36,7 +42,7 @@
   release ? (import ../../release.nix).current,
   # Appended to the version: <release>-<localRevision>. Bump when this build
   # changes for the same upstream release.
-  localRevision ? "nix.2",
+  localRevision ? "nix.3",
   # Source patches applied in order, before pnpm: a list of paths, or of
   # { name, patch } attrsets. Applied with -p1 and zero fuzz.
   extraSourcePatches ? [],
@@ -59,14 +65,30 @@
     releaseInfo.pnpmDepsHash.${system}
     or (throw "openclaw-nix: no pnpmDepsHash for ${system} in release ${release}");
 
-  sourcePatches = map (p:
-    if builtins.isAttrs p
-    then p
-    else {
-      name = baseNameOf (toString p);
-      patch = p;
-    })
-  extraSourcePatches;
+  # openclaw-nix's own changes, then the consumer's. A release that moves the code a
+  # patch targets fails `patch -F0` below: re-port the patch (or drop it).
+  ownSourcePatches = [
+    {
+      name = "session-icon-picker.patch";
+      patch = ./patches/session-icon-picker.patch;
+    }
+  ];
+  # Control UI tests the own patches change; run with the UI's vitest config.
+  ownUiTests = [
+    "ui/src/components/session-icon-catalog.test.ts"
+    "ui/src/components/session-menu.test.ts"
+    "ui/src/components/session-people-search.test.ts"
+  ];
+  sourcePatches =
+    ownSourcePatches
+    ++ map (p:
+      if builtins.isAttrs p
+      then p
+      else {
+        name = baseNameOf (toString p);
+        patch = p;
+      })
+    extraSourcePatches;
   patchesId = builtins.hashString "sha256" (lib.concatMapStrings (p: builtins.hashFile "sha256" p.patch) sourcePatches);
   # One reproducible identity across the runtime and Control UI build steps.
   controlUiBuildId = "${version}-${builtins.substring 0 12 rev}-${
@@ -239,6 +261,7 @@
       -e '/log_step "build: plugin-sdk dts"/d' \
       -e '/log_step "build: write-plugin-sdk-entry-dts"/d' \
       -e ${lib.escapeShellArg ''/log_step "pnpm prune --prod"/i ${lib.concatMapStrings (t: "test -f ${t} && ") tests}log_step "test: downstream contracts" node node_modules/vitest/vitest.mjs run ${lib.concatStringsSep " " tests}''} \
+      -e ${lib.escapeShellArg ''/log_step "pnpm prune --prod"/i log_step "test: openclaw-nix Control UI changes" node node_modules/vitest/vitest.mjs run --config ui/vitest.config.ts ${lib.concatStringsSep " " ownUiTests}''} \
       -e 's#write-cli-compat\.ts#write-cli-startup-metadata.ts#g' \
       $out
     cat >> $out <<'EOF'

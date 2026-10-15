@@ -1,0 +1,1920 @@
+diff --git a/ui/src/components/session-icon-catalog.test.ts b/ui/src/components/session-icon-catalog.test.ts
+new file mode 100644
+index 00000000..deebcd84
+--- /dev/null
++++ b/ui/src/components/session-icon-catalog.test.ts
+@@ -0,0 +1,238 @@
++/* @vitest-environment jsdom */
++
++import { createHash } from "node:crypto";
++import { render } from "lit";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { normalizeSessionIconValue } from "../../../packages/gateway-protocol/src/session-agent-status.js";
++import { waitForFast } from "../test-helpers/wait-for.ts";
++import {
++  loadSessionEmoji,
++  parseSessionEmojiGroup,
++  recentSessionIcons,
++  searchSessionEmoji,
++  searchSessionIconGlyphs,
++  searchSessionIconLibrary,
++  type SessionIconCatalog,
++} from "./session-icon-catalog.ts";
++import { SESSION_EMOJI_COUNT, SESSION_EMOJI_GROUPS } from "./session-icon-emoji-data.ts";
++import {
++  findSessionIconLibraryIcon,
++  sessionIconLibrary,
++  sessionIconLibraryGroups,
++} from "./session-icon-library.ts";
++import { SESSION_ICON_LIBRARY_SAVED_VALUES } from "./session-icon-library.values.test-support.ts";
++import { renderAppearancePicker } from "./session-icon-picker.ts";
++
++const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
++const savedValues = SESSION_ICON_LIBRARY_SAVED_VALUES;
++
++describe("session icon emoji", () => {
++  it("offers every emoji through Emoji 16.0 that the gateway accepts, in nine groups", () => {
++    const groups = SESSION_EMOJI_GROUPS.map(parseSessionEmojiGroup);
++    expect(groups.map((group) => group.id)).toEqual([
++      "smileys",
++      "people",
++      "animals",
++      "food",
++      "travel",
++      "activities",
++      "objects",
++      "symbols",
++      "flags",
++    ]);
++    const all = groups.flatMap((group) => group.emoji);
++    expect(all).toHaveLength(SESSION_EMOJI_COUNT);
++    expect(SESSION_EMOJI_COUNT).toBeGreaterThan(1800);
++    expect(new Set(all.map((entry) => entry.emoji)).size).toBe(all.length);
++    expect(all.filter((entry) => /[\u{1F3FB}-\u{1F3FF}]/u.test(entry.emoji))).toEqual([]);
++    for (const entry of all) {
++      expect(normalizeSessionIconValue(entry.emoji), entry.name).toBe(entry.emoji);
++    }
++  });
++
++  it("searches names and subgroups with every term", async () => {
++    const groups = await loadSessionEmoji();
++    expect(searchSessionEmoji(groups, "dog").map((entry) => entry.emoji)).toEqual(
++      expect.arrayContaining(["🐶", "🐕"]),
++    );
++    expect(searchSessionEmoji(groups, "RED heart").map((entry) => entry.emoji)).toContain("❤️");
++    expect(searchSessionEmoji(groups, "animal mammal").length).toBeGreaterThan(30);
++    expect(searchSessionEmoji(groups, "dogs").map((entry) => entry.emoji)).toContain("🐕");
++    expect(searchSessionEmoji(groups, "   ")).toEqual([]);
++  });
++});
++
++describe("session icon library", () => {
++  it("keeps 72 icons in nine groups that the gateway accepts", () => {
++    const library = sessionIconLibrary();
++    expect(library).toHaveLength(72);
++    expect(sessionIconLibraryGroups()).toHaveLength(9);
++    expect(new Set(library.map((icon) => icon.value)).size).toBe(72);
++    for (const icon of library) {
++      expect(normalizeSessionIconValue(icon.value), icon.id).toBe(icon.value);
++    }
++  });
++
++  it("saves the plugin's values byte for byte and recognises its older ones", () => {
++    const library = sessionIconLibrary();
++    expect(library.map((icon) => icon.id)).toEqual(savedValues.map((row) => row.id));
++    for (const [index, icon] of library.entries()) {
++      const saved = savedValues[index];
++      expect(sha256(icon.value), `${icon.id}: bold`).toBe(saved?.bold);
++      expect(sha256(icon.previousValue), `${icon.id}: pastel`).toBe(saved?.pastel);
++      expect(sha256(icon.legacyValue), `${icon.id}: outline`).toBe(saved?.outline);
++      expect(findSessionIconLibraryIcon(icon.previousValue)).toBe(icon);
++      expect(findSessionIconLibraryIcon(icon.legacyValue)).toBe(icon);
++    }
++  });
++
++  it("searches labels, groups and keywords", () => {
++    expect(searchSessionIconLibrary("simulink").map((icon) => icon.id)).toContain("simulation");
++    expect(searchSessionIconLibrary("homelab").length).toBeGreaterThan(0);
++    expect(searchSessionIconGlyphs("BOT")).toEqual(["bot"]);
++  });
++});
++
++describe("session icon picker", () => {
++  let host: HTMLElement;
++  beforeEach(() => {
++    localStorage.clear();
++    host = document.createElement("div");
++    document.body.append(host);
++  });
++  afterEach(() => host.remove());
++
++  function mount(overrides: Partial<Parameters<typeof renderAppearancePicker>[0]> = {}) {
++    const onSelect = vi.fn();
++    render(
++      renderAppearancePicker({
++        inline: true,
++        allowSvg: true,
++        mode: "grid",
++        currentIcon: null,
++        currentColor: null,
++        colorDisabled: false,
++        onSelectColor: () => {},
++        onReset: () => {},
++        customIconValue: "",
++        disabled: false,
++        onSelect,
++        onShowCustom: () => {},
++        onBack: () => {},
++        onInput: () => {},
++        onApply: () => {},
++        onGridKeydown: () => {},
++        ...overrides,
++      }),
++      host,
++    );
++    const catalog = host.querySelector<SessionIconCatalog>("openclaw-session-icon-catalog");
++    if (!catalog) {
++      throw new Error("Expected the icon catalog");
++    }
++    return { catalog, onSelect };
++  }
++
++  const labels = () =>
++    Array.from(host.querySelectorAll(".session-menu__icon-scroll .session-menu__icon-section-label")).map(
++      (label) => label.textContent?.trim(),
++    );
++
++  async function search(catalog: SessionIconCatalog, query: string) {
++    const input = host.querySelector<HTMLInputElement>(".session-menu__icon-search");
++    if (!input) {
++      throw new Error("Expected the search box");
++    }
++    input.value = query;
++    input.dispatchEvent(new InputEvent("input", { bubbles: true }));
++    await catalog.updateComplete;
++  }
++
++  it("lists every emoji by category and jumps to a category", async () => {
++    const { catalog } = mount({ currentIcon: "🦞" });
++    await waitForFast(() => expect(labels()).toHaveLength(10));
++    expect(labels()[0]).toBe("Frequently used");
++    expect(labels().slice(1)).toEqual([
++      "Smileys & emotion",
++      "People & body",
++      "Animals & nature",
++      "Food & drink",
++      "Travel & places",
++      "Activities",
++      "Objects",
++      "Symbols",
++      "Flags",
++    ]);
++    // The 11 defaults, the custom-entry cell and every emoji.
++    expect(host.querySelectorAll(".session-menu__icon-scroll .session-menu__icon-choice").length).toBe(
++      11 + SESSION_EMOJI_COUNT + 1,
++    );
++    expect(host.querySelectorAll(".session-menu__icon-group-jump")).toHaveLength(9);
++    expect(catalog.isConnected).toBe(true);
++  });
++
++  it("opens Icons for a library icon and marks its older pastel value as selected", async () => {
++    const icon = sessionIconLibrary().find((entry) => entry.id === "aircraft");
++    if (!icon) {
++      throw new Error("Expected the aircraft icon");
++    }
++    const { catalog } = mount({ currentIcon: icon.previousValue });
++    await catalog.updateComplete;
++    expect(host.querySelector("wa-tab[active]")?.textContent?.trim()).toBe("Icons");
++    expect(labels()).toEqual([
++      "Built-in",
++      "Aerospace & simulation",
++      "AI & agents",
++      "Code & tools",
++      "Home lab & infrastructure",
++      "Security & reliability",
++      "Business & career",
++      "Finance & markets",
++      "Creative & media",
++      "Life & interests",
++    ]);
++    const pressed = host.querySelectorAll<HTMLButtonElement>(
++      '.session-menu__icon-choice[aria-pressed="true"]',
++    );
++    expect(Array.from(pressed).map((choice) => choice.getAttribute("aria-label"))).toEqual([
++      "Aircraft",
++    ]);
++    expect(pressed[0]?.tabIndex).toBe(0);
++  });
++
++  it("searches emoji and icons together and selects the saved value", async () => {
++    const { catalog, onSelect } = mount();
++    await loadSessionEmoji();
++    await search(catalog, "rocket");
++    expect(labels()).toEqual(["Emoji"]);
++    await search(catalog, "simulink");
++    expect(labels()).toEqual(["Icons"]);
++    host.querySelector<HTMLButtonElement>('[aria-label="Simulation blocks"]')?.click();
++    const value = sessionIconLibrary().find((icon) => icon.id === "simulation")?.value;
++    expect(onSelect).toHaveBeenCalledWith(expect.any(MouseEvent), value);
++    await search(catalog, "zzzz qqqq");
++    expect(labels()).toEqual([]);
++    expect(host.querySelector(".session-menu__icon-empty")?.textContent?.trim()).toBe(
++      "Nothing matches “zzzz qqqq”.",
++    );
++  });
++
++  it("puts a chosen emoji first in Frequently used", async () => {
++    const { catalog, onSelect } = mount({ currentIcon: "🦞" });
++    await loadSessionEmoji();
++    await search(catalog, "dog face");
++    host.querySelector<HTMLButtonElement>('[aria-label="dog face"]')?.click();
++    expect(onSelect).toHaveBeenCalledWith(expect.any(MouseEvent), "🐶");
++    expect(recentSessionIcons()).toEqual(["🐶"]);
++    await search(catalog, "");
++    const first = host.querySelector(".session-menu__icon-grid .session-menu__icon-choice");
++    expect(first?.textContent?.trim()).toBe("🐶");
++  });
++
++  it("offers only built-in icons where SVG icons are not allowed", async () => {
++    const { catalog } = mount({ allowSvg: false, currentIcon: "bot" });
++    await catalog.updateComplete;
++    expect(labels()).toEqual(["Built-in"]);
++    expect(host.querySelectorAll(".session-menu__icon-choice img")).toHaveLength(0);
++  });
++});
+diff --git a/ui/src/components/session-icon-catalog.ts b/ui/src/components/session-icon-catalog.ts
+new file mode 100644
+index 00000000..4cecc6b8
+--- /dev/null
++++ b/ui/src/components/session-icon-catalog.ts
+@@ -0,0 +1,591 @@
++import { html, nothing, type TemplateResult } from "lit";
++import { property, state } from "lit/decorators.js";
++import { ifDefined } from "lit/directives/if-defined.js";
++import { ref } from "lit/directives/ref.js";
++import {
++  SESSION_ICON_GLYPH_IDS,
++  SESSION_ICON_SVG_DATA_URL_PREFIX,
++} from "../../../packages/gateway-protocol/src/session-agent-status.js";
++import { t } from "../i18n/index.ts";
++import { OpenClawLightDomElement } from "../lit/openclaw-element.ts";
++import { icons } from "./icons.ts";
++import type { SessionEmojiGroupId } from "./session-icon-emoji-data.ts";
++import { resolveSessionIconGraphic } from "./session-icon-glyph-registry.ts";
++import { syncTabGroupLabel } from "./web-awesome-tabs.ts";
++import {
++  isSessionIconLibraryIcon,
++  sessionIconLibrary,
++  sessionIconLibraryGroups,
++  type SessionIconLibraryGroup,
++  type SessionIconLibraryIcon,
++} from "./session-icon-library.ts";
++
++/** The emoji offered first, before any recent choice. */
++export const SESSION_ICON_EMOJI_CHOICES = [
++  "🦞",
++  "🚀",
++  "🐛",
++  "✅",
++  "🔥",
++  "📦",
++  "🧪",
++  "📝",
++  "🔍",
++  "⚡",
++  "🎯",
++] as const;
++
++export type SessionEmoji = { emoji: string; name: string; subgroup: string };
++export type SessionEmojiGroup = { id: SessionEmojiGroupId; emoji: readonly SessionEmoji[] };
++
++/** Parse one generated group: "@<subgroup>" lines start a subgroup, others are "<emoji> <name>". */
++export function parseSessionEmojiGroup(group: {
++  id: SessionEmojiGroupId;
++  data: string;
++}): SessionEmojiGroup {
++  const emoji: SessionEmoji[] = [];
++  let subgroup = "";
++  for (const line of group.data.split("\n")) {
++    if (line.startsWith("@")) {
++      subgroup = line.slice(1);
++      continue;
++    }
++    const space = line.indexOf(" ");
++    if (space > 0) {
++      emoji.push({ emoji: line.slice(0, space), name: line.slice(space + 1), subgroup });
++    }
++  }
++  return { id: group.id, emoji };
++}
++
++let emojiLoad: Promise<readonly SessionEmojiGroup[]> | undefined;
++
++/** Every emoji the picker offers, loaded on first use (its own chunk). */
++export function loadSessionEmoji(): Promise<readonly SessionEmojiGroup[]> {
++  emojiLoad ??= import("./session-icon-emoji-data.ts").then(({ SESSION_EMOJI_GROUPS }) =>
++    SESSION_EMOJI_GROUPS.map(parseSessionEmojiGroup),
++  );
++  return emojiLoad;
++}
++
++function searchTerms(query: string): string[] {
++  return query.trim().toLowerCase().split(/\s+/u).filter(Boolean);
++}
++
++// A term matches a word or, with spaces and punctuation ignored, run-together words
++// ("homelab" finds "home lab"); a plural also matches its singular ("dogs").
++function matchesTerms(text: string, terms: readonly string[]): boolean {
++  const haystack = text.toLowerCase();
++  const compact = haystack.replace(/[^\p{L}\p{N}]+/gu, "");
++  const matches = (term: string) => haystack.includes(term) || compact.includes(term);
++  return terms.every(
++    (term) => matches(term) || (term.length > 3 && term.endsWith("s") && matches(term.slice(0, -1))),
++  );
++}
++
++/** Emoji whose name or subgroup contains every search term, in catalog order. */
++export function searchSessionEmoji(
++  groups: readonly SessionEmojiGroup[],
++  query: string,
++): SessionEmoji[] {
++  const terms = searchTerms(query);
++  if (!terms.length) {
++    return [];
++  }
++  return groups.flatMap((group) =>
++    group.emoji.filter((entry) =>
++      matchesTerms(`${entry.name} ${entry.subgroup.replaceAll("-", " ")}`, terms),
++    ),
++  );
++}
++
++/** Built-in glyphs whose name contains every search term. */
++export function searchSessionIconGlyphs(query: string): string[] {
++  const terms = searchTerms(query);
++  return terms.length ? SESSION_ICON_GLYPH_IDS.filter((id) => matchesTerms(id, terms)) : [];
++}
++
++export function sessionIconLibraryLabel(icon: SessionIconLibraryIcon): string {
++  return t(`sessionsView.iconLibrary.icons.${icon.id}`);
++}
++
++export function sessionIconLibraryGroupLabel(group: SessionIconLibraryGroup): string {
++  return t(`sessionsView.iconLibrary.groups.${group}`);
++}
++
++/** Library icons whose name, group name or keywords contain every search term. */
++export function searchSessionIconLibrary(query: string): SessionIconLibraryIcon[] {
++  const terms = searchTerms(query);
++  if (!terms.length) {
++    return [];
++  }
++  return sessionIconLibrary().filter((icon) =>
++    matchesTerms(
++      `${sessionIconLibraryLabel(icon)} ${sessionIconLibraryGroupLabel(icon.group)} ${icon.keywords}`,
++      terms,
++    ),
++  );
++}
++
++// Recent choices are this browser's presentation state, not session data.
++const RECENT_KEY = "openclaw.control-ui.session-icons.recent.v1";
++const RECENT_LIMIT = 18;
++
++export function recentSessionIcons(): string[] {
++  try {
++    const value: unknown = JSON.parse(globalThis.localStorage?.getItem(RECENT_KEY) ?? "[]");
++    return Array.isArray(value)
++      ? value.filter((icon): icon is string => typeof icon === "string").slice(0, RECENT_LIMIT)
++      : [];
++  } catch {
++    return [];
++  }
++}
++
++export function rememberSessionIcon(icon: string) {
++  try {
++    const recent = [icon, ...recentSessionIcons().filter((entry) => entry !== icon)];
++    globalThis.localStorage?.setItem(RECENT_KEY, JSON.stringify(recent.slice(0, RECENT_LIMIT)));
++  } catch {
++    // Storage may be unavailable (private mode, quota); recents are optional.
++  }
++}
++
++export type SessionIconCatalogProps = {
++  currentIcon: string | null;
++  allowSvg: boolean;
++  clearable: boolean;
++  disabled: boolean;
++  disabledReason?: string;
++  onSelect: (event: MouseEvent, icon: string | null) => void;
++  onShowCustom: (event: MouseEvent) => void;
++};
++
++type CatalogTab = "emoji" | "icons";
++
++type CatalogItem = {
++  value: string | null;
++  kind: "emoji" | "glyph" | "image";
++  label: string;
++  pressed: boolean;
++};
++
++type CatalogSection = {
++  label: string;
++  items: CatalogItem[];
++  group?: SessionEmojiGroupId;
++  custom?: boolean;
++};
++
++const EMOJI_GROUP_LABELS = {
++  smileys: "sessionsView.iconEmojiGroups.smileys",
++  people: "sessionsView.iconEmojiGroups.people",
++  animals: "sessionsView.iconEmojiGroups.animals",
++  food: "sessionsView.iconEmojiGroups.food",
++  travel: "sessionsView.iconEmojiGroups.travel",
++  activities: "sessionsView.iconEmojiGroups.activities",
++  objects: "sessionsView.iconEmojiGroups.objects",
++  symbols: "sessionsView.iconEmojiGroups.symbols",
++  flags: "sessionsView.iconEmojiGroups.flags",
++} as const satisfies Record<SessionEmojiGroupId, string>;
++
++const SEARCH_RESULT_LIMIT = 240;
++
++let catalogInstances = 0;
++
++/**
++ * The picker's icon choices: Emoji and Icons tabs over every emoji and the icon
++ * library, with search across both. Light DOM, so the session menu's styles,
++ * focus handling and arrow-key grid navigation apply to its choices.
++ */
++export class SessionIconCatalog extends OpenClawLightDomElement {
++  @property({ attribute: false }) props!: SessionIconCatalogProps;
++  @state() private tab: CatalogTab | null = null;
++  @state() private query = "";
++  @state() private emoji: readonly SessionEmojiGroup[] | null = null;
++  @state() private loadFailed = false;
++  // The session menu renders this inside a closed submenu whenever it opens. Until
++  // the picker is shown, render only its first section; then every choice.
++  @state() private shown = typeof IntersectionObserver === "undefined";
++  private observer?: IntersectionObserver;
++  private readonly instance = ++catalogInstances;
++
++  override connectedCallback() {
++    super.connectedCallback();
++    if (this.shown) {
++      this.loadEmoji();
++      return;
++    }
++    this.observer = new IntersectionObserver((entries) => {
++      if (entries.some((entry) => entry.isIntersecting)) {
++        this.observer?.disconnect();
++        this.observer = undefined;
++        this.shown = true;
++        this.loadEmoji();
++      }
++    });
++    this.observer.observe(this);
++  }
++
++  override disconnectedCallback() {
++    this.observer?.disconnect();
++    this.observer = undefined;
++    super.disconnectedCallback();
++  }
++
++  private loadEmoji() {
++    if (this.emoji) {
++      return;
++    }
++    loadSessionEmoji().then(
++      (groups) => {
++        this.emoji = groups;
++      },
++      () => {
++        this.loadFailed = true;
++      },
++    );
++  }
++
++  private get activeTab(): CatalogTab {
++    if (this.tab) {
++      return this.tab;
++    }
++    const current = this.props.currentIcon;
++    if (current === null) {
++      return "emoji";
++    }
++    if (SESSION_ICON_GLYPH_IDS.some((id) => id === current)) {
++      return "icons";
++    }
++    return this.props.allowSvg && current.startsWith(SESSION_ICON_SVG_DATA_URL_PREFIX)
++      ? "icons"
++      : "emoji";
++  }
++
++  private emojiItem(entry: { emoji: string; name: string }): CatalogItem {
++    return {
++      value: entry.emoji,
++      kind: "emoji",
++      label: entry.name,
++      pressed: this.props.currentIcon === entry.emoji,
++    };
++  }
++
++  private glyphItem(id: string): CatalogItem {
++    return { value: id, kind: "glyph", label: id, pressed: this.props.currentIcon === id };
++  }
++
++  private libraryItem(icon: SessionIconLibraryIcon): CatalogItem {
++    return {
++      value: icon.value,
++      kind: "image",
++      label: sessionIconLibraryLabel(icon),
++      pressed: isSessionIconLibraryIcon(this.props.currentIcon, icon),
++    };
++  }
++
++  private emojiName(emoji: string): string {
++    for (const group of this.emoji ?? []) {
++      const entry = group.emoji.find((candidate) => candidate.emoji === emoji);
++      if (entry) {
++        return entry.name;
++      }
++    }
++    return emoji;
++  }
++
++  private recentEmojiSection(): CatalogSection {
++    const recent = recentSessionIcons().filter(
++      (icon) =>
++        !icon.startsWith(SESSION_ICON_SVG_DATA_URL_PREFIX) &&
++        !SESSION_ICON_GLYPH_IDS.some((id) => id === icon),
++    );
++    const choices = [...new Set([...recent, ...SESSION_ICON_EMOJI_CHOICES])].slice(
++      0,
++      Math.max(RECENT_LIMIT, SESSION_ICON_EMOJI_CHOICES.length),
++    );
++    return {
++      label: t("sessionsView.iconRecentSection"),
++      items: choices.map((emoji) => this.emojiItem({ emoji, name: this.emojiName(emoji) })),
++      custom: true,
++    };
++  }
++
++  private builtInSection(): CatalogSection {
++    return {
++      label: t("sessionsView.iconBuiltInSection"),
++      items: [
++        ...(this.props.clearable
++          ? [
++              {
++                value: null,
++                kind: "glyph",
++                label: t("sessionsView.noIcon"),
++                pressed: this.props.currentIcon === null,
++              } satisfies CatalogItem,
++            ]
++          : []),
++        ...SESSION_ICON_GLYPH_IDS.map((id) => this.glyphItem(id)),
++      ],
++      custom: true,
++    };
++  }
++
++  private librarySections(): CatalogSection[] {
++    if (!this.props.allowSvg) {
++      return [];
++    }
++    const library = sessionIconLibrary();
++    return sessionIconLibraryGroups().map((group) => ({
++      label: sessionIconLibraryGroupLabel(group),
++      items: library.filter((icon) => icon.group === group).map((icon) => this.libraryItem(icon)),
++    }));
++  }
++
++  private sections(): CatalogSection[] {
++    if (this.query.trim()) {
++      const emoji = searchSessionEmoji(this.emoji ?? [], this.query)
++        .slice(0, SEARCH_RESULT_LIMIT)
++        .map((entry) => this.emojiItem(entry));
++      const iconItems = [
++        ...searchSessionIconGlyphs(this.query).map((id) => this.glyphItem(id)),
++        ...(this.props.allowSvg
++          ? searchSessionIconLibrary(this.query).map((icon) => this.libraryItem(icon))
++          : []),
++      ];
++      return [
++        ...(emoji.length ? [{ label: t("sessionsView.iconEmojiSection"), items: emoji }] : []),
++        ...(iconItems.length ? [{ label: t("sessionsView.iconGlyphSection"), items: iconItems }] : []),
++      ];
++    }
++    if (this.activeTab === "icons") {
++      return [this.builtInSection(), ...(this.shown ? this.librarySections() : [])];
++    }
++    if (!this.shown) {
++      return [this.recentEmojiSection()];
++    }
++    return [
++      this.recentEmojiSection(),
++      ...(this.emoji ?? []).map((group) => ({
++        label: t(EMOJI_GROUP_LABELS[group.id]),
++        group: group.id,
++        items: group.emoji.map((entry) => this.emojiItem(entry)),
++      })),
++    ];
++  }
++
++  private select(event: MouseEvent, icon: string | null) {
++    if (icon !== null) {
++      rememberSessionIcon(icon);
++    }
++    this.props.onSelect(event, icon);
++  }
++
++  private selectTab(tab: CatalogTab) {
++    this.tab = tab;
++    this.query = "";
++    void this.updateComplete.then(() => {
++      this.querySelector(".session-menu__icon-scroll")?.scrollTo?.({ top: 0 });
++    });
++  }
++
++  private onTabShow = (event: CustomEvent<{ name: string }>) => {
++    event.stopPropagation();
++    const tab = event.detail.name;
++    if ((tab === "emoji" || tab === "icons") && tab !== this.activeTab) {
++      this.selectTab(tab);
++    }
++  };
++
++  private onSearchInput = (event: InputEvent) => {
++    if (event.currentTarget instanceof HTMLInputElement) {
++      this.query = event.currentTarget.value;
++    }
++  };
++
++  // Keys typed into the search box are text, not menu navigation or type-ahead.
++  private onSearchKeydown = (event: KeyboardEvent) => {
++    if (event.key === "Tab") {
++      return;
++    }
++    if (event.key === "Escape") {
++      if (!this.query) {
++        return;
++      }
++      event.preventDefault();
++      this.query = "";
++    } else if (event.key === "ArrowDown") {
++      event.preventDefault();
++      this.querySelector<HTMLButtonElement>(
++        '.session-menu__icon-scroll .session-menu__icon-choice[tabindex="0"]',
++      )?.focus();
++    }
++    event.stopPropagation();
++  };
++
++  private jumpTo(group: SessionEmojiGroupId) {
++    this.querySelector(`[data-emoji-group="${group}"]`)?.scrollIntoView?.({ block: "start" });
++  }
++
++  private renderItem(item: CatalogItem, tabStop: CatalogItem | undefined): TemplateResult {
++    const graphic =
++      item.value === null
++        ? icons.circleX
++        : item.kind === "emoji"
++          ? item.value
++          : resolveSessionIconGraphic(item.value);
++    return html`
++      <button
++        type="button"
++        class=${`session-menu__icon-choice${item.kind === "emoji" ? "" : " session-menu__icon-choice--glyph"}`}
++        aria-label=${item.label}
++        aria-pressed=${item.pressed ? "true" : "false"}
++        tabindex=${item === tabStop ? "0" : "-1"}
++        ?disabled=${this.props.disabled}
++        title=${this.props.disabledReason ?? item.label}
++        @click=${(event: MouseEvent) => this.select(event, item.value)}
++      >
++        ${graphic}
++      </button>
++    `;
++  }
++
++  private renderSections(sections: readonly CatalogSection[], tabStop: CatalogItem | undefined) {
++    return sections.map(
++      (section) => html`
++        <div class="session-menu__icon-section-label" data-emoji-group=${section.group ?? nothing}>
++          ${section.label}
++        </div>
++        <div class="session-menu__icon-grid">
++          ${section.items.map((item) => this.renderItem(item, tabStop))}
++          ${
++            section.custom
++              ? html`<button
++                  type="button"
++                  class="session-menu__icon-choice session-menu__icon-choice--custom"
++                  aria-label=${t(
++                    this.props.allowSvg ? "sessionsView.customIconCell" : "sessionsView.customEmojiCell",
++                  )}
++                  aria-pressed="false"
++                  tabindex="-1"
++                  ?disabled=${this.props.disabled}
++                  title=${ifDefined(this.props.disabledReason)}
++                  @click=${this.props.onShowCustom}
++                >
++                  ${icons.moreHorizontal}
++                </button>`
++              : nothing
++          }
++        </div>
++      `,
++    );
++  }
++
++  private renderPanelBody(tab: CatalogTab, sections: readonly CatalogSection[], tabStop: CatalogItem | undefined) {
++    return html`
++      ${
++        tab === "emoji" && this.emoji
++          ? html`<div class="session-menu__icon-groups">
++              ${this.emoji.map(
++                (group) => html`<button
++                  type="button"
++                  class="session-menu__icon-group-jump"
++                  aria-label=${t(EMOJI_GROUP_LABELS[group.id])}
++                  title=${t(EMOJI_GROUP_LABELS[group.id])}
++                  tabindex="-1"
++                  @click=${() => this.jumpTo(group.id)}
++                >
++                  ${group.emoji[0]?.emoji}
++                </button>`,
++              )}
++            </div>`
++          : nothing
++      }
++      <div class="session-menu__icon-scroll">
++        ${this.renderSections(sections, tabStop)}
++        ${
++          tab === "emoji" && this.shown && !this.emoji
++            ? html`<div class="session-menu__icon-empty">
++                ${t(this.loadFailed ? "sessionsView.iconEmojiLoadFailed" : "sessionsView.iconEmojiLoading")}
++              </div>`
++            : nothing
++        }
++      </div>
++    `;
++  }
++
++  override render() {
++    const tab = this.activeTab;
++    const searching = Boolean(this.query.trim());
++    const sections = this.sections();
++    const items = sections.flatMap((section) => section.items);
++    const tabStop = items.find((item) => item.pressed) ?? items[0];
++    const id = `session-icon-catalog-${this.instance}`;
++    const tabsLabel = t("sessionsView.setIconMenu");
++    return html`
++      <input
++        type="search"
++        class="session-menu__icon-search"
++        autocomplete="off"
++        spellcheck="false"
++        placeholder=${t("sessionsView.iconSearch")}
++        aria-label=${t("sessionsView.iconSearch")}
++        .value=${this.query}
++        @click=${(event: Event) => event.stopPropagation()}
++        @input=${this.onSearchInput}
++        @keydown=${this.onSearchKeydown}
++      />
++      <div class="session-menu__icon-body">
++      ${
++        searching
++          ? html`<div class="session-menu__icon-scroll session-menu__icon-results">
++              ${this.renderSections(sections, tabStop)}
++              ${
++                sections.length
++                  ? nothing
++                  : html`<div class="session-menu__icon-empty">
++                      ${t("sessionsView.iconSearchEmpty", { query: this.query.trim() })}
++                    </div>`
++              }
++            </div>`
++          : html`<wa-tab-group
++              class="session-menu__icon-tabs"
++              aria-label=${tabsLabel}
++              .active=${tab}
++              activation="auto"
++              without-scroll-controls
++              ${ref((element) => syncTabGroupLabel(element, tabsLabel))}
++              @wa-tab-show=${this.onTabShow}
++            >
++              ${(["emoji", "icons"] as const).map(
++                (name) => html`<wa-tab
++                  slot="nav"
++                  id=${`${id}-${name}-tab`}
++                  aria-controls=${`${id}-${name}-panel`}
++                  panel=${name}
++                  ?active=${tab === name}
++                >
++                  ${t(name === "emoji" ? "sessionsView.iconEmojiSection" : "sessionsView.iconGlyphSection")}
++                </wa-tab>`,
++              )}
++              ${(["emoji", "icons"] as const).map(
++                (name) => html`<wa-tab-panel
++                  id=${`${id}-${name}-panel`}
++                  aria-labelledby=${`${id}-${name}-tab`}
++                  name=${name}
++                  ?active=${tab === name}
++                >
++                  ${tab === name ? this.renderPanelBody(name, sections, tabStop) : nothing}
++                </wa-tab-panel>`,
++              )}
++            </wa-tab-group>`
++      }
++      </div>
++    `;
++  }
++}
++
++if (!customElements.get("openclaw-session-icon-catalog")) {
++  customElements.define("openclaw-session-icon-catalog", SessionIconCatalog);
++}
+diff --git a/ui/src/components/session-icon-emoji-data.ts b/ui/src/components/session-icon-emoji-data.ts
+new file mode 100644
+index 00000000..44567d01
+--- /dev/null
++++ b/ui/src/components/session-icon-emoji-data.ts
+@@ -0,0 +1,28 @@
++// Generated by openclaw-nix scripts/generate-session-emoji.mjs from Unicode emoji-test.txt
++// 17.0 (sha256 1d8a944f88d7952f7ef7c5167fef3c67995bcae24543949710231b03a201acda): 1906 emoji through Emoji 16.0, without
++// skin-tone variants, each accepted by the gateway's session icon check. Do not edit.
++// Unicode data: https://www.unicode.org/terms_of_use.html
++export type SessionEmojiGroupId =
++  | "smileys"
++  | "people"
++  | "animals"
++  | "food"
++  | "travel"
++  | "activities"
++  | "objects"
++  | "symbols"
++  | "flags";
++
++export const SESSION_EMOJI_COUNT = 1906;
++
++export const SESSION_EMOJI_GROUPS: readonly { id: SessionEmojiGroupId; data: string }[] = [
++  { id: "smileys", data: "@face-smiling\n😀 grinning face\n😃 grinning face with big eyes\n😄 grinning face with smiling eyes\n😁 beaming face with smiling eyes\n😆 grinning squinting face\n😅 grinning face with sweat\n🤣 rolling on the floor laughing\n😂 face with tears of joy\n🙂 slightly smiling face\n🙃 upside-down face\n🫠 melting face\n😉 winking face\n😊 smiling face with smiling eyes\n😇 smiling face with halo\n@face-affection\n🥰 smiling face with hearts\n😍 smiling face with heart-eyes\n🤩 star-struck\n😘 face blowing a kiss\n😗 kissing face\n☺️ smiling face\n😚 kissing face with closed eyes\n😙 kissing face with smiling eyes\n🥲 smiling face with tear\n@face-tongue\n😋 face savoring food\n😛 face with tongue\n😜 winking face with tongue\n🤪 zany face\n😝 squinting face with tongue\n🤑 money-mouth face\n@face-hand\n🤗 smiling face with open hands\n🤭 face with hand over mouth\n🫢 face with open eyes and hand over mouth\n🫣 face with peeking eye\n🤫 shushing face\n🤔 thinking face\n🫡 saluting face\n@face-neutral-skeptical\n🤐 zipper-mouth face\n🤨 face with raised eyebrow\n😐 neutral face\n😑 expressionless face\n😶 face without mouth\n🫥 dotted line face\n😶‍🌫️ face in clouds\n😏 smirking face\n😒 unamused face\n🙄 face with rolling eyes\n😬 grimacing face\n😮‍💨 face exhaling\n🤥 lying face\n🫨 shaking face\n🙂‍↔️ head shaking horizontally\n🙂‍↕️ head shaking vertically\n@face-sleepy\n😌 relieved face\n😔 pensive face\n😪 sleepy face\n🤤 drooling face\n😴 sleeping face\n🫩 face with bags under eyes\n@face-unwell\n😷 face with medical mask\n🤒 face with thermometer\n🤕 face with head-bandage\n🤢 nauseated face\n🤮 face vomiting\n🤧 sneezing face\n🥵 hot face\n🥶 cold face\n🥴 woozy face\n😵 face with crossed-out eyes\n😵‍💫 face with spiral eyes\n🤯 exploding head\n@face-hat\n🤠 cowboy hat face\n🥳 partying face\n🥸 disguised face\n@face-glasses\n😎 smiling face with sunglasses\n🤓 nerd face\n🧐 face with monocle\n@face-concerned\n😕 confused face\n🫤 face with diagonal mouth\n😟 worried face\n🙁 slightly frowning face\n☹️ frowning face\n😮 face with open mouth\n😯 hushed face\n😲 astonished face\n😳 flushed face\n🥺 pleading face\n🥹 face holding back tears\n😦 frowning face with open mouth\n😧 anguished face\n😨 fearful face\n😰 anxious face with sweat\n😥 sad but relieved face\n😢 crying face\n😭 loudly crying face\n😱 face screaming in fear\n😖 confounded face\n😣 persevering face\n😞 disappointed face\n😓 downcast face with sweat\n😩 weary face\n😫 tired face\n🥱 yawning face\n@face-negative\n😤 face with steam from nose\n😡 enraged face\n😠 angry face\n🤬 face with symbols on mouth\n😈 smiling face with horns\n👿 angry face with horns\n💀 skull\n☠️ skull and crossbones\n@face-costume\n💩 pile of poo\n🤡 clown face\n👹 ogre\n👺 goblin\n👻 ghost\n👽 alien\n👾 alien monster\n🤖 robot\n@cat-face\n😺 grinning cat\n😸 grinning cat with smiling eyes\n😹 cat with tears of joy\n😻 smiling cat with heart-eyes\n😼 cat with wry smile\n😽 kissing cat\n🙀 weary cat\n😿 crying cat\n😾 pouting cat\n@monkey-face\n🙈 see-no-evil monkey\n🙉 hear-no-evil monkey\n🙊 speak-no-evil monkey\n@heart\n💌 love letter\n💘 heart with arrow\n💝 heart with ribbon\n💖 sparkling heart\n💗 growing heart\n💓 beating heart\n💞 revolving hearts\n💕 two hearts\n💟 heart decoration\n❣️ heart exclamation\n💔 broken heart\n❤️‍🔥 heart on fire\n❤️‍🩹 mending heart\n❤️ red heart\n🩷 pink heart\n🧡 orange heart\n💛 yellow heart\n💚 green heart\n💙 blue heart\n🩵 light blue heart\n💜 purple heart\n🤎 brown heart\n🖤 black heart\n🩶 grey heart\n🤍 white heart\n@emotion\n💋 kiss mark\n💯 hundred points\n💢 anger symbol\n💥 collision\n💫 dizzy\n💦 sweat droplets\n💨 dashing away\n🕳️ hole\n💬 speech balloon\n👁️‍🗨️ eye in speech bubble\n🗨️ left speech bubble\n🗯️ right anger bubble\n💭 thought balloon\n💤 ZZZ" },
++  { id: "people", data: "@hand-fingers-open\n👋 waving hand\n🤚 raised back of hand\n🖐️ hand with fingers splayed\n✋ raised hand\n🖖 vulcan salute\n🫱 rightwards hand\n🫲 leftwards hand\n🫳 palm down hand\n🫴 palm up hand\n🫷 leftwards pushing hand\n🫸 rightwards pushing hand\n@hand-fingers-partial\n👌 OK hand\n🤌 pinched fingers\n🤏 pinching hand\n✌️ victory hand\n🤞 crossed fingers\n🫰 hand with index finger and thumb crossed\n🤟 love-you gesture\n🤘 sign of the horns\n🤙 call me hand\n@hand-single-finger\n👈 backhand index pointing left\n👉 backhand index pointing right\n👆 backhand index pointing up\n🖕 middle finger\n👇 backhand index pointing down\n☝️ index pointing up\n🫵 index pointing at the viewer\n@hand-fingers-closed\n👍 thumbs up\n👎 thumbs down\n✊ raised fist\n👊 oncoming fist\n🤛 left-facing fist\n🤜 right-facing fist\n@hands\n👏 clapping hands\n🙌 raising hands\n🫶 heart hands\n👐 open hands\n🤲 palms up together\n🤝 handshake\n🙏 folded hands\n@hand-prop\n✍️ writing hand\n💅 nail polish\n🤳 selfie\n@body-parts\n💪 flexed biceps\n🦾 mechanical arm\n🦿 mechanical leg\n🦵 leg\n🦶 foot\n👂 ear\n🦻 ear with hearing aid\n👃 nose\n🧠 brain\n🫀 anatomical heart\n🫁 lungs\n🦷 tooth\n🦴 bone\n👀 eyes\n👁️ eye\n👅 tongue\n👄 mouth\n🫦 biting lip\n@person\n👶 baby\n🧒 child\n👦 boy\n👧 girl\n🧑 person\n👱 person: blond hair\n👨 man\n🧔 person: beard\n🧔‍♂️ man: beard\n🧔‍♀️ woman: beard\n👨‍🦰 man: red hair\n👨‍🦱 man: curly hair\n👨‍🦳 man: white hair\n👨‍🦲 man: bald\n👩 woman\n👩‍🦰 woman: red hair\n🧑‍🦰 person: red hair\n👩‍🦱 woman: curly hair\n🧑‍🦱 person: curly hair\n👩‍🦳 woman: white hair\n🧑‍🦳 person: white hair\n👩‍🦲 woman: bald\n🧑‍🦲 person: bald\n👱‍♀️ woman: blond hair\n👱‍♂️ man: blond hair\n🧓 older person\n👴 old man\n👵 old woman\n@person-gesture\n🙍 person frowning\n🙍‍♂️ man frowning\n🙍‍♀️ woman frowning\n🙎 person pouting\n🙎‍♂️ man pouting\n🙎‍♀️ woman pouting\n🙅 person gesturing NO\n🙅‍♂️ man gesturing NO\n🙅‍♀️ woman gesturing NO\n🙆 person gesturing OK\n🙆‍♂️ man gesturing OK\n🙆‍♀️ woman gesturing OK\n💁 person tipping hand\n💁‍♂️ man tipping hand\n💁‍♀️ woman tipping hand\n🙋 person raising hand\n🙋‍♂️ man raising hand\n🙋‍♀️ woman raising hand\n🧏 deaf person\n🧏‍♂️ deaf man\n🧏‍♀️ deaf woman\n🙇 person bowing\n🙇‍♂️ man bowing\n🙇‍♀️ woman bowing\n🤦 person facepalming\n🤦‍♂️ man facepalming\n🤦‍♀️ woman facepalming\n🤷 person shrugging\n🤷‍♂️ man shrugging\n🤷‍♀️ woman shrugging\n@person-role\n🧑‍⚕️ health worker\n👨‍⚕️ man health worker\n👩‍⚕️ woman health worker\n🧑‍🎓 student\n👨‍🎓 man student\n👩‍🎓 woman student\n🧑‍🏫 teacher\n👨‍🏫 man teacher\n👩‍🏫 woman teacher\n🧑‍⚖️ judge\n👨‍⚖️ man judge\n👩‍⚖️ woman judge\n🧑‍🌾 farmer\n👨‍🌾 man farmer\n👩‍🌾 woman farmer\n🧑‍🍳 cook\n👨‍🍳 man cook\n👩‍🍳 woman cook\n🧑‍🔧 mechanic\n👨‍🔧 man mechanic\n👩‍🔧 woman mechanic\n🧑‍🏭 factory worker\n👨‍🏭 man factory worker\n👩‍🏭 woman factory worker\n🧑‍💼 office worker\n👨‍💼 man office worker\n👩‍💼 woman office worker\n🧑‍🔬 scientist\n👨‍🔬 man scientist\n👩‍🔬 woman scientist\n🧑‍💻 technologist\n👨‍💻 man technologist\n👩‍💻 woman technologist\n🧑‍🎤 singer\n👨‍🎤 man singer\n👩‍🎤 woman singer\n🧑‍🎨 artist\n👨‍🎨 man artist\n👩‍🎨 woman artist\n🧑‍✈️ pilot\n👨‍✈️ man pilot\n👩‍✈️ woman pilot\n🧑‍🚀 astronaut\n👨‍🚀 man astronaut\n👩‍🚀 woman astronaut\n🧑‍🚒 firefighter\n👨‍🚒 man firefighter\n👩‍🚒 woman firefighter\n👮 police officer\n👮‍♂️ man police officer\n👮‍♀️ woman police officer\n🕵️ detective\n🕵️‍♂️ man detective\n🕵️‍♀️ woman detective\n💂 guard\n💂‍♂️ man guard\n💂‍♀️ woman guard\n🥷 ninja\n👷 construction worker\n👷‍♂️ man construction worker\n👷‍♀️ woman construction worker\n🫅 person with crown\n🤴 prince\n👸 princess\n👳 person wearing turban\n👳‍♂️ man wearing turban\n👳‍♀️ woman wearing turban\n👲 person with skullcap\n🧕 woman with headscarf\n🤵 person in tuxedo\n🤵‍♂️ man in tuxedo\n🤵‍♀️ woman in tuxedo\n👰 person with veil\n👰‍♂️ man with veil\n👰‍♀️ woman with veil\n🤰 pregnant woman\n🫃 pregnant man\n🫄 pregnant person\n🤱 breast-feeding\n👩‍🍼 woman feeding baby\n👨‍🍼 man feeding baby\n🧑‍🍼 person feeding baby\n@person-fantasy\n👼 baby angel\n🎅 Santa Claus\n🤶 Mrs. Claus\n🧑‍🎄 Mx Claus\n🦸 superhero\n🦸‍♂️ man superhero\n🦸‍♀️ woman superhero\n🦹 supervillain\n🦹‍♂️ man supervillain\n🦹‍♀️ woman supervillain\n🧙 mage\n🧙‍♂️ man mage\n🧙‍♀️ woman mage\n🧚 fairy\n🧚‍♂️ man fairy\n🧚‍♀️ woman fairy\n🧛 vampire\n🧛‍♂️ man vampire\n🧛‍♀️ woman vampire\n🧜 merperson\n🧜‍♂️ merman\n🧜‍♀️ mermaid\n🧝 elf\n🧝‍♂️ man elf\n🧝‍♀️ woman elf\n🧞 genie\n🧞‍♂️ man genie\n🧞‍♀️ woman genie\n🧟 zombie\n🧟‍♂️ man zombie\n🧟‍♀️ woman zombie\n🧌 troll\n@person-activity\n💆 person getting massage\n💆‍♂️ man getting massage\n💆‍♀️ woman getting massage\n💇 person getting haircut\n💇‍♂️ man getting haircut\n💇‍♀️ woman getting haircut\n🚶 person walking\n🚶‍♂️ man walking\n🚶‍♀️ woman walking\n🚶‍➡️ person walking facing right\n🚶‍♀️‍➡️ woman walking facing right\n🚶‍♂️‍➡️ man walking facing right\n🧍 person standing\n🧍‍♂️ man standing\n🧍‍♀️ woman standing\n🧎 person kneeling\n🧎‍♂️ man kneeling\n🧎‍♀️ woman kneeling\n🧎‍➡️ person kneeling facing right\n🧎‍♀️‍➡️ woman kneeling facing right\n🧎‍♂️‍➡️ man kneeling facing right\n🧑‍🦯 person with white cane\n🧑‍🦯‍➡️ person with white cane facing right\n👨‍🦯 man with white cane\n👨‍🦯‍➡️ man with white cane facing right\n👩‍🦯 woman with white cane\n👩‍🦯‍➡️ woman with white cane facing right\n🧑‍🦼 person in motorized wheelchair\n🧑‍🦼‍➡️ person in motorized wheelchair facing right\n👨‍🦼 man in motorized wheelchair\n👨‍🦼‍➡️ man in motorized wheelchair facing right\n👩‍🦼 woman in motorized wheelchair\n👩‍🦼‍➡️ woman in motorized wheelchair facing right\n🧑‍🦽 person in manual wheelchair\n🧑‍🦽‍➡️ person in manual wheelchair facing right\n👨‍🦽 man in manual wheelchair\n👨‍🦽‍➡️ man in manual wheelchair facing right\n👩‍🦽 woman in manual wheelchair\n👩‍🦽‍➡️ woman in manual wheelchair facing right\n🏃 person running\n🏃‍♂️ man running\n🏃‍♀️ woman running\n🏃‍➡️ person running facing right\n🏃‍♀️‍➡️ woman running facing right\n🏃‍♂️‍➡️ man running facing right\n💃 woman dancing\n🕺 man dancing\n🕴️ person in suit levitating\n👯 people with bunny ears\n👯‍♂️ men with bunny ears\n👯‍♀️ women with bunny ears\n🧖 person in steamy room\n🧖‍♂️ man in steamy room\n🧖‍♀️ woman in steamy room\n🧗 person climbing\n🧗‍♂️ man climbing\n🧗‍♀️ woman climbing\n@person-sport\n🤺 person fencing\n🏇 horse racing\n⛷️ skier\n🏂 snowboarder\n🏌️ person golfing\n🏌️‍♂️ man golfing\n🏌️‍♀️ woman golfing\n🏄 person surfing\n🏄‍♂️ man surfing\n🏄‍♀️ woman surfing\n🚣 person rowing boat\n🚣‍♂️ man rowing boat\n🚣‍♀️ woman rowing boat\n🏊 person swimming\n🏊‍♂️ man swimming\n🏊‍♀️ woman swimming\n⛹️ person bouncing ball\n⛹️‍♂️ man bouncing ball\n⛹️‍♀️ woman bouncing ball\n🏋️ person lifting weights\n🏋️‍♂️ man lifting weights\n🏋️‍♀️ woman lifting weights\n🚴 person biking\n🚴‍♂️ man biking\n🚴‍♀️ woman biking\n🚵 person mountain biking\n🚵‍♂️ man mountain biking\n🚵‍♀️ woman mountain biking\n🤸 person cartwheeling\n🤸‍♂️ man cartwheeling\n🤸‍♀️ woman cartwheeling\n🤼 people wrestling\n🤼‍♂️ men wrestling\n🤼‍♀️ women wrestling\n🤽 person playing water polo\n🤽‍♂️ man playing water polo\n🤽‍♀️ woman playing water polo\n🤾 person playing handball\n🤾‍♂️ man playing handball\n🤾‍♀️ woman playing handball\n🤹 person juggling\n🤹‍♂️ man juggling\n🤹‍♀️ woman juggling\n@person-resting\n🧘 person in lotus position\n🧘‍♂️ man in lotus position\n🧘‍♀️ woman in lotus position\n🛀 person taking bath\n🛌 person in bed\n@family\n🧑‍🤝‍🧑 people holding hands\n👭 women holding hands\n👫 woman and man holding hands\n👬 men holding hands\n💏 kiss\n👩‍❤️‍💋‍👨 kiss: woman, man\n👨‍❤️‍💋‍👨 kiss: man, man\n👩‍❤️‍💋‍👩 kiss: woman, woman\n💑 couple with heart\n👩‍❤️‍👨 couple with heart: woman, man\n👨‍❤️‍👨 couple with heart: man, man\n👩‍❤️‍👩 couple with heart: woman, woman\n👨‍👩‍👦 family: man, woman, boy\n👨‍👩‍👧 family: man, woman, girl\n👨‍👩‍👧‍👦 family: man, woman, girl, boy\n👨‍👩‍👦‍👦 family: man, woman, boy, boy\n👨‍👩‍👧‍👧 family: man, woman, girl, girl\n👨‍👨‍👦 family: man, man, boy\n👨‍👨‍👧 family: man, man, girl\n👨‍👨‍👧‍👦 family: man, man, girl, boy\n👨‍👨‍👦‍👦 family: man, man, boy, boy\n👨‍👨‍👧‍👧 family: man, man, girl, girl\n👩‍👩‍👦 family: woman, woman, boy\n👩‍👩‍👧 family: woman, woman, girl\n👩‍👩‍👧‍👦 family: woman, woman, girl, boy\n👩‍👩‍👦‍👦 family: woman, woman, boy, boy\n👩‍👩‍👧‍👧 family: woman, woman, girl, girl\n👨‍👦 family: man, boy\n👨‍👦‍👦 family: man, boy, boy\n👨‍👧 family: man, girl\n👨‍👧‍👦 family: man, girl, boy\n👨‍👧‍👧 family: man, girl, girl\n👩‍👦 family: woman, boy\n👩‍👦‍👦 family: woman, boy, boy\n👩‍👧 family: woman, girl\n👩‍👧‍👦 family: woman, girl, boy\n👩‍👧‍👧 family: woman, girl, girl\n@person-symbol\n🗣️ speaking head\n👤 bust in silhouette\n👥 busts in silhouette\n🫂 people hugging\n👪 family\n🧑‍🧑‍🧒 family: adult, adult, child\n🧑‍🧑‍🧒‍🧒 family: adult, adult, child, child\n🧑‍🧒 family: adult, child\n🧑‍🧒‍🧒 family: adult, child, child\n👣 footprints\n🫆 fingerprint" },
++  { id: "animals", data: "@animal-mammal\n🐵 monkey face\n🐒 monkey\n🦍 gorilla\n🦧 orangutan\n🐶 dog face\n🐕 dog\n🦮 guide dog\n🐕‍🦺 service dog\n🐩 poodle\n🐺 wolf\n🦊 fox\n🦝 raccoon\n🐱 cat face\n🐈 cat\n🐈‍⬛ black cat\n🦁 lion\n🐯 tiger face\n🐅 tiger\n🐆 leopard\n🐴 horse face\n🫎 moose\n🫏 donkey\n🐎 horse\n🦄 unicorn\n🦓 zebra\n🦌 deer\n🦬 bison\n🐮 cow face\n🐂 ox\n🐃 water buffalo\n🐄 cow\n🐷 pig face\n🐖 pig\n🐗 boar\n🐽 pig nose\n🐏 ram\n🐑 ewe\n🐐 goat\n🐪 camel\n🐫 two-hump camel\n🦙 llama\n🦒 giraffe\n🐘 elephant\n🦣 mammoth\n🦏 rhinoceros\n🦛 hippopotamus\n🐭 mouse face\n🐁 mouse\n🐀 rat\n🐹 hamster\n🐰 rabbit face\n🐇 rabbit\n🐿️ chipmunk\n🦫 beaver\n🦔 hedgehog\n🦇 bat\n🐻 bear\n🐻‍❄️ polar bear\n🐨 koala\n🐼 panda\n🦥 sloth\n🦦 otter\n🦨 skunk\n🦘 kangaroo\n🦡 badger\n🐾 paw prints\n@animal-bird\n🦃 turkey\n🐔 chicken\n🐓 rooster\n🐣 hatching chick\n🐤 baby chick\n🐥 front-facing baby chick\n🐦 bird\n🐧 penguin\n🕊️ dove\n🦅 eagle\n🦆 duck\n🦢 swan\n🦉 owl\n🦤 dodo\n🪶 feather\n🦩 flamingo\n🦚 peacock\n🦜 parrot\n🪽 wing\n🐦‍⬛ black bird\n🪿 goose\n🐦‍🔥 phoenix\n@animal-amphibian\n🐸 frog\n@animal-reptile\n🐊 crocodile\n🐢 turtle\n🦎 lizard\n🐍 snake\n🐲 dragon face\n🐉 dragon\n🦕 sauropod\n🦖 T-Rex\n@animal-marine\n🐳 spouting whale\n🐋 whale\n🐬 dolphin\n🦭 seal\n🐟 fish\n🐠 tropical fish\n🐡 blowfish\n🦈 shark\n🐙 octopus\n🐚 spiral shell\n🪸 coral\n🪼 jellyfish\n🦀 crab\n🦞 lobster\n🦐 shrimp\n🦑 squid\n🦪 oyster\n@animal-bug\n🐌 snail\n🦋 butterfly\n🐛 bug\n🐜 ant\n🐝 honeybee\n🪲 beetle\n🐞 lady beetle\n🦗 cricket\n🪳 cockroach\n🕷️ spider\n🕸️ spider web\n🦂 scorpion\n🦟 mosquito\n🪰 fly\n🪱 worm\n🦠 microbe\n@plant-flower\n💐 bouquet\n🌸 cherry blossom\n💮 white flower\n🪷 lotus\n🏵️ rosette\n🌹 rose\n🥀 wilted flower\n🌺 hibiscus\n🌻 sunflower\n🌼 blossom\n🌷 tulip\n🪻 hyacinth\n@plant-other\n🌱 seedling\n🪴 potted plant\n🌲 evergreen tree\n🌳 deciduous tree\n🌴 palm tree\n🌵 cactus\n🌾 sheaf of rice\n🌿 herb\n☘️ shamrock\n🍀 four leaf clover\n🍁 maple leaf\n🍂 fallen leaf\n🍃 leaf fluttering in wind\n🪹 empty nest\n🪺 nest with eggs\n🍄 mushroom\n🪾 leafless tree" },
++  { id: "food", data: "@food-fruit\n🍇 grapes\n🍈 melon\n🍉 watermelon\n🍊 tangerine\n🍋 lemon\n🍋‍🟩 lime\n🍌 banana\n🍍 pineapple\n🥭 mango\n🍎 red apple\n🍏 green apple\n🍐 pear\n🍑 peach\n🍒 cherries\n🍓 strawberry\n🫐 blueberries\n🥝 kiwi fruit\n🍅 tomato\n🫒 olive\n🥥 coconut\n@food-vegetable\n🥑 avocado\n🍆 eggplant\n🥔 potato\n🥕 carrot\n🌽 ear of corn\n🌶️ hot pepper\n🫑 bell pepper\n🥒 cucumber\n🥬 leafy green\n🥦 broccoli\n🧄 garlic\n🧅 onion\n🥜 peanuts\n🫘 beans\n🌰 chestnut\n🫚 ginger root\n🫛 pea pod\n🍄‍🟫 brown mushroom\n🫜 root vegetable\n@food-prepared\n🍞 bread\n🥐 croissant\n🥖 baguette bread\n🫓 flatbread\n🥨 pretzel\n🥯 bagel\n🥞 pancakes\n🧇 waffle\n🧀 cheese wedge\n🍖 meat on bone\n🍗 poultry leg\n🥩 cut of meat\n🥓 bacon\n🍔 hamburger\n🍟 french fries\n🍕 pizza\n🌭 hot dog\n🥪 sandwich\n🌮 taco\n🌯 burrito\n🫔 tamale\n🥙 stuffed flatbread\n🧆 falafel\n🥚 egg\n🍳 cooking\n🥘 shallow pan of food\n🍲 pot of food\n🫕 fondue\n🥣 bowl with spoon\n🥗 green salad\n🍿 popcorn\n🧈 butter\n🧂 salt\n🥫 canned food\n@food-asian\n🍱 bento box\n🍘 rice cracker\n🍙 rice ball\n🍚 cooked rice\n🍛 curry rice\n🍜 steaming bowl\n🍝 spaghetti\n🍠 roasted sweet potato\n🍢 oden\n🍣 sushi\n🍤 fried shrimp\n🍥 fish cake with swirl\n🥮 moon cake\n🍡 dango\n🥟 dumpling\n🥠 fortune cookie\n🥡 takeout box\n@food-sweet\n🍦 soft ice cream\n🍧 shaved ice\n🍨 ice cream\n🍩 doughnut\n🍪 cookie\n🎂 birthday cake\n🍰 shortcake\n🧁 cupcake\n🥧 pie\n🍫 chocolate bar\n🍬 candy\n🍭 lollipop\n🍮 custard\n🍯 honey pot\n@drink\n🍼 baby bottle\n🥛 glass of milk\n☕ hot beverage\n🫖 teapot\n🍵 teacup without handle\n🍶 sake\n🍾 bottle with popping cork\n🍷 wine glass\n🍸 cocktail glass\n🍹 tropical drink\n🍺 beer mug\n🍻 clinking beer mugs\n🥂 clinking glasses\n🥃 tumbler glass\n🫗 pouring liquid\n🥤 cup with straw\n🧋 bubble tea\n🧃 beverage box\n🧉 mate\n🧊 ice\n@dishware\n🥢 chopsticks\n🍽️ fork and knife with plate\n🍴 fork and knife\n🥄 spoon\n🔪 kitchen knife\n🫙 jar\n🏺 amphora" },
++  { id: "travel", data: "@place-map\n🌍 globe showing Europe-Africa\n🌎 globe showing Americas\n🌏 globe showing Asia-Australia\n🌐 globe with meridians\n🗺️ world map\n🗾 map of Japan\n🧭 compass\n@place-geographic\n🏔️ snow-capped mountain\n⛰️ mountain\n🌋 volcano\n🗻 mount fuji\n🏕️ camping\n🏖️ beach with umbrella\n🏜️ desert\n🏝️ desert island\n🏞️ national park\n@place-building\n🏟️ stadium\n🏛️ classical building\n🏗️ building construction\n🧱 brick\n🪨 rock\n🪵 wood\n🛖 hut\n🏘️ houses\n🏚️ derelict house\n🏠 house\n🏡 house with garden\n🏢 office building\n🏣 Japanese post office\n🏤 post office\n🏥 hospital\n🏦 bank\n🏨 hotel\n🏩 love hotel\n🏪 convenience store\n🏫 school\n🏬 department store\n🏭 factory\n🏯 Japanese castle\n🏰 castle\n💒 wedding\n🗼 Tokyo tower\n🗽 Statue of Liberty\n@place-religious\n⛪ church\n🕌 mosque\n🛕 hindu temple\n🕍 synagogue\n⛩️ shinto shrine\n🕋 kaaba\n@place-other\n⛲ fountain\n⛺ tent\n🌁 foggy\n🌃 night with stars\n🏙️ cityscape\n🌄 sunrise over mountains\n🌅 sunrise\n🌆 cityscape at dusk\n🌇 sunset\n🌉 bridge at night\n♨️ hot springs\n🎠 carousel horse\n🛝 playground slide\n🎡 ferris wheel\n🎢 roller coaster\n💈 barber pole\n🎪 circus tent\n@transport-ground\n🚂 locomotive\n🚃 railway car\n🚄 high-speed train\n🚅 bullet train\n🚆 train\n🚇 metro\n🚈 light rail\n🚉 station\n🚊 tram\n🚝 monorail\n🚞 mountain railway\n🚋 tram car\n🚌 bus\n🚍 oncoming bus\n🚎 trolleybus\n🚐 minibus\n🚑 ambulance\n🚒 fire engine\n🚓 police car\n🚔 oncoming police car\n🚕 taxi\n🚖 oncoming taxi\n🚗 automobile\n🚘 oncoming automobile\n🚙 sport utility vehicle\n🛻 pickup truck\n🚚 delivery truck\n🚛 articulated lorry\n🚜 tractor\n🏎️ racing car\n🏍️ motorcycle\n🛵 motor scooter\n🦽 manual wheelchair\n🦼 motorized wheelchair\n🛺 auto rickshaw\n🚲 bicycle\n🛴 kick scooter\n🛹 skateboard\n🛼 roller skate\n🚏 bus stop\n🛣️ motorway\n🛤️ railway track\n🛢️ oil drum\n⛽ fuel pump\n🛞 wheel\n🚨 police car light\n🚥 horizontal traffic light\n🚦 vertical traffic light\n🛑 stop sign\n🚧 construction\n@transport-water\n⚓ anchor\n🛟 ring buoy\n⛵ sailboat\n🛶 canoe\n🚤 speedboat\n🛳️ passenger ship\n⛴️ ferry\n🛥️ motor boat\n🚢 ship\n@transport-air\n✈️ airplane\n🛩️ small airplane\n🛫 airplane departure\n🛬 airplane arrival\n🪂 parachute\n💺 seat\n🚁 helicopter\n🚟 suspension railway\n🚠 mountain cableway\n🚡 aerial tramway\n🛰️ satellite\n🚀 rocket\n🛸 flying saucer\n@hotel\n🛎️ bellhop bell\n🧳 luggage\n@time\n⌛ hourglass done\n⏳ hourglass not done\n⌚ watch\n⏰ alarm clock\n⏱️ stopwatch\n⏲️ timer clock\n🕰️ mantelpiece clock\n🕛 twelve o’clock\n🕧 twelve-thirty\n🕐 one o’clock\n🕜 one-thirty\n🕑 two o’clock\n🕝 two-thirty\n🕒 three o’clock\n🕞 three-thirty\n🕓 four o’clock\n🕟 four-thirty\n🕔 five o’clock\n🕠 five-thirty\n🕕 six o’clock\n🕡 six-thirty\n🕖 seven o’clock\n🕢 seven-thirty\n🕗 eight o’clock\n🕣 eight-thirty\n🕘 nine o’clock\n🕤 nine-thirty\n🕙 ten o’clock\n🕥 ten-thirty\n🕚 eleven o’clock\n🕦 eleven-thirty\n@sky & weather\n🌑 new moon\n🌒 waxing crescent moon\n🌓 first quarter moon\n🌔 waxing gibbous moon\n🌕 full moon\n🌖 waning gibbous moon\n🌗 last quarter moon\n🌘 waning crescent moon\n🌙 crescent moon\n🌚 new moon face\n🌛 first quarter moon face\n🌜 last quarter moon face\n🌡️ thermometer\n☀️ sun\n🌝 full moon face\n🌞 sun with face\n🪐 ringed planet\n⭐ star\n🌟 glowing star\n🌠 shooting star\n🌌 milky way\n☁️ cloud\n⛅ sun behind cloud\n⛈️ cloud with lightning and rain\n🌤️ sun behind small cloud\n🌥️ sun behind large cloud\n🌦️ sun behind rain cloud\n🌧️ cloud with rain\n🌨️ cloud with snow\n🌩️ cloud with lightning\n🌪️ tornado\n🌫️ fog\n🌬️ wind face\n🌀 cyclone\n🌈 rainbow\n🌂 closed umbrella\n☂️ umbrella\n☔ umbrella with rain drops\n⛱️ umbrella on ground\n⚡ high voltage\n❄️ snowflake\n☃️ snowman\n⛄ snowman without snow\n☄️ comet\n🔥 fire\n💧 droplet\n🌊 water wave" },
++  { id: "activities", data: "@event\n🎃 jack-o-lantern\n🎄 Christmas tree\n🎆 fireworks\n🎇 sparkler\n🧨 firecracker\n✨ sparkles\n🎈 balloon\n🎉 party popper\n🎊 confetti ball\n🎋 tanabata tree\n🎍 pine decoration\n🎎 Japanese dolls\n🎏 carp streamer\n🎐 wind chime\n🎑 moon viewing ceremony\n🧧 red envelope\n🎀 ribbon\n🎁 wrapped gift\n🎗️ reminder ribbon\n🎟️ admission tickets\n🎫 ticket\n@award-medal\n🎖️ military medal\n🏆 trophy\n🏅 sports medal\n🥇 1st place medal\n🥈 2nd place medal\n🥉 3rd place medal\n@sport\n⚽ soccer ball\n⚾ baseball\n🥎 softball\n🏀 basketball\n🏐 volleyball\n🏈 american football\n🏉 rugby football\n🎾 tennis\n🥏 flying disc\n🎳 bowling\n🏏 cricket game\n🏑 field hockey\n🏒 ice hockey\n🥍 lacrosse\n🏓 ping pong\n🏸 badminton\n🥊 boxing glove\n🥋 martial arts uniform\n🥅 goal net\n⛳ flag in hole\n⛸️ ice skate\n🎣 fishing pole\n🤿 diving mask\n🎽 running shirt\n🎿 skis\n🛷 sled\n🥌 curling stone\n@game\n🎯 bullseye\n🪀 yo-yo\n🪁 kite\n🔫 water pistol\n🎱 pool 8 ball\n🔮 crystal ball\n🪄 magic wand\n🎮 video game\n🕹️ joystick\n🎰 slot machine\n🎲 game die\n🧩 puzzle piece\n🧸 teddy bear\n🪅 piñata\n🪩 mirror ball\n🪆 nesting dolls\n♠️ spade suit\n♥️ heart suit\n♦️ diamond suit\n♣️ club suit\n♟️ chess pawn\n🃏 joker\n🀄 mahjong red dragon\n🎴 flower playing cards\n@arts & crafts\n🎭 performing arts\n🖼️ framed picture\n🎨 artist palette\n🧵 thread\n🪡 sewing needle\n🧶 yarn\n🪢 knot" },
++  { id: "objects", data: "@clothing\n👓 glasses\n🕶️ sunglasses\n🥽 goggles\n🥼 lab coat\n🦺 safety vest\n👔 necktie\n👕 t-shirt\n👖 jeans\n🧣 scarf\n🧤 gloves\n🧥 coat\n🧦 socks\n👗 dress\n👘 kimono\n🥻 sari\n🩱 one-piece swimsuit\n🩲 briefs\n🩳 shorts\n👙 bikini\n👚 woman’s clothes\n🪭 folding hand fan\n👛 purse\n👜 handbag\n👝 clutch bag\n🛍️ shopping bags\n🎒 backpack\n🩴 thong sandal\n👞 man’s shoe\n👟 running shoe\n🥾 hiking boot\n🥿 flat shoe\n👠 high-heeled shoe\n👡 woman’s sandal\n🩰 ballet shoes\n👢 woman’s boot\n🪮 hair pick\n👑 crown\n👒 woman’s hat\n🎩 top hat\n🎓 graduation cap\n🧢 billed cap\n🪖 military helmet\n⛑️ rescue worker’s helmet\n📿 prayer beads\n💄 lipstick\n💍 ring\n💎 gem stone\n@sound\n🔇 muted speaker\n🔈 speaker low volume\n🔉 speaker medium volume\n🔊 speaker high volume\n📢 loudspeaker\n📣 megaphone\n📯 postal horn\n🔔 bell\n🔕 bell with slash\n@music\n🎼 musical score\n🎵 musical note\n🎶 musical notes\n🎙️ studio microphone\n🎚️ level slider\n🎛️ control knobs\n🎤 microphone\n🎧 headphone\n📻 radio\n@musical-instrument\n🎷 saxophone\n🎺 trumpet\n🪗 accordion\n🎸 guitar\n🎹 musical keyboard\n🎻 violin\n🪕 banjo\n🥁 drum\n🪘 long drum\n🪇 maracas\n🪈 flute\n🪉 harp\n@phone\n📱 mobile phone\n📲 mobile phone with arrow\n☎️ telephone\n📞 telephone receiver\n📟 pager\n📠 fax machine\n@computer\n🔋 battery\n🪫 low battery\n🔌 electric plug\n💻 laptop\n🖥️ desktop computer\n🖨️ printer\n⌨️ keyboard\n🖱️ computer mouse\n🖲️ trackball\n💽 computer disk\n💾 floppy disk\n💿 optical disk\n📀 dvd\n🧮 abacus\n@light & video\n🎥 movie camera\n🎞️ film frames\n📽️ film projector\n🎬 clapper board\n📺 television\n📷 camera\n📸 camera with flash\n📹 video camera\n📼 videocassette\n🔍 magnifying glass tilted left\n🔎 magnifying glass tilted right\n🕯️ candle\n💡 light bulb\n🔦 flashlight\n🏮 red paper lantern\n🪔 diya lamp\n@book-paper\n📔 notebook with decorative cover\n📕 closed book\n📖 open book\n📗 green book\n📘 blue book\n📙 orange book\n📚 books\n📓 notebook\n📒 ledger\n📃 page with curl\n📜 scroll\n📄 page facing up\n📰 newspaper\n🗞️ rolled-up newspaper\n📑 bookmark tabs\n🔖 bookmark\n🏷️ label\n@money\n🪙 coin\n💰 money bag\n💴 yen banknote\n💵 dollar banknote\n💶 euro banknote\n💷 pound banknote\n💸 money with wings\n💳 credit card\n🧾 receipt\n💹 chart increasing with yen\n@mail\n✉️ envelope\n📧 e-mail\n📨 incoming envelope\n📩 envelope with arrow\n📤 outbox tray\n📥 inbox tray\n📦 package\n📫 closed mailbox with raised flag\n📪 closed mailbox with lowered flag\n📬 open mailbox with raised flag\n📭 open mailbox with lowered flag\n📮 postbox\n🗳️ ballot box with ballot\n@writing\n✏️ pencil\n✒️ black nib\n🖋️ fountain pen\n🖊️ pen\n🖌️ paintbrush\n🖍️ crayon\n📝 memo\n@office\n💼 briefcase\n📁 file folder\n📂 open file folder\n🗂️ card index dividers\n📅 calendar\n📆 tear-off calendar\n🗒️ spiral notepad\n🗓️ spiral calendar\n📇 card index\n📈 chart increasing\n📉 chart decreasing\n📊 bar chart\n📋 clipboard\n📌 pushpin\n📍 round pushpin\n📎 paperclip\n🖇️ linked paperclips\n📏 straight ruler\n📐 triangular ruler\n✂️ scissors\n🗃️ card file box\n🗄️ file cabinet\n🗑️ wastebasket\n@lock\n🔒 locked\n🔓 unlocked\n🔏 locked with pen\n🔐 locked with key\n🔑 key\n🗝️ old key\n@tool\n🔨 hammer\n🪓 axe\n⛏️ pick\n⚒️ hammer and pick\n🛠️ hammer and wrench\n🗡️ dagger\n⚔️ crossed swords\n💣 bomb\n🪃 boomerang\n🏹 bow and arrow\n🛡️ shield\n🪚 carpentry saw\n🔧 wrench\n🪛 screwdriver\n🔩 nut and bolt\n⚙️ gear\n🗜️ clamp\n⚖️ balance scale\n🦯 white cane\n🔗 link\n⛓️‍💥 broken chain\n⛓️ chains\n🪝 hook\n🧰 toolbox\n🧲 magnet\n🪜 ladder\n🪏 shovel\n@science\n⚗️ alembic\n🧪 test tube\n🧫 petri dish\n🧬 dna\n🔬 microscope\n🔭 telescope\n📡 satellite antenna\n@medical\n💉 syringe\n🩸 drop of blood\n💊 pill\n🩹 adhesive bandage\n🩼 crutch\n🩺 stethoscope\n🩻 x-ray\n@household\n🚪 door\n🛗 elevator\n🪞 mirror\n🪟 window\n🛏️ bed\n🛋️ couch and lamp\n🪑 chair\n🚽 toilet\n🪠 plunger\n🚿 shower\n🛁 bathtub\n🪤 mouse trap\n🪒 razor\n🧴 lotion bottle\n🧷 safety pin\n🧹 broom\n🧺 basket\n🧻 roll of paper\n🪣 bucket\n🧼 soap\n🫧 bubbles\n🪥 toothbrush\n🧽 sponge\n🧯 fire extinguisher\n🛒 shopping cart\n@other-object\n🚬 cigarette\n⚰️ coffin\n🪦 headstone\n⚱️ funeral urn\n🧿 nazar amulet\n🪬 hamsa\n🗿 moai\n🪧 placard\n🪪 identification card" },
++  { id: "symbols", data: "@transport-sign\n🏧 ATM sign\n🚮 litter in bin sign\n🚰 potable water\n♿ wheelchair symbol\n🚹 men’s room\n🚺 women’s room\n🚻 restroom\n🚼 baby symbol\n🚾 water closet\n🛂 passport control\n🛃 customs\n🛄 baggage claim\n🛅 left luggage\n@warning\n⚠️ warning\n🚸 children crossing\n⛔ no entry\n🚫 prohibited\n🚳 no bicycles\n🚭 no smoking\n🚯 no littering\n🚱 non-potable water\n🚷 no pedestrians\n📵 no mobile phones\n🔞 no one under eighteen\n☢️ radioactive\n☣️ biohazard\n@arrow\n⬆️ up arrow\n↗️ up-right arrow\n➡️ right arrow\n↘️ down-right arrow\n⬇️ down arrow\n↙️ down-left arrow\n⬅️ left arrow\n↖️ up-left arrow\n↕️ up-down arrow\n↔️ left-right arrow\n↩️ right arrow curving left\n↪️ left arrow curving right\n⤴️ right arrow curving up\n⤵️ right arrow curving down\n🔃 clockwise vertical arrows\n🔄 counterclockwise arrows button\n🔙 BACK arrow\n🔚 END arrow\n🔛 ON! arrow\n🔜 SOON arrow\n🔝 TOP arrow\n@religion\n🛐 place of worship\n⚛️ atom symbol\n🕉️ om\n✡️ star of David\n☸️ wheel of dharma\n☯️ yin yang\n✝️ latin cross\n☦️ orthodox cross\n☪️ star and crescent\n☮️ peace symbol\n🕎 menorah\n🔯 dotted six-pointed star\n🪯 khanda\n@zodiac\n♈ Aries\n♉ Taurus\n♊ Gemini\n♋ Cancer\n♌ Leo\n♍ Virgo\n♎ Libra\n♏ Scorpio\n♐ Sagittarius\n♑ Capricorn\n♒ Aquarius\n♓ Pisces\n⛎ Ophiuchus\n@av-symbol\n🔀 shuffle tracks button\n🔁 repeat button\n🔂 repeat single button\n▶️ play button\n⏩ fast-forward button\n⏭️ next track button\n⏯️ play or pause button\n◀️ reverse button\n⏪ fast reverse button\n⏮️ last track button\n🔼 upwards button\n⏫ fast up button\n🔽 downwards button\n⏬ fast down button\n⏸️ pause button\n⏹️ stop button\n⏺️ record button\n⏏️ eject button\n🎦 cinema\n🔅 dim button\n🔆 bright button\n📶 antenna bars\n🛜 wireless\n📳 vibration mode\n📴 mobile phone off\n@gender\n♀️ female sign\n♂️ male sign\n⚧️ transgender symbol\n@math\n✖️ multiply\n➕ plus\n➖ minus\n➗ divide\n🟰 heavy equals sign\n♾️ infinity\n@punctuation\n‼️ double exclamation mark\n⁉️ exclamation question mark\n❓ red question mark\n❔ white question mark\n❕ white exclamation mark\n❗ red exclamation mark\n〰️ wavy dash\n@currency\n💱 currency exchange\n💲 heavy dollar sign\n@other-symbol\n⚕️ medical symbol\n♻️ recycling symbol\n⚜️ fleur-de-lis\n🔱 trident emblem\n📛 name badge\n🔰 Japanese symbol for beginner\n⭕ hollow red circle\n✅ check mark button\n☑️ check box with check\n✔️ check mark\n❌ cross mark\n❎ cross mark button\n➰ curly loop\n➿ double curly loop\n〽️ part alternation mark\n✳️ eight-spoked asterisk\n✴️ eight-pointed star\n❇️ sparkle\n©️ copyright\n®️ registered\n™️ trade mark\n🫟 splatter\n@keycap\n#️⃣ keycap: #\n*️⃣ keycap: *\n0️⃣ keycap: 0\n1️⃣ keycap: 1\n2️⃣ keycap: 2\n3️⃣ keycap: 3\n4️⃣ keycap: 4\n5️⃣ keycap: 5\n6️⃣ keycap: 6\n7️⃣ keycap: 7\n8️⃣ keycap: 8\n9️⃣ keycap: 9\n🔟 keycap: 10\n@alphanum\n🔠 input latin uppercase\n🔡 input latin lowercase\n🔢 input numbers\n🔣 input symbols\n🔤 input latin letters\n🅰️ A button (blood type)\n🆎 AB button (blood type)\n🅱️ B button (blood type)\n🆑 CL button\n🆒 COOL button\n🆓 FREE button\nℹ️ information\n🆔 ID button\nⓂ️ circled M\n🆕 NEW button\n🆖 NG button\n🅾️ O button (blood type)\n🆗 OK button\n🅿️ P button\n🆘 SOS button\n🆙 UP! button\n🆚 VS button\n🈁 Japanese “here” button\n🈂️ Japanese “service charge” button\n🈷️ Japanese “monthly amount” button\n🈶 Japanese “not free of charge” button\n🈯 Japanese “reserved” button\n🉐 Japanese “bargain” button\n🈹 Japanese “discount” button\n🈚 Japanese “free of charge” button\n🈲 Japanese “prohibited” button\n🉑 Japanese “acceptable” button\n🈸 Japanese “application” button\n🈴 Japanese “passing grade” button\n🈳 Japanese “vacancy” button\n㊗️ Japanese “congratulations” button\n㊙️ Japanese “secret” button\n🈺 Japanese “open for business” button\n🈵 Japanese “no vacancy” button\n@geometric\n🔴 red circle\n🟠 orange circle\n🟡 yellow circle\n🟢 green circle\n🔵 blue circle\n🟣 purple circle\n🟤 brown circle\n⚫ black circle\n⚪ white circle\n🟥 red square\n🟧 orange square\n🟨 yellow square\n🟩 green square\n🟦 blue square\n🟪 purple square\n🟫 brown square\n⬛ black large square\n⬜ white large square\n◼️ black medium square\n◻️ white medium square\n◾ black medium-small square\n◽ white medium-small square\n▪️ black small square\n▫️ white small square\n🔶 large orange diamond\n🔷 large blue diamond\n🔸 small orange diamond\n🔹 small blue diamond\n🔺 red triangle pointed up\n🔻 red triangle pointed down\n💠 diamond with a dot\n🔘 radio button\n🔳 white square button\n🔲 black square button" },
++  { id: "flags", data: "@flag\n🏁 chequered flag\n🚩 triangular flag\n🎌 crossed flags\n🏴 black flag\n🏳️ white flag\n🏳️‍🌈 rainbow flag\n🏳️‍⚧️ transgender flag\n🏴‍☠️ pirate flag\n@country-flag\n🇦🇨 flag: Ascension Island\n🇦🇩 flag: Andorra\n🇦🇪 flag: United Arab Emirates\n🇦🇫 flag: Afghanistan\n🇦🇬 flag: Antigua & Barbuda\n🇦🇮 flag: Anguilla\n🇦🇱 flag: Albania\n🇦🇲 flag: Armenia\n🇦🇴 flag: Angola\n🇦🇶 flag: Antarctica\n🇦🇷 flag: Argentina\n🇦🇸 flag: American Samoa\n🇦🇹 flag: Austria\n🇦🇺 flag: Australia\n🇦🇼 flag: Aruba\n🇦🇽 flag: Åland Islands\n🇦🇿 flag: Azerbaijan\n🇧🇦 flag: Bosnia & Herzegovina\n🇧🇧 flag: Barbados\n🇧🇩 flag: Bangladesh\n🇧🇪 flag: Belgium\n🇧🇫 flag: Burkina Faso\n🇧🇬 flag: Bulgaria\n🇧🇭 flag: Bahrain\n🇧🇮 flag: Burundi\n🇧🇯 flag: Benin\n🇧🇱 flag: St. Barthélemy\n🇧🇲 flag: Bermuda\n🇧🇳 flag: Brunei\n🇧🇴 flag: Bolivia\n🇧🇶 flag: Caribbean Netherlands\n🇧🇷 flag: Brazil\n🇧🇸 flag: Bahamas\n🇧🇹 flag: Bhutan\n🇧🇻 flag: Bouvet Island\n🇧🇼 flag: Botswana\n🇧🇾 flag: Belarus\n🇧🇿 flag: Belize\n🇨🇦 flag: Canada\n🇨🇨 flag: Cocos (Keeling) Islands\n🇨🇩 flag: Congo - Kinshasa\n🇨🇫 flag: Central African Republic\n🇨🇬 flag: Congo - Brazzaville\n🇨🇭 flag: Switzerland\n🇨🇮 flag: Côte d’Ivoire\n🇨🇰 flag: Cook Islands\n🇨🇱 flag: Chile\n🇨🇲 flag: Cameroon\n🇨🇳 flag: China\n🇨🇴 flag: Colombia\n🇨🇵 flag: Clipperton Island\n🇨🇶 flag: Sark\n🇨🇷 flag: Costa Rica\n🇨🇺 flag: Cuba\n🇨🇻 flag: Cape Verde\n🇨🇼 flag: Curaçao\n🇨🇽 flag: Christmas Island\n🇨🇾 flag: Cyprus\n🇨🇿 flag: Czechia\n🇩🇪 flag: Germany\n🇩🇬 flag: Diego Garcia\n🇩🇯 flag: Djibouti\n🇩🇰 flag: Denmark\n🇩🇲 flag: Dominica\n🇩🇴 flag: Dominican Republic\n🇩🇿 flag: Algeria\n🇪🇦 flag: Ceuta & Melilla\n🇪🇨 flag: Ecuador\n🇪🇪 flag: Estonia\n🇪🇬 flag: Egypt\n🇪🇭 flag: Western Sahara\n🇪🇷 flag: Eritrea\n🇪🇸 flag: Spain\n🇪🇹 flag: Ethiopia\n🇪🇺 flag: European Union\n🇫🇮 flag: Finland\n🇫🇯 flag: Fiji\n🇫🇰 flag: Falkland Islands\n🇫🇲 flag: Micronesia\n🇫🇴 flag: Faroe Islands\n🇫🇷 flag: France\n🇬🇦 flag: Gabon\n🇬🇧 flag: United Kingdom\n🇬🇩 flag: Grenada\n🇬🇪 flag: Georgia\n🇬🇫 flag: French Guiana\n🇬🇬 flag: Guernsey\n🇬🇭 flag: Ghana\n🇬🇮 flag: Gibraltar\n🇬🇱 flag: Greenland\n🇬🇲 flag: Gambia\n🇬🇳 flag: Guinea\n🇬🇵 flag: Guadeloupe\n🇬🇶 flag: Equatorial Guinea\n🇬🇷 flag: Greece\n🇬🇸 flag: South Georgia & South Sandwich Islands\n🇬🇹 flag: Guatemala\n🇬🇺 flag: Guam\n🇬🇼 flag: Guinea-Bissau\n🇬🇾 flag: Guyana\n🇭🇰 flag: Hong Kong SAR China\n🇭🇲 flag: Heard & McDonald Islands\n🇭🇳 flag: Honduras\n🇭🇷 flag: Croatia\n🇭🇹 flag: Haiti\n🇭🇺 flag: Hungary\n🇮🇨 flag: Canary Islands\n🇮🇩 flag: Indonesia\n🇮🇪 flag: Ireland\n🇮🇱 flag: Israel\n🇮🇲 flag: Isle of Man\n🇮🇳 flag: India\n🇮🇴 flag: British Indian Ocean Territory\n🇮🇶 flag: Iraq\n🇮🇷 flag: Iran\n🇮🇸 flag: Iceland\n🇮🇹 flag: Italy\n🇯🇪 flag: Jersey\n🇯🇲 flag: Jamaica\n🇯🇴 flag: Jordan\n🇯🇵 flag: Japan\n🇰🇪 flag: Kenya\n🇰🇬 flag: Kyrgyzstan\n🇰🇭 flag: Cambodia\n🇰🇮 flag: Kiribati\n🇰🇲 flag: Comoros\n🇰🇳 flag: St. Kitts & Nevis\n🇰🇵 flag: North Korea\n🇰🇷 flag: South Korea\n🇰🇼 flag: Kuwait\n🇰🇾 flag: Cayman Islands\n🇰🇿 flag: Kazakhstan\n🇱🇦 flag: Laos\n🇱🇧 flag: Lebanon\n🇱🇨 flag: St. Lucia\n🇱🇮 flag: Liechtenstein\n🇱🇰 flag: Sri Lanka\n🇱🇷 flag: Liberia\n🇱🇸 flag: Lesotho\n🇱🇹 flag: Lithuania\n🇱🇺 flag: Luxembourg\n🇱🇻 flag: Latvia\n🇱🇾 flag: Libya\n🇲🇦 flag: Morocco\n🇲🇨 flag: Monaco\n🇲🇩 flag: Moldova\n🇲🇪 flag: Montenegro\n🇲🇫 flag: St. Martin\n🇲🇬 flag: Madagascar\n🇲🇭 flag: Marshall Islands\n🇲🇰 flag: North Macedonia\n🇲🇱 flag: Mali\n🇲🇲 flag: Myanmar (Burma)\n🇲🇳 flag: Mongolia\n🇲🇴 flag: Macao SAR China\n🇲🇵 flag: Northern Mariana Islands\n🇲🇶 flag: Martinique\n🇲🇷 flag: Mauritania\n🇲🇸 flag: Montserrat\n🇲🇹 flag: Malta\n🇲🇺 flag: Mauritius\n🇲🇻 flag: Maldives\n🇲🇼 flag: Malawi\n🇲🇽 flag: Mexico\n🇲🇾 flag: Malaysia\n🇲🇿 flag: Mozambique\n🇳🇦 flag: Namibia\n🇳🇨 flag: New Caledonia\n🇳🇪 flag: Niger\n🇳🇫 flag: Norfolk Island\n🇳🇬 flag: Nigeria\n🇳🇮 flag: Nicaragua\n🇳🇱 flag: Netherlands\n🇳🇴 flag: Norway\n🇳🇵 flag: Nepal\n🇳🇷 flag: Nauru\n🇳🇺 flag: Niue\n🇳🇿 flag: New Zealand\n🇴🇲 flag: Oman\n🇵🇦 flag: Panama\n🇵🇪 flag: Peru\n🇵🇫 flag: French Polynesia\n🇵🇬 flag: Papua New Guinea\n🇵🇭 flag: Philippines\n🇵🇰 flag: Pakistan\n🇵🇱 flag: Poland\n🇵🇲 flag: St. Pierre & Miquelon\n🇵🇳 flag: Pitcairn Islands\n🇵🇷 flag: Puerto Rico\n🇵🇸 flag: Palestinian Territories\n🇵🇹 flag: Portugal\n🇵🇼 flag: Palau\n🇵🇾 flag: Paraguay\n🇶🇦 flag: Qatar\n🇷🇪 flag: Réunion\n🇷🇴 flag: Romania\n🇷🇸 flag: Serbia\n🇷🇺 flag: Russia\n🇷🇼 flag: Rwanda\n🇸🇦 flag: Saudi Arabia\n🇸🇧 flag: Solomon Islands\n🇸🇨 flag: Seychelles\n🇸🇩 flag: Sudan\n🇸🇪 flag: Sweden\n🇸🇬 flag: Singapore\n🇸🇭 flag: St. Helena\n🇸🇮 flag: Slovenia\n🇸🇯 flag: Svalbard & Jan Mayen\n🇸🇰 flag: Slovakia\n🇸🇱 flag: Sierra Leone\n🇸🇲 flag: San Marino\n🇸🇳 flag: Senegal\n🇸🇴 flag: Somalia\n🇸🇷 flag: Suriname\n🇸🇸 flag: South Sudan\n🇸🇹 flag: São Tomé & Príncipe\n🇸🇻 flag: El Salvador\n🇸🇽 flag: Sint Maarten\n🇸🇾 flag: Syria\n🇸🇿 flag: Eswatini\n🇹🇦 flag: Tristan da Cunha\n🇹🇨 flag: Turks & Caicos Islands\n🇹🇩 flag: Chad\n🇹🇫 flag: French Southern Territories\n🇹🇬 flag: Togo\n🇹🇭 flag: Thailand\n🇹🇯 flag: Tajikistan\n🇹🇰 flag: Tokelau\n🇹🇱 flag: Timor-Leste\n🇹🇲 flag: Turkmenistan\n🇹🇳 flag: Tunisia\n🇹🇴 flag: Tonga\n🇹🇷 flag: Türkiye\n🇹🇹 flag: Trinidad & Tobago\n🇹🇻 flag: Tuvalu\n🇹🇼 flag: Taiwan\n🇹🇿 flag: Tanzania\n🇺🇦 flag: Ukraine\n🇺🇬 flag: Uganda\n🇺🇲 flag: U.S. Outlying Islands\n🇺🇳 flag: United Nations\n🇺🇸 flag: United States\n🇺🇾 flag: Uruguay\n🇺🇿 flag: Uzbekistan\n🇻🇦 flag: Vatican City\n🇻🇨 flag: St. Vincent & Grenadines\n🇻🇪 flag: Venezuela\n🇻🇬 flag: British Virgin Islands\n🇻🇮 flag: U.S. Virgin Islands\n🇻🇳 flag: Vietnam\n🇻🇺 flag: Vanuatu\n🇼🇫 flag: Wallis & Futuna\n🇼🇸 flag: Samoa\n🇽🇰 flag: Kosovo\n🇾🇪 flag: Yemen\n🇾🇹 flag: Mayotte\n🇿🇦 flag: South Africa\n🇿🇲 flag: Zambia\n🇿🇼 flag: Zimbabwe\n@subdivision-flag\n🏴󠁧󠁢󠁥󠁮󠁧󠁿 flag: England\n🏴󠁧󠁢󠁳󠁣󠁴󠁿 flag: Scotland\n🏴󠁧󠁢󠁷󠁬󠁳󠁿 flag: Wales" },
++];
+diff --git a/ui/src/components/session-icon-library.ts b/ui/src/components/session-icon-library.ts
+new file mode 100644
+index 00000000..58b53b81
+--- /dev/null
++++ b/ui/src/components/session-icon-library.ts
+@@ -0,0 +1,465 @@
++// The bold session icon library: 72 original icons in nine groups, from openclaw-nix's
++// session-icons plugin (0.2.0), now part of the built-in picker. Each value is a
++// self-contained SVG data URL and stays byte for byte what the plugin saved, so saved
++// sessions keep matching: the pastel artwork (0.1) and the first one-colour outlines
++// still count as the same icon. The artwork is original to openclaw-nix (MIT).
++import { SESSION_ICON_SVG_DATA_URL_PREFIX } from "../../../packages/gateway-protocol/src/session-agent-status.js";
++
++/** Library groups, in order; their names are sessionsView.iconLibrary.groups.<key>. */
++export const SESSION_ICON_LIBRARY_GROUPS = [
++  "aerospace",
++  "ai",
++  "code",
++  "homelab",
++  "security",
++  "business",
++  "finance",
++  "creative",
++  "life",
++] as const;
++
++export type SessionIconLibraryGroup = (typeof SESSION_ICON_LIBRARY_GROUPS)[number];
++
++type SessionIconLibraryDefinition = {
++  /** Also the key of its name, sessionsView.iconLibrary.icons.<id>. */
++  id: string;
++  group: SessionIconLibraryGroup;
++  /** Search words beyond the icon's and group's names. */
++  keywords: string;
++  /** The first build's one-colour outline, kept to recognise values it saved. */
++  path: string;
++};
++
++export type SessionIconLibraryIcon = SessionIconLibraryDefinition & {
++  /** The value a selection saves. */
++  value: string;
++  /** The 0.1 pastel value. */
++  previousValue: string;
++  /** The first build's outline value. */
++  legacyValue: string;
++};
++
++// Recolour only paint attributes of the original artwork: geometry, whitespace and
++// encoding stay intact, so the pastel values remain reproducible.
++const BOLD_PALETTE: Readonly<Record<string, string>> = {
++  "#38bdf8": "#0085ff", // blue
++  "#a78bfa": "#7030e8", // violet
++  "#fb923c": "#f47700", // orange
++  "#f472b6": "#e91e8f", // magenta
++  "#34d399": "#00ad73", // emerald
++  "#facc15": "#ffc400", // gold
++  "#22d3ee": "#00b8d4", // cyan
++  "#fb7185": "#ed2033", // red
++  "#334155": "#1e293b", // ink
++  "#f8fafc": "#ffffff", // highlight
++};
++
++const colourSource = (id: string, bold = true) => {
++  const original = ARTWORK[id];
++  if (original === undefined) {
++    throw new Error(`session icon library: no artwork for ${id}`);
++  }
++  const artwork = bold
++    ? original.replace(/#[0-9a-f]{6}/gu, (colour) => BOLD_PALETTE[colour] ?? colour)
++    : original;
++  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">${artwork}</svg>`;
++};
++const outlineSource = (path: string) =>
++  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#7a92c2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
++const dataUrl = (svg: string) => `${SESSION_ICON_SVG_DATA_URL_PREFIX}${encodeURIComponent(svg)}`;
++
++let library: readonly SessionIconLibraryIcon[] | undefined;
++
++/** Every library icon, in its groups' order. */
++export function sessionIconLibrary(): readonly SessionIconLibraryIcon[] {
++  library ??= DEFINITIONS.map((icon) => ({
++    ...icon,
++    value: dataUrl(colourSource(icon.id)),
++    previousValue: dataUrl(colourSource(icon.id, false)),
++    legacyValue: dataUrl(outlineSource(icon.path)),
++  }));
++  return library;
++}
++
++/** The library's groups, in order. */
++export function sessionIconLibraryGroups(): readonly SessionIconLibraryGroup[] {
++  return SESSION_ICON_LIBRARY_GROUPS;
++}
++
++/** Whether a saved icon value is this library icon, in any of its versions. */
++export function isSessionIconLibraryIcon(current: string | null, icon: SessionIconLibraryIcon) {
++  return (
++    current === icon.value || current === icon.previousValue || current === icon.legacyValue
++  );
++}
++
++/** The library icon a saved value is, if any. */
++export function findSessionIconLibraryIcon(current: string | null) {
++  return current ? sessionIconLibrary().find((icon) => isSessionIconLibraryIcon(current, icon)) : undefined;
++}
++
++const DEFINITIONS: readonly SessionIconLibraryDefinition[] = [
++  {id: "aircraft", group: "aerospace",
++   keywords: "aviation flight airplane king air c90 merlin",
++   path: "M12 3v18m0-17 2 3v4l7 5v2l-7-2v3l3 2H7l3-2v-3l-7 2v-2l7-5V7Z"},
++  {id: "propeller", group: "aerospace",
++   keywords: "turboprop pt6 propulsion engine",
++   path: "M10 11C5 10 3 7 5 5s6 0 6 5m2 0c1-5 4-7 6-5s0 6-5 6m0 2c5 1 7 4 5 6s-6 0-6-5m-2 0c-1 5-4 7-6 5s0-6 5-6M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0"},
++  {id: "control-loop", group: "aerospace",
++   keywords: "feedback pid control law gnc autopilot",
++   path: "M8 7h8v7H8Zm-5 3h5m8 0h5v10H4v-6m-2 2 2-2 2 2M11 10h2"},
++  {id: "simulation", group: "aerospace",
++   keywords: "matlab simulink model system dynamics block diagram",
++   path: "M2 8h6v8H2Zm14 0h6v8h-6ZM8 12h8m-3-3 3 3-3 3M5 8V4h14v4"},
++  {id: "six-dof", group: "aerospace",
++   keywords: "six dof quaternion attitude coordinate frame physics",
++   path: "M12 12V3m-3 3 3-3 3 3m-3 6 8 6m-1-4 1 4-4 1m-4-7-8 6m4 1-4-1 1-4M9 10a4 4 0 0 1 7 2"},
++  {id: "airflow", group: "aerospace",
++   keywords: "cfd airflow avl vspaero openfoam wind tunnel airfoil",
++   path: "M3 5h6c4 0 5 3 12 3M3 19h6c4 0 5-3 12-3M4 13c3-5 10-4 16 0-6 2-13 3-16 0Z"},
++  {id: "telemetry", group: "aerospace",
++   keywords: "signals flight test avionics sensor oscilloscope",
++   path: "M3 5h18v14H3ZM5 12h3l2-4 4 8 2-4h3M8 22h8m-4-3v3"},
++  {id: "satellite", group: "aerospace",
++   keywords: "space navigation gps orbit aerospace",
++   path: "M9 9h6v6H9ZM2 6l4-4 4 4-4 4Zm12 12 4-4 4 4-4 4ZM15 9l4-4m-1-3 4 4M3 15a6 6 0 0 1 6 6m-6-3a3 3 0 0 1 3 3"},
++  {id: "agent", group: "ai",
++   keywords: "alina assistant bot openclaw automation",
++   path: "M6 7h12l2 3v9H4v-9ZM12 7V3m-2 0h4M8 12h1m6 0h1M8 16h8"},
++  {id: "agent-team", group: "ai",
++   keywords: "multi agent swarm council delegation orchestration",
++   path: "M14 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0M7 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0m14 0a2 2 0 1 1-4 0 2 2 0 0 1 4 0M12 7v5m-7 4v-4h14v4"},
++  {id: "neural-net", group: "ai",
++   keywords: "llm post training learning model inference",
++   path: "M6 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0m0 14a2 2 0 1 1-4 0 2 2 0 0 1 4 0M14 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0m8-7a2 2 0 1 1-4 0 2 2 0 0 1 4 0m0 14a2 2 0 1 1-4 0 2 2 0 0 1 4 0M6 6l4 4m-4 8 4-4m4-4 4-4m-4 8 4 4"},
++  {id: "memory", group: "ai",
++   keywords: "recall knowledge rag embeddings context database",
++   path: "M12 5C8 1 4 4 5 8c-4 1-3 7 0 8-1 4 4 6 7 3m0-14c4-4 8-1 7 3 4 1 3 7 0 8 1 4-4 6-7 3ZM8 8l4 3 4-3M7 15l5-2 5 2"},
++  {id: "workflow", group: "ai",
++   keywords: "harness chain automation pipeline tasks",
++   path: "M3 3h6v6H3Zm12 12h6v6h-6ZM9 6h9v9m-3-3 3 3 3-3M6 9v9h5"},
++  {id: "factory", group: "ai",
++   keywords: "dark factory autonomous production build agents",
++   path: "M3 21V9l6 4V8l6 4V3h5v18ZM6 17h1m4 0h1m4 0h1"},
++  {id: "research", group: "ai",
++   keywords: "recon papers science search analysis",
++   path: "M10 3h4m-3 0v7l-6 9q-1 2 2 2h10q3 0 2-2l-6-9V3M8 16h8m-5-3h2"},
++  {id: "voice", group: "ai",
++   keywords: "speech audio linux voice cockpit transcription smart glasses",
++   path: "M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0ZM5 11v1a7 7 0 0 0 14 0v-1M12 19v3m-4 0h8"},
++  {id: "terminal", group: "code",
++   keywords: "shell bash zsh nixos neovim cli clawterm warp",
++   path: "M3 4h18v16H3Zm3 5 3 3-3 3m6 1h5"},
++  {id: "code", group: "code",
++   keywords: "software development programming python typescript javascript",
++   path: "m8 6-6 6 6 6m8-12 6 6-6 6M14 3l-4 18"},
++  {id: "git", group: "code",
++   keywords: "github repository pull request merge version control",
++   path: "M8 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0m0 14a2 2 0 1 1-4 0 2 2 0 0 1 4 0M20 7a2 2 0 1 1-4 0 2 2 0 0 1 4 0M6 7v10m12-8v2c0 5-12 1-12 6"},
++  {id: "debug", group: "code",
++   keywords: "bug repair fix trace troubleshooting",
++   path: "M8 8h8v8a4 4 0 0 1-8 0ZM9 8V5h6v3M4 7l4 3m8 0 4-3M3 14h5m8 0h5M4 21l4-3m8 0 4 3M12 9v10"},
++  {id: "tests", group: "code",
++   keywords: "qa verification validation regression checks",
++   path: "M5 3h14v18H5Zm3 5 1 1 2-2m2 1h3M8 14l1 1 2-2m2 1h3"},
++  {id: "api", group: "code",
++   keywords: "mcp plugin sdk connector tools protocol",
++   path: "M3 7h5v10H3Zm13 0h5v10h-5ZM8 12h8m-5-3 3 3-3 3M5 3v4m14 10v4"},
++  {id: "package", group: "code",
++   keywords: "nix reproducible flake dependency release deployment",
++   path: "m12 3 9 5v9l-9 5-9-5V8Zm-9 5 9 5 9-5m-9 5v9M7 5l9 5"},
++  {id: "web", group: "code",
++   keywords: "website frontend browser portfolio dashboard ui ux",
++   path: "M3 4h18v16H3ZM3 9h18M6 6h1m3 0h1M6 13h5v4H6Zm9 0h3m-3 4h3"},
++  {id: "server", group: "homelab",
++   keywords: "home lab nova alina proxmox compute hardware",
++   path: "M4 3h16v5H4Zm0 7h16v5H4Zm0 7h16v5H4ZM7 5h1m-1 7h1m-1 7h1m7-14h3m-3 7h3m-3 7h3"},
++  {id: "cluster", group: "homelab",
++   keywords: "kubernetes k8s k3s orchestration nodes",
++   path: "M9 3h6v5H9ZM2 16h6v5H2Zm14 0h6v5h-6ZM12 8v4m-7 4v-4h14v4"},
++  {id: "storage", group: "homelab",
++   keywords: "ceph distributed storage database sql backup",
++   path: "M20 5c0 4-16 4-16 0s16-4 16 0ZM4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0"},
++  {id: "network", group: "homelab",
++   keywords: "tailscale router dns vpn networking internet",
++   path: "M4 13h16v7H4ZM7 13V7m10 6V7M7 17h1m3 0h1m3 0h2M2 5a16 16 0 0 1 20 0M5 8a11 11 0 0 1 14 0"},
++  {id: "cloud", group: "homelab",
++   keywords: "aws gcp azure cloudflare cloud workers hosting",
++   path: "M7 18H6a4 4 0 1 1 0-8 6 6 0 0 1 12-1 4.5 4.5 0 0 1 0 9h-1M12 21V12m-3 3 3-3 3 3"},
++  {id: "chip", group: "homelab",
++   keywords: "dgx spark raspberry pi embedded electronics hardware cpu gpu",
++   path: "M6 6h12v12H6Zm3 3h6v6H9ZM9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4"},
++  {id: "linux", group: "homelab",
++   keywords: "nixos operating system desktop hyprland configuration",
++   path: "M9 3h6v3l5 3-3 3 3 6-5 3H9l-5-3 3-6-3-3 5-3ZM9 9h1m4 0h1m-5 4h4M9 18h6"},
++  {id: "observability", group: "homelab",
++   keywords: "heartbeat logs metrics observability health uptime cron",
++   path: "M2 12h4l3-8 6 16 3-8h4M4 4h2m12 16h2"},
++  {id: "shield", group: "security",
++   keywords: "gatekeeper audit permissions policy protection",
++   path: "m12 2 8 4v6c0 5-4 8-8 10-4-2-8-5-8-10V6Zm-4 10 3 3 5-6"},
++  {id: "key", group: "security",
++   keywords: "oauth auth login secrets api key yubikey",
++   path: "M11 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm-1 3 10 10m-3-3 3-3m-6 0 3-3"},
++  {id: "lock", group: "security",
++   keywords: "encrypted confidential access isolation vault",
++   path: "M5 10h14v11H5ZM8 10V6a4 4 0 0 1 8 0v4M12 14v3"},
++  {id: "scanner", group: "security",
++   keywords: "specter pentest vulnerability reverse engineering dissect",
++   path: "M3 8V3h5m8 0h5v5M3 16v5h5m8 0h5v-5M2 12h20M8 8h8v8H8Z"},
++  {id: "backup", group: "security",
++   keywords: "restore rollback snapshot lifeline disaster",
++   path: "M3 10a9 9 0 1 1 1 8M3 4v6h6M12 7v6l4 2"},
++  {id: "review", group: "security",
++   keywords: "advocate review verification governance approvals decision",
++   path: "M5 3h14v18H5Zm3 5h8m-8 4h8m-8 4 2 2 5-4"},
++  {id: "firewall", group: "security",
++   keywords: "network policy ingress gate access boundaries",
++   path: "M3 4h18v16H3ZM3 9h18M3 15h18M9 4v5m6 0v6m-6 0v5"},
++  {id: "incident", group: "security",
++   keywords: "alert rescue reliability ops outage triage",
++   path: "m12 3 10 18H2ZM12 8v6m0 3v1"},
++  {id: "consulting", group: "business",
++   keywords: "mangano consulting client business work",
++   path: "M3 8h18v12H3ZM8 8V4h8v4M3 12l9 4 9-4m-9 2v4"},
++  {id: "startup", group: "business",
++   keywords: "controlstackai entrepreneurship venture launch company",
++   path: "M8 16c0-8 6-12 13-13 0 7-5 13-13 13Zm0-6H4l-2 5h6m6 1v4l-5 2v-6M5 18l-3 4m14-14h1"},
++  {id: "strategy", group: "business",
++   keywords: "atlas planning architecture roadmap milestones goals",
++   path: "M3 3v18h18M6 16l5-5 4 2 6-8m-5 0h5v5"},
++  {id: "career", group: "business",
++   keywords: "jobs resume interview applications hiring portfolio",
++   path: "M7 3h10v18H7Zm3 4h4m-4 4h4M4 9H2v12h3m15-12h2v12h-3M10 16h4"},
++  {id: "meeting", group: "business",
++   keywords: "calendar events appointments scheduling meetup",
++   path: "M3 5h18v16H3ZM7 2v6m10-6v6M3 10h18M7 14h3m4 0h3m-10 4h3"},
++  {id: "handshake", group: "business",
++   keywords: "sales negotiation networking deal truss acquihire",
++   path: "m2 9 4-4 5 2 3-2 8 6-4 8-5 2-7-6Zm4-4 5 2-3 4 3 2 4-3 6 5M6 15l5 4m-2-6 6 6"},
++  {id: "documents", group: "business",
++   keywords: "contracts proposal specification writing pdf word",
++   path: "M5 2h9l5 5v15H5ZM14 2v6h5M8 12h8m-8 4h8m-8 3h5"},
++  {id: "mail", group: "business",
++   keywords: "gmail inbox communication outreach messages",
++   path: "M3 5h18v14H3Zm0 0 9 8 9-8M3 19l6-6m6 0 6 6"},
++  {id: "markets", group: "finance",
++   keywords: "investing stocks robinhood trading ledger",
++   path: "M3 20V4m0 16h18M6 15l5-5 4 2 6-8m-5 0h5v5"},
++  {id: "bitcoin", group: "finance",
++   keywords: "crypto sats cryptocurrency blockchain",
++   path: "M9 4v16m-3-3h10a3 3 0 0 0 0-6H9m0 0h6a3 3 0 0 0 0-6H6M12 2v3m3-3v3m-3 12v5m3-5v5"},
++  {id: "wallet", group: "finance",
++   keywords: "spending wallet personal finance cost budget",
++   path: "M3 6h17v15H3Zm0 0V3h15v3m-1 6h5v5h-5Zm2 2h1"},
++  {id: "credit", group: "finance",
++   keywords: "credit score debt credit karma card",
++   path: "M3 5h18v14H3ZM3 10h18M6 15h4m5 0h3"},
++  {id: "savings", group: "finance",
++   keywords: "bank money cash emergency fund",
++   path: "M5 10h14v9h-2v3h-3v-3H9v3H6v-4H3v-6h2l1-5 4 3M9 6h6m4 5h3v5h-3M15 13h1"},
++  {id: "receipt", group: "finance",
++   keywords: "invoices billing receipts consulting taxes subscriptions",
++   path: "M5 2l3 2 4-2 4 2 3-2v20l-3-2-4 2-4-2-3 2ZM8 8h8m-8 4h8m-8 4h5"},
++  {id: "analysis", group: "finance",
++   keywords: "chart data analytics economic research ai bubble",
++   path: "M3 21V3m0 18h18M7 17V9m5 8V5m5 12v-5M6 6l6-3 7 4"},
++  {id: "value", group: "finance",
++   keywords: "cloud spend api pricing usage efficiency dollars",
++   path: "M12 2v20M17 6h-7a4 4 0 0 0 0 8h4a4 4 0 0 0 0-8H7M4 4l-2 3m18 10 2 3"},
++  {id: "video", group: "creative",
++   keywords: "studio youtube shorts film heygen higgsfield",
++   path: "M3 6h12v12H3Zm12 4 6-4v12l-6-4Z"},
++  {id: "camera", group: "creative",
++   keywords: "photo image camera visual instagram",
++   path: "M3 7h5l2-3h4l2 3h5v13H3ZM16 13a4 4 0 1 1-8 0 4 4 0 0 1 8 0"},
++  {id: "design", group: "creative",
++   keywords: "brand art creative muse logo visual ui ux",
++   path: "M12 3a9 9 0 1 0 0 18h2a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h5c6 0 3-10-6-10ZM7 8h.1m4-2h.1m5 2h.1M5 13h.1"},
++  {id: "audio", group: "creative",
++   keywords: "podcast sound voice recording music production",
++   path: "M4 8v8m4-12v16m4-18v20m4-16v12m4-8v4"},
++  {id: "writing", group: "creative",
++   keywords: "content copy notes scripts blog publishing",
++   path: "m4 16 12-12 4 4L8 20l-5 1Zm9-9 4 4M3 21h18"},
++  {id: "social", group: "creative",
++   keywords: "linkedin instagram marketing audience posts outreach",
++   path: "M8 5a2 2 0 1 1-4 0 2 2 0 0 1 4 0m14 7a2 2 0 1 1-4 0 2 2 0 0 1 4 0M8 19a2 2 0 1 1-4 0 2 2 0 0 1 4 0M8 6l10 5M8 18l10-5"},
++  {id: "presentation", group: "creative",
++   keywords: "slides pitch deck ppt demo showcase",
++   path: "M2 3h20M4 3v13h16V3M12 16v6m-5 0 5-4 5 4M7 12l4-5 3 3 3-4"},
++  {id: "smart-glasses", group: "creative",
++   keywords: "wearable ar vr spatial computer camera",
++   path: "M2 9h8v7H2Zm12 0h8v7h-8ZM10 11h4M2 9l2-6h3m15 6-2-6h-3"},
++  {id: "surf", group: "life",
++   keywords: "surfing waves beach buoy huntington newport conditions",
++   path: "M2 17q3-4 6 0t6 0 8 0M2 21q3-4 6 0t6 0 8 0M8 13C9 7 13 3 17 2c1 5-1 9-5 12m-2-2 5-7"},
++  {id: "coffee", group: "life",
++   keywords: "cafe ralph coffee breakfast espresso",
++   path: "M3 6h12v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Zm12 1h3a3 3 0 0 1 0 6h-3M6 2v1m5-1v1M2 23h16"},
++  {id: "dining", group: "life",
++   keywords: "food restaurants doordash dinner date night",
++   path: "M3 2v6a3 3 0 0 0 6 0V2M6 2v20m11 0V2c-4 3-4 10 0 10h3V2"},
++  {id: "live-music", group: "life",
++   keywords: "concert event jazz tickets entertainment",
++   path: "M9 18V5l11-3v13M9 9l11-3M9 18a3 2 0 1 1-6 0 3 2 0 0 1 6 0m11-3a3 2 0 1 1-6 0 3 2 0 0 1 6 0"},
++  {id: "comedy", group: "life",
++   keywords: "comedy live show theater theatre entertainment tickets",
++   path: "M3 3l8 2v7c0 4-5 7-8 2ZM5 7h1m2 1h1m-4 3q2 3 4 0M13 8l8-2v10c0 4-5 7-8 2ZM15 12h1m2-1h1m-4 7q2-3 4-1"},
++  {id: "travel", group: "life",
++   keywords: "trip vacation vegas hotel itinerary birthday adventure",
++   path: "M4 6h16v15H4ZM9 6V2h6v4M8 6v15m8-15v15M7 21v2m10-2v2"},
++  {id: "home", group: "life",
++   keywords: "apartment housing property real estate newport lease",
++   path: "m2 11 10-8 10 8M5 9v12h14V9M10 21v-7h4v7"},
++  {id: "health", group: "life",
++   keywords: "fitness wellness medical care personal partner",
++   path: "M12 21 3 12C-2 6 6 0 12 7c6-7 14-1 9 5ZM4 12h4l2-3 4 7 2-4h4"},
++];
++
++const ARTWORK: Readonly<Record<string, string>> = {
++  "aircraft":
++    "<path d=\"M12 2l2 5v4l8 5v3l-8-3v4l3 2H7l3-2v-4l-8 3v-3l8-5V7Z\" fill=\"#38bdf8\"/><path d=\"M12 2l2 5v13l3 2h-5Z\" fill=\"#a78bfa\"/><path d=\"M11 8h2\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"2\"/><path d=\"M2 16l3-2v4l-3 1Z\" fill=\"#fb923c\"/>",
++  "propeller":
++    "<path d=\"M11 11C3 10 1 3 6 3c4 0 5 5 5 8\" fill=\"#38bdf8\"/><path d=\"M13 11c0-8 7-10 8-5 0 4-5 5-8 5\" fill=\"#f472b6\"/><path d=\"M13 13c8 0 10 7 5 8-4 0-5-5-5-8\" fill=\"#fb923c\"/><path d=\"M11 13c0 8-7 10-8 5 0-4 5-5 8-5\" fill=\"#34d399\"/><circle cx=\"12\" cy=\"12\" r=\"3\" fill=\"#facc15\"/><circle cx=\"12\" cy=\"12\" r=\"1\" fill=\"#334155\"/>",
++  "control-loop":
++    "<path d=\"M2 10h19v10H4v-5\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"7\" y=\"5\" width=\"10\" height=\"10\" rx=\"1.5\" fill=\"#38bdf8\"/><path d=\"M10 10h4\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"2\"/><path d=\"M1 16l3-4 3 4Z\" fill=\"#fb923c\"/>",
++  "simulation":
++    "<path d=\"M5 8V4h14v4M8 12h8\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"1\" y=\"8\" width=\"7\" height=\"9\" rx=\"1.5\" fill=\"#38bdf8\"/><rect x=\"16\" y=\"8\" width=\"7\" height=\"9\" rx=\"1.5\" fill=\"#fb923c\"/><path d=\"M11 9l4 3-4 3Z\" fill=\"#facc15\"/><path d=\"M3 12h3M18 12h3\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"1.5\"/>",
++  "six-dof":
++    "<path d=\"M12 12V3\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"2.5\"/><path d=\"M12 1l-3 4h6Z\" fill=\"#38bdf8\"/><path d=\"M12 12l8 6\" fill=\"none\" stroke=\"#f472b6\" stroke-width=\"2.5\"/><path d=\"M22 20l-6-1 4-4Z\" fill=\"#f472b6\"/><path d=\"M12 12l-8 6\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"2.5\"/><path d=\"M2 20l2-5 4 4Z\" fill=\"#34d399\"/><circle cx=\"12\" cy=\"12\" r=\"2.5\" fill=\"#facc15\"/>",
++  "airflow":
++    "<path d=\"M2 5h7c4 0 5 3 13 3\" fill=\"none\" stroke=\"#22d3ee\" stroke-width=\"2\"/><path d=\"M2 19h7c4 0 5-3 13-3\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><path d=\"M3 13c4-6 12-3 18 0-7 3-14 3-18 0Z\" fill=\"#38bdf8\"/><path d=\"M3 13h18c-7 3-14 3-18 0Z\" fill=\"#fb923c\"/>",
++  "telemetry":
++    "<rect x=\"2\" y=\"3\" width=\"20\" height=\"16\" rx=\"1.5\" fill=\"#334155\"/><rect x=\"4\" y=\"5\" width=\"16\" height=\"12\" rx=\"1.5\" fill=\"#38bdf8\"/><path d=\"M5 11h3l2-4 4 8 2-4h3\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2\"/><path d=\"M12 19v3M7 22h10\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/>",
++  "satellite":
++    "<path d=\"M1 6l5-5 5 5-5 5Z\" fill=\"#38bdf8\"/><path d=\"M13 18l5-5 5 5-5 5Z\" fill=\"#a78bfa\"/><path d=\"M8 9l4-3 6 7-4 4Z\" fill=\"#facc15\"/><path d=\"M14 8l5-5M17 2l5 5\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"2\"/><path d=\"M2 15a7 7 0 0 1 7 7M2 19a3 3 0 0 1 3 3\" fill=\"none\" stroke=\"#22d3ee\" stroke-width=\"2\"/>",
++  "agent":
++    "<path d=\"M12 4v4\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><circle cx=\"12\" cy=\"3\" r=\"2\" fill=\"#f472b6\"/><rect x=\"3\" y=\"7\" width=\"18\" height=\"14\" rx=\"4\" fill=\"#38bdf8\"/><rect x=\"6\" y=\"10\" width=\"12\" height=\"7\" rx=\"2\" fill=\"#334155\"/><circle cx=\"9\" cy=\"13\" r=\"1.5\" fill=\"#facc15\"/><circle cx=\"15\" cy=\"13\" r=\"1.5\" fill=\"#34d399\"/><path d=\"M9 19h6\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"1\" y=\"11\" width=\"2\" height=\"6\" rx=\"1.5\" fill=\"#fb923c\"/><rect x=\"21\" y=\"11\" width=\"2\" height=\"6\" rx=\"1.5\" fill=\"#fb923c\"/>",
++  "agent-team":
++    "<path d=\"M12 7v5M5 16v-4h14v4\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><circle cx=\"12\" cy=\"5\" r=\"4\" fill=\"#38bdf8\"/><circle cx=\"5\" cy=\"18\" r=\"4\" fill=\"#f472b6\"/><circle cx=\"19\" cy=\"18\" r=\"4\" fill=\"#fb923c\"/><circle cx=\"12\" cy=\"4\" r=\"1.2\" fill=\"#f8fafc\"/><circle cx=\"5\" cy=\"17\" r=\"1.2\" fill=\"#f8fafc\"/><circle cx=\"19\" cy=\"17\" r=\"1.2\" fill=\"#f8fafc\"/>",
++  "neural-net":
++    "<path d=\"M4 4l8 8-8 8M20 4l-8 8 8 8\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><circle cx=\"4\" cy=\"4\" r=\"3\" fill=\"#38bdf8\"/><circle cx=\"4\" cy=\"20\" r=\"3\" fill=\"#34d399\"/><circle cx=\"20\" cy=\"4\" r=\"3\" fill=\"#f472b6\"/><circle cx=\"20\" cy=\"20\" r=\"3\" fill=\"#fb923c\"/><circle cx=\"12\" cy=\"12\" r=\"3.5\" fill=\"#facc15\"/>",
++  "memory":
++    "<path d=\"M12 5C8 1 4 4 5 8c-4 1-3 7 0 8-1 4 4 6 7 3Z\" fill=\"#f472b6\"/><path d=\"M12 5c4-4 8-1 7 3 4 1 3 7 0 8 1 4-4 6-7 3Z\" fill=\"#a78bfa\"/><path d=\"M7 8l5 3 5-3M7 15l5-2 5 2\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"1.5\"/>",
++  "workflow":
++    "<path d=\"M7 6h11v12M6 8v10h11\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"2\" y=\"2\" width=\"8\" height=\"8\" rx=\"1.5\" fill=\"#38bdf8\"/><rect x=\"14\" y=\"14\" width=\"8\" height=\"8\" rx=\"1.5\" fill=\"#f472b6\"/><path d=\"M15 11l3 4 3-4Z\" fill=\"#facc15\"/><circle cx=\"6\" cy=\"6\" r=\"1.5\" fill=\"#f8fafc\"/><circle cx=\"18\" cy=\"18\" r=\"1.5\" fill=\"#f8fafc\"/>",
++  "factory":
++    "<path d=\"M3 21V9l6 4V8l6 4V3h5v18Z\" fill=\"#a78bfa\"/><rect x=\"15\" y=\"2\" width=\"5\" height=\"6\" rx=\"1.5\" fill=\"#f472b6\"/><rect x=\"3\" y=\"16\" width=\"17\" height=\"6\" rx=\"0\" fill=\"#38bdf8\"/><rect x=\"6\" y=\"17\" width=\"2\" height=\"3\" rx=\"0.5\" fill=\"#facc15\"/><rect x=\"11\" y=\"17\" width=\"2\" height=\"3\" rx=\"0.5\" fill=\"#facc15\"/><rect x=\"16\" y=\"17\" width=\"2\" height=\"3\" rx=\"0.5\" fill=\"#facc15\"/>",
++  "research":
++    "<path d=\"M9 2h6v2h-1v6l6 9q1 3-2 3H6q-3 0-2-3l6-9V4H9Z\" fill=\"#38bdf8\"/><path d=\"M7 15h10l3 4q1 3-2 3H6q-3 0-2-3Z\" fill=\"#a78bfa\"/><circle cx=\"10\" cy=\"18\" r=\"1.5\" fill=\"#facc15\"/><circle cx=\"14\" cy=\"12\" r=\"1\" fill=\"#f472b6\"/><circle cx=\"15\" cy=\"20\" r=\"1\" fill=\"#22d3ee\"/>",
++  "voice":
++    "<rect x=\"8\" y=\"1\" width=\"8\" height=\"15\" rx=\"4\" fill=\"#f472b6\"/><rect x=\"8\" y=\"1\" width=\"8\" height=\"7\" rx=\"4\" fill=\"#a78bfa\"/><path d=\"M4 11v1a8 8 0 0 0 16 0v-1M12 20v3M8 23h8\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"2\"/><path d=\"M10 10h4M10 13h4\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"1.5\"/>",
++  "terminal":
++    "<rect x=\"2\" y=\"3\" width=\"20\" height=\"18\" rx=\"1.5\" fill=\"#334155\"/><rect x=\"2\" y=\"3\" width=\"20\" height=\"4\" rx=\"1.5\" fill=\"#a78bfa\"/><circle cx=\"5\" cy=\"5\" r=\"1\" fill=\"#fb7185\"/><circle cx=\"8\" cy=\"5\" r=\"1\" fill=\"#facc15\"/><circle cx=\"11\" cy=\"5\" r=\"1\" fill=\"#34d399\"/><path d=\"M6 11l3 3-3 3\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"2\"/><path d=\"M12 18h6\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"2\"/>",
++  "code":
++    "<path d=\"M7 5l-6 7 6 7\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"3\"/><path d=\"M17 5l6 7-6 7\" fill=\"none\" stroke=\"#f472b6\" stroke-width=\"3\"/><path d=\"M14 3l-4 18\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2.5\"/>",
++  "git":
++    "<path d=\"M6 4v16M18 6v5c0 5-12 1-12 7\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2.5\"/><circle cx=\"6\" cy=\"4\" r=\"3\" fill=\"#fb923c\"/><circle cx=\"6\" cy=\"20\" r=\"3\" fill=\"#f472b6\"/><circle cx=\"18\" cy=\"6\" r=\"3\" fill=\"#34d399\"/>",
++  "debug":
++    "<path d=\"M4 6l4 4M16 10l4-4M3 14h18M4 22l4-4M16 18l4 4\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"8\" y=\"4\" width=\"8\" height=\"6\" rx=\"3\" fill=\"#fb923c\"/><path d=\"M7 9h10v8a5 5 0 0 1-10 0Z\" fill=\"#34d399\"/><path d=\"M12 10v11\" fill=\"none\" stroke=\"#334155\" stroke-width=\"1.5\"/><circle cx=\"10\" cy=\"6\" r=\"1\" fill=\"#facc15\"/><circle cx=\"14\" cy=\"6\" r=\"1\" fill=\"#facc15\"/>",
++  "tests":
++    "<path d=\"M5 2h9l5 5v15H5Z\" fill=\"#38bdf8\"/><path d=\"M14 2v6h5\" fill=\"#a78bfa\"/><path d=\"M8 8l1 1 2-3M8 15l1 1 2-3\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"2\"/><path d=\"M14 8h2M14 15h2M8 19h8\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"1.5\"/>",
++  "api":
++    "<path d=\"M7 12h10M5 2v5M19 17v5\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"2\" y=\"6\" width=\"7\" height=\"12\" rx=\"1.5\" fill=\"#38bdf8\"/><rect x=\"15\" y=\"6\" width=\"7\" height=\"12\" rx=\"1.5\" fill=\"#fb923c\"/><path d=\"M10 9l4 3-4 3Z\" fill=\"#facc15\"/><path d=\"M5 10v4M18 10v4\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"1.5\"/>",
++  "package":
++    "<path d=\"M12 2l10 5v11l-10 5-10-5V7Z\" fill=\"#fb923c\"/><path d=\"M2 7l10 5v11L2 18Z\" fill=\"#facc15\"/><path d=\"M12 12l10-5v11l-10 5Z\" fill=\"#f472b6\"/><path d=\"M7 4l10 5v5l-3 1v-5L4 6Z\" fill=\"#a78bfa\"/>",
++  "web":
++    "<rect x=\"2\" y=\"3\" width=\"20\" height=\"18\" rx=\"1.5\" fill=\"#38bdf8\"/><rect x=\"2\" y=\"3\" width=\"20\" height=\"5\" rx=\"1.5\" fill=\"#a78bfa\"/><circle cx=\"5\" cy=\"5.5\" r=\"1\" fill=\"#fb7185\"/><circle cx=\"8\" cy=\"5.5\" r=\"1\" fill=\"#facc15\"/><rect x=\"4\" y=\"11\" width=\"7\" height=\"7\" rx=\"1.5\" fill=\"#f472b6\"/><path d=\"M14 12h5M14 16h4\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"1.7\"/>",
++  "server":
++    "<rect x=\"3\" y=\"2\" width=\"18\" height=\"6\" rx=\"1.5\" fill=\"#a78bfa\"/><rect x=\"3\" y=\"9\" width=\"18\" height=\"6\" rx=\"1.5\" fill=\"#38bdf8\"/><rect x=\"3\" y=\"16\" width=\"18\" height=\"6\" rx=\"1.5\" fill=\"#22d3ee\"/><circle cx=\"6\" cy=\"5\" r=\"1.2\" fill=\"#facc15\"/><circle cx=\"6\" cy=\"12\" r=\"1.2\" fill=\"#34d399\"/><circle cx=\"6\" cy=\"19\" r=\"1.2\" fill=\"#f472b6\"/><path d=\"M13 5h5M13 12h5M13 19h5\" fill=\"none\" stroke=\"#334155\" stroke-width=\"1.5\"/>",
++  "cluster":
++    "<path d=\"M12 7v6M5 18v-5h14v5\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"8\" y=\"1\" width=\"8\" height=\"7\" rx=\"1.5\" fill=\"#38bdf8\"/><rect x=\"1\" y=\"16\" width=\"8\" height=\"7\" rx=\"1.5\" fill=\"#34d399\"/><rect x=\"15\" y=\"16\" width=\"8\" height=\"7\" rx=\"1.5\" fill=\"#f472b6\"/><path d=\"M10 4h4M3 19h4M17 19h4\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"1.5\"/>",
++  "storage":
++    "<path d=\"M3 5v14c0 5 18 5 18 0V5Z\" fill=\"#a78bfa\"/><path d=\"M3 12v7c0 5 18 5 18 0v-7c0 5-18 5-18 0Z\" fill=\"#38bdf8\"/><path d=\"M21 5c0 5-18 5-18 0s18-5 18 0Z\" fill=\"#22d3ee\"/><circle cx=\"18\" cy=\"17\" r=\"1.3\" fill=\"#facc15\"/>",
++  "network":
++    "<path d=\"M6 14V8M18 14V8\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"2\" y=\"13\" width=\"20\" height=\"8\" rx=\"1.5\" fill=\"#38bdf8\"/><path d=\"M2 4a17 17 0 0 1 20 0M6 8a10 10 0 0 1 12 0\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"2\"/><circle cx=\"6\" cy=\"17\" r=\"1.2\" fill=\"#facc15\"/><circle cx=\"10\" cy=\"17\" r=\"1.2\" fill=\"#f472b6\"/><path d=\"M15 17h4\" fill=\"none\" stroke=\"#334155\" stroke-width=\"2\"/>",
++  "cloud":
++    "<path d=\"M6 19a5 5 0 1 1-1-10 7 7 0 0 1 13-2 6 6 0 0 1 0 12Z\" fill=\"#38bdf8\"/><path d=\"M12 11l6 6h-4v6h-4v-6H6Z\" fill=\"#a78bfa\"/><path d=\"M12 11l6 6h-4v6h-2Z\" fill=\"#f472b6\"/>",
++  "chip":
++    "<path d=\"M8 1v22M16 1v22M1 8h22M1 16h22\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2\"/><rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"3\" fill=\"#a78bfa\"/><rect x=\"7\" y=\"7\" width=\"10\" height=\"10\" rx=\"2\" fill=\"#38bdf8\"/><path d=\"M13 7l-4 6h3l-1 4 5-6h-3Z\" fill=\"#34d399\"/>",
++  "linux":
++    "<path d=\"M8 3q4-4 8 0l1 6 4 9-4 3H7l-4-3 4-9Z\" fill=\"#334155\"/><path d=\"M9 9h6l3 10H6Z\" fill=\"#f8fafc\"/><circle cx=\"10\" cy=\"6\" r=\"1.4\" fill=\"#f8fafc\"/><circle cx=\"14\" cy=\"6\" r=\"1.4\" fill=\"#f8fafc\"/><path d=\"M9 8h6l-3 3Z\" fill=\"#fb923c\"/><rect x=\"3\" y=\"20\" width=\"8\" height=\"3\" rx=\"1.5\" fill=\"#facc15\"/><rect x=\"13\" y=\"20\" width=\"8\" height=\"3\" rx=\"1.5\" fill=\"#facc15\"/><circle cx=\"10\" cy=\"6\" r=\"0.5\" fill=\"#334155\"/><circle cx=\"14\" cy=\"6\" r=\"0.5\" fill=\"#334155\"/>",
++  "observability":
++    "<rect x=\"1\" y=\"3\" width=\"22\" height=\"18\" rx=\"3\" fill=\"#334155\"/><path d=\"M2 12h4l3-7 6 14 3-7h4\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"2.2\"/><circle cx=\"19\" cy=\"6\" r=\"1.5\" fill=\"#f472b6\"/><path d=\"M5 20h3\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"2\"/>",
++  "shield":
++    "<path d=\"M12 1l9 4v7c0 5-4 8-9 11-5-3-9-6-9-11V5Z\" fill=\"#34d399\"/><path d=\"M12 1l9 4v7c0 5-4 8-9 11Z\" fill=\"#38bdf8\"/><path d=\"M7 12l4 4 6-8\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2.5\"/>",
++  "key":
++    "<circle cx=\"7\" cy=\"7\" r=\"6\" fill=\"#facc15\"/><circle cx=\"7\" cy=\"7\" r=\"2.5\" fill=\"#fb923c\"/><path d=\"M11 11l10 10M17 17l3-3M14 14l3-3\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"3\"/>",
++  "lock":
++    "<path d=\"M7 11V6a5 5 0 0 1 10 0v5\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"3\"/><rect x=\"3\" y=\"9\" width=\"18\" height=\"14\" rx=\"3\" fill=\"#a78bfa\"/><circle cx=\"12\" cy=\"15\" r=\"2\" fill=\"#facc15\"/><rect x=\"11\" y=\"15\" width=\"2\" height=\"4\" rx=\"1.5\" fill=\"#facc15\"/><rect x=\"5\" y=\"11\" width=\"3\" height=\"9\" rx=\"1\" fill=\"#f472b6\"/>",
++  "scanner":
++    "<path d=\"M2 7V2h5M17 2h5v5M2 17v5h5M17 22h5v-5\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"6\" y=\"6\" width=\"12\" height=\"12\" rx=\"1.5\" fill=\"#38bdf8\"/><path d=\"M1 12h22\" fill=\"none\" stroke=\"#f472b6\" stroke-width=\"2.5\"/><circle cx=\"12\" cy=\"12\" r=\"2\" fill=\"#facc15\"/>",
++  "backup":
++    "<path d=\"M3 10a9 9 0 1 1 1 8\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"3\"/><path d=\"M1 4v8h8Z\" fill=\"#34d399\"/><path d=\"M12 6v7l4 2\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2.5\"/><circle cx=\"12\" cy=\"12\" r=\"1.5\" fill=\"#facc15\"/>",
++  "review":
++    "<path d=\"M5 2h9l5 5v15H5Z\" fill=\"#a78bfa\"/><path d=\"M14 2v6h5\" fill=\"#a78bfa\"/><path d=\"M8 8h8M8 12h8\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"1.5\"/><circle cx=\"16\" cy=\"18\" r=\"5\" fill=\"#34d399\"/><path d=\"M13 18l2 2 4-4\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2\"/>",
++  "firewall":
++    "<rect x=\"2\" y=\"3\" width=\"20\" height=\"18\" rx=\"1.5\" fill=\"#fb923c\"/><rect x=\"3\" y=\"4\" width=\"6\" height=\"4\" rx=\"0.5\" fill=\"#facc15\"/><rect x=\"11\" y=\"4\" width=\"10\" height=\"4\" rx=\"0.5\" fill=\"#fb7185\"/><rect x=\"3\" y=\"10\" width=\"10\" height=\"4\" rx=\"0.5\" fill=\"#f472b6\"/><rect x=\"15\" y=\"10\" width=\"6\" height=\"4\" rx=\"0.5\" fill=\"#facc15\"/><rect x=\"3\" y=\"16\" width=\"6\" height=\"4\" rx=\"0.5\" fill=\"#fb7185\"/><rect x=\"11\" y=\"16\" width=\"10\" height=\"4\" rx=\"0.5\" fill=\"#a78bfa\"/>",
++  "incident":
++    "<path d=\"M12 1L24 22H0Z\" fill=\"#facc15\"/><path d=\"M12 1l12 21H12Z\" fill=\"#fb923c\"/><rect x=\"11\" y=\"7\" width=\"2\" height=\"8\" rx=\"1.5\" fill=\"#334155\"/><circle cx=\"12\" cy=\"18\" r=\"1.5\" fill=\"#fb7185\"/>",
++  "consulting":
++    "<path d=\"M8 8V3h8v5\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"3\"/><rect x=\"2\" y=\"7\" width=\"20\" height=\"15\" rx=\"1.5\" fill=\"#38bdf8\"/><path d=\"M2 7h20v6l-10 4-10-4Z\" fill=\"#a78bfa\"/><rect x=\"10\" y=\"13\" width=\"4\" height=\"5\" rx=\"1\" fill=\"#facc15\"/>",
++  "startup":
++    "<path d=\"M8 16C7 9 14 2 22 2c0 8-7 15-14 14Z\" fill=\"#38bdf8\"/><path d=\"M14 15v6l-6 2v-7M8 10H3l-2 6h7\" fill=\"#a78bfa\"/><path d=\"M7 17l-2 6 6-4Z\" fill=\"#fb923c\"/><path d=\"M7 18l-1 3 3-2Z\" fill=\"#facc15\"/><circle cx=\"16\" cy=\"8\" r=\"3\" fill=\"#f472b6\"/><circle cx=\"16\" cy=\"8\" r=\"1.5\" fill=\"#f8fafc\"/>",
++  "strategy":
++    "<path d=\"M3 2v20h19\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><path d=\"M6 17l5-6 4 2 6-9\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"2.5\"/><path d=\"M15 3h7v7Z\" fill=\"#38bdf8\"/><circle cx=\"11\" cy=\"11\" r=\"2\" fill=\"#facc15\"/>",
++  "career":
++    "<rect x=\"5\" y=\"1\" width=\"14\" height=\"22\" rx=\"1.5\" fill=\"#38bdf8\"/><rect x=\"8\" y=\"4\" width=\"8\" height=\"7\" rx=\"1.5\" fill=\"#a78bfa\"/><circle cx=\"12\" cy=\"6\" r=\"1.7\" fill=\"#facc15\"/><path d=\"M8 11q0-5 8 0Z\" fill=\"#f472b6\"/><path d=\"M8 15h8M8 19h5\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"1.7\"/><rect x=\"1\" y=\"10\" width=\"3\" height=\"12\" rx=\"1.5\" fill=\"#34d399\"/><rect x=\"20\" y=\"10\" width=\"3\" height=\"12\" rx=\"1.5\" fill=\"#fb923c\"/>",
++  "meeting":
++    "<rect x=\"2\" y=\"4\" width=\"20\" height=\"19\" rx=\"1.5\" fill=\"#38bdf8\"/><rect x=\"2\" y=\"4\" width=\"20\" height=\"6\" rx=\"1.5\" fill=\"#f472b6\"/><path d=\"M7 1v6M17 1v6\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"3\"/><rect x=\"5\" y=\"13\" width=\"4\" height=\"3\" rx=\"0.5\" fill=\"#facc15\"/><rect x=\"11\" y=\"13\" width=\"4\" height=\"3\" rx=\"0.5\" fill=\"#f8fafc\"/><rect x=\"5\" y=\"18\" width=\"4\" height=\"3\" rx=\"0.5\" fill=\"#f8fafc\"/><rect x=\"17\" y=\"13\" width=\"3\" height=\"8\" rx=\"0.5\" fill=\"#34d399\"/>",
++  "handshake":
++    "<path d=\"M1 9l5-5 6 3 4-2 7 6-5 9-5 2-8-7Z\" fill=\"#fb923c\"/><path d=\"M6 4l6 3-4 4 3 3 4-4 7 6 1-5-7-6-4 2Z\" fill=\"#facc15\"/><path d=\"M0 8l4-4 4 12-4 3Z\" fill=\"#38bdf8\"/><path d=\"M24 10l-4-4-4 12 4 3Z\" fill=\"#a78bfa\"/><path d=\"M9 16l5 4\" fill=\"none\" stroke=\"#f472b6\" stroke-width=\"1.5\"/>",
++  "documents":
++    "<path d=\"M5 2h9l5 5v15H5Z\" fill=\"#38bdf8\"/><path d=\"M14 2v6h5\" fill=\"#a78bfa\"/><path d=\"M14 2v6h5Z\" fill=\"#f472b6\"/><path d=\"M8 12h8M8 16h8M8 19h5\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"1.8\"/>",
++  "mail":
++    "<rect x=\"1\" y=\"4\" width=\"22\" height=\"17\" rx=\"1.5\" fill=\"#38bdf8\"/><path d=\"M1 21l9-9h4l9 9Z\" fill=\"#a78bfa\"/><path d=\"M1 4h22L12 14Z\" fill=\"#f472b6\"/><circle cx=\"19\" cy=\"5\" r=\"4\" fill=\"#facc15\"/>",
++  "markets":
++    "<path d=\"M3 3v19h19\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"6\" y=\"15\" width=\"3\" height=\"5\" rx=\"0.5\" fill=\"#38bdf8\"/><rect x=\"11\" y=\"11\" width=\"3\" height=\"9\" rx=\"0.5\" fill=\"#22d3ee\"/><rect x=\"16\" y=\"7\" width=\"3\" height=\"13\" rx=\"0.5\" fill=\"#34d399\"/><path d=\"M6 11l5-5 4 2 6-6\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2\"/><path d=\"M17 1h6v6Z\" fill=\"#facc15\"/>",
++  "bitcoin":
++    "<circle cx=\"12\" cy=\"12\" r=\"11\" fill=\"#fb923c\"/><circle cx=\"12\" cy=\"12\" r=\"8\" fill=\"#facc15\"/><path d=\"M9 5v14M7 6h7a3 3 0 0 1 0 6H9m0 0h6a3 3 0 0 1 0 6H7M11 3v3M14 3v3M11 18v3M14 18v3\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"1.6\"/><circle cx=\"4\" cy=\"12\" r=\"1\" fill=\"#f472b6\"/>",
++  "wallet":
++    "<rect x=\"2\" y=\"3\" width=\"18\" height=\"18\" rx=\"1.5\" fill=\"#a78bfa\"/><rect x=\"2\" y=\"6\" width=\"20\" height=\"16\" rx=\"1.5\" fill=\"#38bdf8\"/><rect x=\"15\" y=\"11\" width=\"8\" height=\"6\" rx=\"1.5\" fill=\"#f472b6\"/><circle cx=\"18\" cy=\"14\" r=\"1.5\" fill=\"#facc15\"/><path d=\"M5 9h8\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"1.5\"/>",
++  "credit":
++    "<rect x=\"1\" y=\"4\" width=\"22\" height=\"17\" rx=\"3\" fill=\"#a78bfa\"/><rect x=\"1\" y=\"8\" width=\"22\" height=\"4\" rx=\"0\" fill=\"#38bdf8\"/><rect x=\"4\" y=\"15\" width=\"5\" height=\"3\" rx=\"1\" fill=\"#facc15\"/><circle cx=\"16\" cy=\"16\" r=\"2\" fill=\"#fb923c\"/><circle cx=\"19\" cy=\"16\" r=\"2\" fill=\"#f472b6\"/>",
++  "savings":
++    "<path d=\"M5 10l1-5 5 4h6l4 3h2v6h-3l-2 4h-4v-3H9v3H5l-1-5H1v-5h3Z\" fill=\"#f472b6\"/><path d=\"M14 19h-5v3H5l-1-5h16l-2 5h-4Z\" fill=\"#a78bfa\"/><circle cx=\"17\" cy=\"13\" r=\"1.3\" fill=\"#334155\"/><circle cx=\"11\" cy=\"4\" r=\"3\" fill=\"#facc15\"/><path d=\"M8 9h7\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.7\"/>",
++  "receipt":
++    "<path d=\"M4 1l4 2 4-2 4 2 4-2v22l-4-2-4 2-4-2-4 2Z\" fill=\"#38bdf8\"/><path d=\"M7 7h10M7 11h10\" fill=\"none\" stroke=\"#f8fafc\" stroke-width=\"1.7\"/><rect x=\"7\" y=\"15\" width=\"10\" height=\"5\" rx=\"1.5\" fill=\"#a78bfa\"/><path d=\"M9 17h6\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"1.5\"/>",
++  "analysis":
++    "<path d=\"M2 2v20h21\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"5\" y=\"12\" width=\"4\" height=\"8\" rx=\"0.5\" fill=\"#38bdf8\"/><rect x=\"11\" y=\"6\" width=\"4\" height=\"14\" rx=\"0.5\" fill=\"#f472b6\"/><rect x=\"17\" y=\"10\" width=\"4\" height=\"10\" rx=\"0.5\" fill=\"#fb923c\"/><path d=\"M5 8l8-5 8 4\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"2\"/>",
++  "value":
++    "<circle cx=\"12\" cy=\"12\" r=\"10\" fill=\"#34d399\"/><path d=\"M12 2a10 10 0 0 1 0 20Z\" fill=\"#22d3ee\"/><path d=\"M12 4v16M16 7h-6a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6H7\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2\"/><path d=\"M2 1l4 5H0Z\" fill=\"#a78bfa\"/>",
++  "video":
++    "<rect x=\"1\" y=\"5\" width=\"15\" height=\"15\" rx=\"3\" fill=\"#a78bfa\"/><path d=\"M16 10l7-5v15l-7-5Z\" fill=\"#f472b6\"/><path d=\"M6 9l6 4-6 4Z\" fill=\"#facc15\"/><rect x=\"3\" y=\"3\" width=\"5\" height=\"3\" rx=\"1\" fill=\"#38bdf8\"/>",
++  "camera":
++    "<path d=\"M2 7h5l3-4h5l3 4h4v15H2Z\" fill=\"#a78bfa\"/><rect x=\"2\" y=\"10\" width=\"20\" height=\"12\" rx=\"1.5\" fill=\"#38bdf8\"/><circle cx=\"12\" cy=\"14\" r=\"6\" fill=\"#f472b6\"/><circle cx=\"12\" cy=\"14\" r=\"3\" fill=\"#334155\"/><circle cx=\"13\" cy=\"13\" r=\"1.2\" fill=\"#22d3ee\"/><rect x=\"18\" y=\"8\" width=\"3\" height=\"2\" rx=\"0.5\" fill=\"#facc15\"/>",
++  "design":
++    "<path d=\"M12 1a11 11 0 1 0 0 22h2a3 3 0 0 0 0-6h-1a2 2 0 0 1 0-4h6C26 13 22 1 12 1Z\" fill=\"#fb923c\"/><circle cx=\"7\" cy=\"7\" r=\"2\" fill=\"#38bdf8\"/><circle cx=\"13\" cy=\"5\" r=\"2\" fill=\"#f472b6\"/><circle cx=\"18\" cy=\"8\" r=\"2\" fill=\"#a78bfa\"/><circle cx=\"5\" cy=\"13\" r=\"2\" fill=\"#34d399\"/><circle cx=\"8\" cy=\"18\" r=\"2\" fill=\"#facc15\"/>",
++  "audio":
++    "<rect x=\"2\" y=\"8\" width=\"3\" height=\"8\" rx=\"1.5\" fill=\"#38bdf8\"/><rect x=\"6\" y=\"4\" width=\"3\" height=\"16\" rx=\"1.5\" fill=\"#a78bfa\"/><rect x=\"10\" y=\"1\" width=\"4\" height=\"22\" rx=\"1.5\" fill=\"#f472b6\"/><rect x=\"15\" y=\"5\" width=\"3\" height=\"14\" rx=\"1.5\" fill=\"#fb923c\"/><rect x=\"19\" y=\"9\" width=\"3\" height=\"6\" rx=\"1.5\" fill=\"#facc15\"/>",
++  "writing":
++    "<path d=\"M3 16L16 2l6 6L8 21l-6 1Z\" fill=\"#facc15\"/><path d=\"M12 6l6 6 4-4-6-6Z\" fill=\"#f472b6\"/><path d=\"M3 16l5 5-6 1Z\" fill=\"#a78bfa\"/><path d=\"M10 22h12\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"2\"/>",
++  "social":
++    "<path d=\"M6 5l14 7-14 7\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2.5\"/><circle cx=\"6\" cy=\"5\" r=\"4\" fill=\"#38bdf8\"/><circle cx=\"20\" cy=\"12\" r=\"4\" fill=\"#f472b6\"/><circle cx=\"6\" cy=\"19\" r=\"4\" fill=\"#fb923c\"/><circle cx=\"6\" cy=\"4\" r=\"1.2\" fill=\"#f8fafc\"/><circle cx=\"20\" cy=\"11\" r=\"1.2\" fill=\"#facc15\"/>",
++  "presentation":
++    "<path d=\"M12 16v7M7 23l5-5 5 5\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"2\" y=\"2\" width=\"20\" height=\"15\" rx=\"1.5\" fill=\"#38bdf8\"/><rect x=\"1\" y=\"1\" width=\"22\" height=\"3\" rx=\"1.5\" fill=\"#a78bfa\"/><path d=\"M6 12l5-5 3 3 4-5\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2\"/><circle cx=\"18\" cy=\"5\" r=\"1.5\" fill=\"#f472b6\"/>",
++  "smart-glasses":
++    "<path d=\"M1 8h9l2 2 2-2h9v10H14v-6h-4v6H1Z\" fill=\"#a78bfa\"/><rect x=\"3\" y=\"10\" width=\"6\" height=\"6\" rx=\"1\" fill=\"#38bdf8\"/><rect x=\"15\" y=\"10\" width=\"6\" height=\"6\" rx=\"1\" fill=\"#f472b6\"/><path d=\"M2 8l3-6h3M22 8l-3-6h-3\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"2\"/><path d=\"M4 11l3 3M16 11l3 3\" fill=\"none\" stroke=\"#22d3ee\" stroke-width=\"1.3\"/>",
++  "surf":
++    "<circle cx=\"18\" cy=\"5\" r=\"4\" fill=\"#facc15\"/><path d=\"M7 16C7 9 12 3 16 2c2 7-1 13-6 17Z\" fill=\"#f472b6\"/><path d=\"M7 16C7 9 12 3 16 2L9 19Z\" fill=\"#fb923c\"/><path d=\"M0 17q3-5 6-1t6 0 6 0 6 0v8H0Z\" fill=\"#38bdf8\"/><path d=\"M1 21q3-4 6 0t6 0 6 0 6 0\" fill=\"none\" stroke=\"#22d3ee\" stroke-width=\"2\"/>",
++  "coffee":
++    "<path d=\"M15 7h4a4 4 0 0 1 0 8h-4\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"3\"/><path d=\"M2 6h14v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5Z\" fill=\"#f472b6\"/><path d=\"M2 6h7v15H7a5 5 0 0 1-5-5Z\" fill=\"#a78bfa\"/><path d=\"M5 1v2M11 1v2\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2\"/><path d=\"M1 23h19\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"2\"/>",
++  "dining":
++    "<circle cx=\"12\" cy=\"13\" r=\"9\" fill=\"#38bdf8\"/><circle cx=\"12\" cy=\"13\" r=\"6\" fill=\"#a78bfa\"/><path d=\"M3 2v6a3 3 0 0 0 6 0V2M6 2v20\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2\"/><path d=\"M18 22V2c-5 2-5 10 0 10h3V2Z\" fill=\"#f472b6\"/><circle cx=\"12\" cy=\"13\" r=\"2\" fill=\"#fb923c\"/>",
++  "live-music":
++    "<path d=\"M8 5l14-4v6L8 11Z\" fill=\"#a78bfa\"/><path d=\"M9 7v12M21 4v12\" fill=\"none\" stroke=\"#f472b6\" stroke-width=\"2.5\"/><circle cx=\"5.5\" cy=\"19\" r=\"4\" fill=\"#38bdf8\"/><circle cx=\"17.5\" cy=\"16\" r=\"4\" fill=\"#fb923c\"/><circle cx=\"5\" cy=\"18\" r=\"1.2\" fill=\"#22d3ee\"/><circle cx=\"17\" cy=\"15\" r=\"1.2\" fill=\"#facc15\"/>",
++  "comedy":
++    "<path d=\"M1 2l11 3v8c0 6-8 9-11 2Z\" fill=\"#f472b6\"/><path d=\"M4 7h1M8 8h1M4 12q2 4 5 0\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"1.7\"/><path d=\"M12 9l11-3v12c0 6-8 7-11 2Z\" fill=\"#a78bfa\"/><path d=\"M15 13h1M19 12h1M15 19q2-3 5-1\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"1.7\"/>",
++  "travel":
++    "<path d=\"M9 5V1h6v4\" fill=\"none\" stroke=\"#a78bfa\" stroke-width=\"2\"/><rect x=\"3\" y=\"5\" width=\"18\" height=\"17\" rx=\"3\" fill=\"#38bdf8\"/><rect x=\"7\" y=\"5\" width=\"3\" height=\"17\" rx=\"0\" fill=\"#f472b6\"/><rect x=\"15\" y=\"5\" width=\"3\" height=\"17\" rx=\"0\" fill=\"#f472b6\"/><rect x=\"10\" y=\"11\" width=\"4\" height=\"4\" rx=\"1\" fill=\"#facc15\"/><circle cx=\"7\" cy=\"23\" r=\"1\" fill=\"#334155\"/><circle cx=\"17\" cy=\"23\" r=\"1\" fill=\"#334155\"/>",
++  "home":
++    "<path d=\"M4 10h16v13H4Z\" fill=\"#38bdf8\"/><path d=\"M0 11L12 1l12 10-2 2-10-8-10 8Z\" fill=\"#f472b6\"/><rect x=\"9\" y=\"14\" width=\"6\" height=\"9\" rx=\"1\" fill=\"#a78bfa\"/><rect x=\"5\" y=\"11\" width=\"4\" height=\"4\" rx=\"0.5\" fill=\"#facc15\"/><rect x=\"15\" y=\"11\" width=\"4\" height=\"4\" rx=\"0.5\" fill=\"#facc15\"/><circle cx=\"13\" cy=\"18\" r=\"0.7\" fill=\"#facc15\"/>",
++  "health":
++    "<path d=\"M12 23L2 13C-4 6 5-2 12 6c7-8 16 0 10 7Z\" fill=\"#f472b6\"/><path d=\"M12 6c7-8 16 0 10 7L12 23Z\" fill=\"#fb7185\"/><path d=\"M2 12h5l3-4 4 9 3-5h5\" fill=\"none\" stroke=\"#facc15\" stroke-width=\"2\"/>",
++};
+diff --git a/ui/src/components/session-icon-library.values.test-support.ts b/ui/src/components/session-icon-library.values.test-support.ts
+new file mode 100644
+index 00000000..79224432
+--- /dev/null
++++ b/ui/src/components/session-icon-library.values.test-support.ts
+@@ -0,0 +1,81 @@
++// The session-icons plugin's saved values (sha256), from its 0.2.0 catalog: the bold value
++// a choice saves, the 0.1 pastel value and the first build's outline. Test data only.
++export const SESSION_ICON_LIBRARY_SAVED_VALUES: readonly {
++  id: string;
++  bold: string;
++  pastel: string;
++  outline: string;
++}[] = [
++  { id: "aircraft", bold: "cd1eb3843602bd86946cb4e525b003743b26dbdadf6aef04f2ffeccc657bad0e", pastel: "25b15749ca32c1f2982252c2c5f12118a4348528c60215f794b8de81fbf64922", outline: "373afec2a0f0c4962ba730db559f8b4ef808986e9a2b00b13910ee8c164259a6" },
++  { id: "propeller", bold: "360b3ac8a224c8042e956414abc6087cd03a0c6559c1e62478b28f9f5fea3e8d", pastel: "00b80e6372b4323a02ce1eb0f4e06e14c4dcbbc10aa31898f4046d57502cda59", outline: "a4005f1dc2624508e885454f181ea406c127feab0733d97792a86c52aa1e22b8" },
++  { id: "control-loop", bold: "132e96eb867db6fa934e9b0b4ed5b51add2b8bdcd5b4093dc001d19d4bb07683", pastel: "2ad388ca227dc3c3f6c2af59c73088d11d39dcf580347d8745b97099c1b69c18", outline: "3fe7c4430caf2381a654ac1a607f60000b2724c95e8d29759260e686b4939b87" },
++  { id: "simulation", bold: "5ad9c2d1dcb2da2c2817d961d40062462906961f8839e1c38bf337c1ae490b99", pastel: "26309a4ece452312b2edbfba26ec47eaf0c1d77ba33ba4f75363b418dbff18ba", outline: "7d6c81a5fe10e8f309a458183022312399bf227907a5b29fc5faa8bf0bd4b03e" },
++  { id: "six-dof", bold: "b90e0527b52abc6752131471f3057fa8337bfe78d4ec83586961f11e70f3efbf", pastel: "7d996e41434462556bef476ed63bc0b4f389c39beaff40b0350949f71629c74d", outline: "3a8d85c1b244795a68db6899d642965127c6d83615651329a86ff62f65b06e0b" },
++  { id: "airflow", bold: "32835bc0d46262e09238aa404c3849d1329a8c3de62dd7af4d7888f36ef21ad2", pastel: "9f587ef27c5923409c9aa13d13e6007202bb7bf7ff3ff323fced71682f298d82", outline: "4be2c7a9052805643f1a7f0d7b7ca2b2088189c5bad40efe0c1bdeb28ea1780b" },
++  { id: "telemetry", bold: "0cd1089245f0a4d9af773958053844a347a174917142b2985b560bb79db4234c", pastel: "5dd2ed989531405d3c69ae59a7821309a82af1ff4a7bb9d57586db39b53f7d37", outline: "d409bb22ec8e504f3a7250d017c77af3d558ecb08404487a1355c148ab8aa39f" },
++  { id: "satellite", bold: "10d1684ed400a20c76c986676de84ba5bc1b40fbdbc223173ad3a6808c1b8b7c", pastel: "6d7b0437a5262eaa619367de4a9faa99c35ea6d78df64ba40a087e77082d24c5", outline: "113a545d8a8ec7a24e6e4ef602cb8e45b336a952113742f3ce9717203437e5d8" },
++  { id: "agent", bold: "72d1e9b95e0f886ab13a0f4412b5b106557773eb7e66b84cf057e73bade03956", pastel: "c7c339a470d17d60fcd4bbabe32ec3d214a49fbcac396341df62d7ace42c2447", outline: "50c7dc7f40efff25fdcf78e7b41731336becf4fda23b8871cafb2de07149ff01" },
++  { id: "agent-team", bold: "e56f877344b6021eac492619803674cb8ed91abdea172cbaa49ceabf8a29fc3d", pastel: "34a1bc0ac2d25ef8ba12dc6552787ecf9485db3c0a9fb2759b2044b2b3988605", outline: "662cec97905926d3ae6e61b547e6b66fcd6b7fa993f7c2de492182b3cd747f22" },
++  { id: "neural-net", bold: "e33d7eb8f4008fe7e381d29e1859f923729d077825cfa8c8688a1367c4f0fe90", pastel: "c8a0f5fa35b0bfa70afab98e9b4170e6e97d2185c78e20add8b94f7e42d59255", outline: "e746a32ccf4a39a596100ca9850ec689bb7a2b3a0a79dc282cf2873f8ace68bc" },
++  { id: "memory", bold: "c3f13fc3d7922559788e4f9bcfe02a6d6b8463304ab2d856f5761f050b0e007d", pastel: "451774330f77fe6e55947614b8316d3e3e34299232e41732010b052f2fb97804", outline: "a0aa9c3f20dd7379c9f8c2e85a6c4c6f6856a99f296fc0a9b29e7ab98411c9ce" },
++  { id: "workflow", bold: "cecaaab8f78d7f32dff975ab63ad861c3af03a57c3f1fe6177f0b0a5eb6be3a5", pastel: "b20819202cf1d94691ff3f105bccad1ec210846c6d02c652ea70f9776ffaa0a9", outline: "f294410521343b0c073d5cc082f871a11c82bf76dd7e6e73b4dbee4e01e49051" },
++  { id: "factory", bold: "41fd8562db22ffbc90186ad2868d0dc08de44414993311b4b1a2a3ff2e5fda72", pastel: "49789e3ca6a6c88678f828c3e5cfa8ba084f8a9d3e5cdfd82913ecf559ab11b4", outline: "8abec1f6b69f119a84dd2373ad628f462ebc6a8ac29a478774511dc9feab8e13" },
++  { id: "research", bold: "63f9f2a33a83a53da0b05ea76a8c14176a9fdcc406d56697ce02de9c4528d068", pastel: "05413945cf2c2e67153321bd543b41de6fc8a97bb00a3f54f8dacfd383ca74c7", outline: "f2af499751ebd17b42ecb8145f31d7a315b82169270c2f33a7d24bb74d7eba7e" },
++  { id: "voice", bold: "08830eaab4eb589945f29cca31692676c4fa88d9bd68605ee0b25e35074126cf", pastel: "0192aefe697c57f159e3822dc3ee678cca2d0b1f618fa9fb64733c00fa0b32f4", outline: "db14e4fdf4e24d10e20e62b8bcad897f6612d7756f0a9efad9a8126244292ed2" },
++  { id: "terminal", bold: "aa63f930964eb633a804c3949bae0b3c6c320c4fc498bfca1589efe4852e5646", pastel: "9fe5760ab479f9790cf34ad479277388bf500500fcca51ea1c107bb2b0a297c4", outline: "a22d7055f7ed0304b196ddfbd5ab227675d40fad45937ad2f0f39710fa11ba0c" },
++  { id: "code", bold: "6c256ee17c9262fb4823c5160d840979775684d19ed51844679ecde60b066e7d", pastel: "296efc9d5f5cbff079f898bdbbe71eb830591b845b824814e971a2348e66a469", outline: "b12d9058d17576b64871fa35badf76dfd0216c70c4e885aae9a595af8a15d831" },
++  { id: "git", bold: "b458fd2fb44e0b2c1bf29f712b43e833407f582c939a8854bf267f1e7dbb461d", pastel: "103ffad3fb102e45a402ae15d293ce4a560349a8948c23650199bdca2651f975", outline: "8f0ee3ee2d20535519a1c13e8e2aa107527895c05c79acdb489e690a07fb5549" },
++  { id: "debug", bold: "ecb69cd304576f7658eb8064a8fa2539537a8e6d3a776761017aba69d9829259", pastel: "5c601406552ec8f7fb0e296d89677b21f851e9df0ede249af6cf9930cce195e4", outline: "c8c0ce26f920edaaf0433bde90997b5ff84a13e9f6cd85839558d674f72c8a94" },
++  { id: "tests", bold: "5076eae17d9307a00fecfa7521eeaff22938863346a43123c45bc539a3f1e929", pastel: "b6da24fc44a1e3eab1d914a77e4364c830cc9b54d1ed28a7dcd594dc59fe30fe", outline: "af034a919bc21787b1ca5ac05eda76c0a578d332ecfdc16939e0a8620f106cb1" },
++  { id: "api", bold: "a6be14aeee7f2a86fa8c8b0a830a2529b946ac265559a297dbf90c4f98c6e8d1", pastel: "c6c6c86e693c2c3ccb7de3a0a70ad97046d0ec7d9214593355d8b7dc79639ef1", outline: "29b166de8f5b7a8357d71bd3b77babb8b3e39c0fc6081bce6430bf3c47625e9a" },
++  { id: "package", bold: "aa78c0926ebf09b572bae4e23afcce2ea8282f9a985531921b1bc1e43d291403", pastel: "23d5e30788de46363728f50fbdbee2b33f98ec15cee00f4c5fc75cac6b36379f", outline: "05af6b3310a8d93ab684b8157486ab95ad8662eb6fb3a970434741e7b35c3d02" },
++  { id: "web", bold: "cf3f9302cde2c4a5520e2d2f0ceead084ee2e0f3cd5c828cad3485a6225f0b23", pastel: "1641528d89bb43c34ae0599b7b14713378e94a9fb8248ab5abe40385c527ea22", outline: "5622c9e36fa3d3482776b3160a8e81c770a42bb15448774ed6c59a230f6cec39" },
++  { id: "server", bold: "078444b1561a5103794e9e9685994ceff0b57820934c8a8259223c47f67add9f", pastel: "5a3f5f468a5a8541f5ef6a43098e2ec9e91c303a0f96c1fc9215f1e81b34fb3f", outline: "cb3c264dae60f279b00591bcc10a96a474ca3da8abbc7a93e565a4f6fc506838" },
++  { id: "cluster", bold: "71e03a8d4b47bb859afe7ac4519be6164a9ed23bc79ff5d6acbd2f5890895dce", pastel: "f3236ccf077ca062b8960cd76e265836551ddba6d08744431e68b2c90b87c31b", outline: "e936f817fd32fbc524e56ddd47963d525465331beb27c0de524efcae69ba7ffc" },
++  { id: "storage", bold: "105e8c09195f191ee10a992c563ef36bb4c0568e699090a10850582040787f1c", pastel: "bb864bac2339355abd1c20ee10d57d94cb5b53d31c8dbdbdf6585aad9922cbf4", outline: "3c14e36b39d995a23f445d2362a07b81d6400c305cb65d3924ec8df8fde213d5" },
++  { id: "network", bold: "1ea31d885423c648968f6bb85755cd661e74e85351605175b6eb0034582b44d4", pastel: "a5da42be23ba59b3fea683aaf9849b1d1a8b4b52bf9ea6eb55a73b0fa660c482", outline: "1a17ee74b38bc93049e6e51594da414939c6d06e3720ed4caef01558f1489a03" },
++  { id: "cloud", bold: "38f1d0175bcb5095131a1c0195e34e3f8512b9fe2f8fe0570335878437b2aadd", pastel: "e4218ea056fda02dbca512503cff50c3cede169c2293bba9ec2823afb5b48084", outline: "0ed3a73c27650bb8f42796e499e1c718ff9342a84b77de16b703638f5dda99d5" },
++  { id: "chip", bold: "dac1bde9dd5f70c82a2b0f349adac8a5ef19e62ec58d518930d69d1fcfd1db85", pastel: "2447650bf168bdf8eef811a51abb5656990c533836e56138918a2027e7180024", outline: "bcf74bbe5c4592162b4e1a407cea40e16207c290de033587e3cf9a8b5e2c7a9f" },
++  { id: "linux", bold: "f573f0fad139eeaec28921fa95b9c6c16808a76e23a60a2a2d872b4565fafc56", pastel: "4e6ce83fcfd28fb3f1910f88047c3d669a754c8ab646bc266c086d9012a2005a", outline: "5e1a2a4ba7fa0edc242a903e8ec75cb530b1fbfab14dc188f654f178a13b0ce0" },
++  { id: "observability", bold: "a6adcaca2b4d771e21e52f56beb915a00d9baefe507b542175e2b09a91abf6c3", pastel: "63536a722ec8e53e3a313c51a428f34d6a363506f4fbbe7a0573e24639c841ff", outline: "0dd5ae8993db7f709a7935c743ccab8b4537ac82b8d463421aba483b2af5b385" },
++  { id: "shield", bold: "30bb15acc0a7316797d5a5f4306db17ff3a4196840445f3b2cc51e7999e3653f", pastel: "494468cda55175df182919a27588d0bcff9d57d51ade3452f8ad5ee7472c503b", outline: "35400077dd6d975d9ed30980964b6a6c75a3d93c4a8864c3a10f2214517f6979" },
++  { id: "key", bold: "cc9bc3929da92a8cd77e839dcb25fd2a285d2cb4c610a080de7aefd4742ca30c", pastel: "44eede27249c750db9b367858d5dee790ed0867d0f673f1c66aa7b641975b931", outline: "92bdcff6128816c8935188b5cf531795d5f8ac09633ed69c823d8d2071ede334" },
++  { id: "lock", bold: "651a828008c2bb28ee3ec5ff2166745586094d3fd3ad2aa0fb53fbfadd013799", pastel: "7c8e7fd9e94bec06444f0440b3f6accc02b97139ceb75781218ad75734bec0f1", outline: "22c841c4c6212e92dd8cb5d1a39e9b1db3680b8b174130c83053f2e9828c08e6" },
++  { id: "scanner", bold: "e7abbbf8faf8f2d891cf14945d59f9abc421f9b144966dd97e0839dca4ae8f21", pastel: "be0164af114b8519c9c2b6c45f101c470b53b912759a0df10c50dc34620fa921", outline: "38d19fbff22184e2e9a2e01bfaa48883d11424d07cefdd4f0f327743de93157e" },
++  { id: "backup", bold: "02244b3bb337eadfe1a80d1a3bb8da554749d9be1cdef7c3c3499f48767d4c0a", pastel: "0739e49a74187a98b1ce37222c686de9e78bc96ecefe1b3a40344844596586f9", outline: "58a198c3b869d5571750a36d05835aaf2c23d79f2200799339caecfa931d41ab" },
++  { id: "review", bold: "1d89a5448456ae60e9ce3a975f8be0b5b049534508a77e1a322a33f1f5aec78c", pastel: "e3f8ccd8cc9459376c158a4ba064eae1b62039c2cb6159769b7a990cd62f462f", outline: "f3f1defcdf194a48c7e01cf4e73482f971bf2d863b89b1a1e5a3638b42d5d9b7" },
++  { id: "firewall", bold: "9fae6f75aba90e7c6db3d4bda5adaf895fb6424e14869ce6ad88be2167fa3133", pastel: "d60dc7393ed14990614d1e5af992b118f9c1d91d42dd634b6d3a9c97bc7972d4", outline: "d5245de1ee52627c5921cfed920a1cec150ff13d38d3479afd461edd866a7431" },
++  { id: "incident", bold: "b66b1319c1ec712ef56ab877d9666af2536b2fe7b89c2eee938fa8aa6436661f", pastel: "2dbc2e94642b564b0d5ed08a9a5f3128bfa9fee6573de84b2931cd18f2c37f63", outline: "85e75e62b9a935f8fcb4ee7532aad7bb9dba53393ce0e4feb86c6e058039fbdf" },
++  { id: "consulting", bold: "e5b3849ba94dc048537045c7dbd54878f16f2bbb75ad0733cc6b103e6e06513f", pastel: "6833db68e3e6ce58b613fc1f6c8395c5ef2b623d097def26bcaf920a20cb7ec3", outline: "f8f8b3863316047b5526f1004399845fb6ef7670a0753f02807ead6736a0080c" },
++  { id: "startup", bold: "2452a76df447f6274ddb66d09e28884b16de458f5e57fb4c5fffc25ad6f985cd", pastel: "97903ce761813bb9d88521c908e789c6e6ceb3fc2c0432e0187a1e8082001330", outline: "bbc4977ad9a0bfaf83a9b912f9821ca379d9a2d6224bea0479e91d00e7424a75" },
++  { id: "strategy", bold: "6cb8922895f9e1fdd7d5dd1e6a322a424375ab9889ef80bac1da22e00f8e7cb2", pastel: "40f74a29a905ba15738b9b0123d14fe8a5eec5bf3ed8394d25145f70e8684dba", outline: "de1f41c0a2667762c3c18ea2398f0ccff7a884cd52a9d7f2a607ffa56d70a1af" },
++  { id: "career", bold: "c15b2eef11ce3d4c1849b5c11dfd6a83cacaa756ac5786c1f6a444d197796f00", pastel: "b520af112dacd07a8a6730cdccee2055b9d7344dafb812e3332c3e1a65a271e4", outline: "03464df20e76495f2e5e4689e4c12b28111064f7cbbe86f9c2da2cb6baeb71d0" },
++  { id: "meeting", bold: "583df29ee09a55373f5126451340ecf040c1a6d9698808a9b02f2ff49f11f32a", pastel: "f2ce9447e526318c416d7d9a4207a946aad3899a0e6d7699c8dd7be39185cab0", outline: "0d2e187254fd78302d7393544eb86c4d740841b9b1b821bce6f9ec9b60d5aa9a" },
++  { id: "handshake", bold: "85117fb0d6017a842c177b57ac59f8a85872a5d7612af1ee75351630e2e818a1", pastel: "a20f1b5bfadaf74e76aecd480b3b1304b99051d3162e2ec4da287ec58cef0c7c", outline: "1e60d7f92c9cd0f959b6f1c0cee3a13a7ef1a7b93263f84a3a0efa6c0eabe9ee" },
++  { id: "documents", bold: "3f107d541dcf7332743906b7cdea0bc62491180d890fc536356c00129b96fd01", pastel: "8ec1ce64be45c5497530ccef0ca3f7d73a16c20fb3c2c83039f97d85b2b14784", outline: "16366329fc890e2ea17a595cc2704409abb955650dc5e37223ecaace2abb0cb2" },
++  { id: "mail", bold: "49fd42c9de143f0abcd63ddd93e81b7caf5203aa835920dbb11bfdb3ac20769a", pastel: "5dc1e01a455ab830e47eb9f47727ae3a759c7d4182bbf3644a20116bf3358b17", outline: "be7bac7d32cf7d9040cc1184e89268ecf5f3a0636ef51503ea1514a0c9632610" },
++  { id: "markets", bold: "e310539cd55de46586457c7bfcc4f03f7f54bc2cc5f501509dfb2f2b0308ac85", pastel: "55ff0783c7e5028f8aca90a75222d680d17ebe7792fdf8973ebac183c98c50ce", outline: "80ec1a1eb359b6477f59163a5aae52e4b8568449edcdcc8f904f39ac292a4b7f" },
++  { id: "bitcoin", bold: "c8ff668c8bc6d004bdc3eae58468371f5030a8ea6ef014b1120ff6cde14df44b", pastel: "fdeef522960b9be6306e70c028c023e14fcafb08d322f42e65d8eaee37b17400", outline: "3a9afd9c9c58a60a558674b0db6292b7b2098bd8d8cbd4e5997847616e44b496" },
++  { id: "wallet", bold: "39fa3123464255665dddc132fa07648b6dfdb4c037355aa92bf716e9791ca6b4", pastel: "57dc5f8ce3ec46dd6fb157b29f81be6b06f5e43c329699a47d7f2c56f809e5a6", outline: "85de78b9270c529fb5c6171560e33bc49b66d1fbcf654dccffb2c0b5fda4bd65" },
++  { id: "credit", bold: "962ecf71404966823b703a89857682cb59cd04e86fc91393c3ecb4f31ff2f76a", pastel: "c4dd428df584e3f4c57197106f9bca89d687952c45e561b688cb8e186711a061", outline: "9636892ddc8dd1bc250d972f157a06ba87d7d61eb8421fbbbf40a5b9ec3691dd" },
++  { id: "savings", bold: "206aeee1afe692fc6008fd70268e8ed0c77580eb07aaba9261f36386d46cec1f", pastel: "5735fa90db526d75d4879d99be27e73f874606a99424baee38ff87892aafc2e8", outline: "df34a87b151545010cfa6f133984bf2bd3fbf1a38f9b7e0ab70f09ffb5faefd0" },
++  { id: "receipt", bold: "a42287629dda66b0e16644cdb206a0284f0c78cbcd9d5476f310bd5827afc1e4", pastel: "770061c9cc9c2f4f558a49b41e43753c65b149882ee448c8deaebbf5a3ba3741", outline: "abdd0be98193d0644435cd88d04204a4e4cdb3cae7f1b374ce42954c658b6238" },
++  { id: "analysis", bold: "99efe60ccce9a9d6f2d2a0a999b95518c3e113c12b3167c6578849e479522eab", pastel: "9320d941cd4bad0c0ca4ea1fcfb24ebb0682f2b404d5fd62d0ed2af6d296bbb6", outline: "b6f9ff9d37e042b575a783a22a5ca3df4339ade2df78ea45c780269e7a853496" },
++  { id: "value", bold: "ff967a55ba02961af9b7865493250a4420707e5d00b9f8c42a0a48e8be809791", pastel: "0aea51dd07931161b5873cafe22e15a5de1013f583e69d6c7ffb2ca309518848", outline: "78b898d260c3ee5d82a7843570eb5c8e778372c282420548becf6eabe415251d" },
++  { id: "video", bold: "4a3eb5c13315bb7e51ad671269d1b522612683f558c4f6b4b8fe67e0ff857c31", pastel: "cfc469982fd67b1770a07418ade443d782e2215fe5397912f860ba79670c2625", outline: "fa358188647b3de3894b45a2bcb816965b9ae4599aba2d6ddfba72e5f3e88d67" },
++  { id: "camera", bold: "0cc2ac18b4a8a24cd6d0da5f6e3caa05fa837023f6fe34aa9e56c57287e30ce5", pastel: "1709ab4bb7ad200c7561bc7d7ced7f9668164d442ffbd08b3be21527b5254e4a", outline: "fc9371fe6adfe9651d442e16f184e263cb9bdc6ecbc509487b1b3a0a9e92d5ce" },
++  { id: "design", bold: "4c1ca34682ff825fbd2cba1a68bfc8936b4c6b58858e55dbf8e56cbe7adee94b", pastel: "8fbeab599676175d3bb31f2f5437e18f88cb468dd1d84bdf3bace297bb7fa7a6", outline: "474ddcdcba55fbe7266f9bfd9406a49c87d9fcf971e1cdc054d5f90b50bff25c" },
++  { id: "audio", bold: "920252c30fdd777316b7aa3ea07b7c9d59f0899e9acc590af9e43f110fa3b77f", pastel: "81a237ce076b359618f8de898001a1e78db71655d9cedf13ad8b3bcf94479345", outline: "ba944fd251640489b1918c199da73fe83eb441d1d29e8d9869af47465018d4b7" },
++  { id: "writing", bold: "2e3f8f25a219420e58c04e5f2abf3df5456a9126f205770ab4bcdbddff3924ab", pastel: "dcf3c869ebcac584d9bdb5ac53f8fef0aa84a013c7c161ac3f7dd2a22903ac27", outline: "6b1031fe98a9211fc7cb9ce778fa795573d3671b149419a88dcc1c4cc5c97461" },
++  { id: "social", bold: "f4770b7c70785dd68a858de8159a3598e4c8287576a58f1b9121557d5519d3a5", pastel: "f015fb30b455e049fadf8df2ab8f583b2e2aaa85fb6e257c669087655b2ec14f", outline: "8059b16cb5dd2e557408c0ffa7359e4303c62a6d47cf2adb017270a0102500d8" },
++  { id: "presentation", bold: "38c17319c007f9924b144d3a61f6154b3969a9b8d2d305cb5a08686c16ebdd6b", pastel: "1f3980665e86b2691700326a10f8c0169bd25698f2f96c61c58462f1d094d4ea", outline: "3cb98ede8d78719b2a17ffc2578b908203032b69239191f14d095f7b7a785e04" },
++  { id: "smart-glasses", bold: "fadb589860927f24a513e556bb8ebb42d47bc469c4f655130f25e93748310526", pastel: "5b89fe04c1193279b9f18cfa12a649f8d488be3d5c81b60154409e36b63de2e6", outline: "26680a3bdd54905fda0a271c72d5c3e1073c000aad9f17142aaac75af42adb16" },
++  { id: "surf", bold: "60eb79bb8c1f93b0ef773c14da8b59ef72383c36a49d20c7de6ea1d971532bc7", pastel: "b3ff9d128561dd8fc18bfb4c53869e871d660de71c20d2e526856919c94cec08", outline: "aa3aaf3ab8bc724af3c8a68af5356c789f7fbcd0f72730fcaff8d9397d843c52" },
++  { id: "coffee", bold: "8ee6147b23c660942e00bbed85e11e1580f5a0d99ee14ed5ccac916ce04ad79e", pastel: "721fbf4b0f750b4e73522e0ee0080d9fddf4a9cee49b2592dfc121a6361c5774", outline: "60f770cab179a089beed134628ebe5d00e9e07592d0bf864721db84838697e30" },
++  { id: "dining", bold: "822ec2a9c027929d8ca382639efcbfa30adfb6093863b8e84e1e41049534df3d", pastel: "9b4cbe991c00c5f856aba330f404e5d1dcc54155ea6af46fdbf33e7811995804", outline: "fa16a52fd386061bb2885588d5755b6a3df3e3d8cc909d9721bc58d389f68675" },
++  { id: "live-music", bold: "a3ea8688eb94a8b3482b50b97a34d2d4fe3a3a56e9046936ccbe3eb8d364ef62", pastel: "b6576dabaaf7e92cee94311632707cb75f0493ce66fdca2047dd644a693d0480", outline: "139b884f19e46f0dec6b005a085308541e235f91dd856bbf8d77e70d3615ee75" },
++  { id: "comedy", bold: "d6d45bf3aa2299123c0aa02a152987c712aac6b902531d28e09533a85118e9a7", pastel: "a9b2d328113d01d714befc9dcd19983aa05c7cec496c5365af4de27c23c76198", outline: "58c44d244edcee781142b17d2f2e049fb99b3006ab4db6b07995845f7fa46d3b" },
++  { id: "travel", bold: "c3e4d98b863e2edbecdb1c974a9135ec4f9d04479b8dffe0ce8a89243a225c12", pastel: "cd739c2c434d031439fa7dfe22087c53bad5b10594680b7f50353ce9e0ebf8e1", outline: "a7e35ea99e972f4f832a82a2e03ce61a0c861429368cb5c6beb415583bd23da4" },
++  { id: "home", bold: "3fa76587ee49448f37c08e4140733eca015edcb472fbae6e750a14680e87a6b6", pastel: "252eb5b18903ca95a64687d4df5e35e3bff50f5208f8f0ec56c43db415c8d9e7", outline: "f9c6450536d8475e13c78b0f20d77b461e503749efa754788efb94e2625687ff" },
++  { id: "health", bold: "5b78de8522da09874b7c9dfe27ae8bdfaccd797be7dd71ead40743b0810cd8b3", pastel: "fb887ff6b8901e2962f6b77e3f04b3de306af16770fc84698a4dfaf82760c384", outline: "8cdb44abdf95e42a803ed7cec7c123991994462f30e103cc606a2373670cc06d" },
++];
+diff --git a/ui/src/components/session-icon-picker.ts b/ui/src/components/session-icon-picker.ts
+index 3ed9dfb6..b0ec848f 100644
+--- a/ui/src/components/session-icon-picker.ts
++++ b/ui/src/components/session-icon-picker.ts
+@@ -1,29 +1,14 @@
+ import { html, nothing } from "lit";
+ import {
+   normalizeSessionIconValue,
+-  SESSION_ICON_GLYPH_IDS,
+   SESSION_ICON_SVG_DATA_URL_PREFIX,
+ } from "../../../packages/gateway-protocol/src/session-agent-status.js";
+ import { t } from "../i18n/index.ts";
+ import { icons } from "./icons.ts";
+ import { renderKbd, renderShortcutText } from "./kbd.ts";
+-import { resolveSessionIconGraphic } from "./session-icon-glyph-registry.ts";
++import "./session-icon-catalog.ts";
+ import { renderSessionColorOptions } from "./session-menu-options.ts";
+ 
+-const SESSION_ICON_EMOJI_CHOICES = [
+-  "🦞",
+-  "🚀",
+-  "🐛",
+-  "✅",
+-  "🔥",
+-  "📦",
+-  "🧪",
+-  "📝",
+-  "🔍",
+-  "⚡",
+-  "🎯",
+-] as const;
+-
+ export function sessionEmojiPickerShortcut(): readonly string[] | null {
+   const platform = globalThis.navigator?.platform ?? "";
+   if (/Mac|iPhone|iPad|iPod/u.test(platform)) {
+@@ -127,26 +112,6 @@ function renderCustomSessionIconEntry(props: AppearancePickerProps) {
+ }
+ 
+ function renderSessionIconGrid(props: AppearancePickerProps) {
+-  const tabStop =
+-    props.clearable !== false && props.currentIcon === null
+-      ? null
+-      : ([...SESSION_ICON_EMOJI_CHOICES, ...SESSION_ICON_GLYPH_IDS].find(
+-          (icon) => icon === props.currentIcon,
+-        ) ?? SESSION_ICON_EMOJI_CHOICES[0]);
+-  const renderChoice = (icon: string | null, glyph = false) => html`
+-    <button
+-      type="button"
+-      class=${`session-menu__icon-choice${glyph ? " session-menu__icon-choice--glyph" : ""}`}
+-      aria-label=${glyph ? (icon ?? t("sessionsView.noIcon")) : nothing}
+-      aria-pressed=${String(props.currentIcon === icon)}
+-      tabindex=${icon === tabStop ? "0" : "-1"}
+-      ?disabled=${props.disabled}
+-      title=${props.disabledReason ?? (icon === null ? t("sessionsView.noIcon") : nothing)}
+-      @click=${(event: MouseEvent) => props.onSelect(event, icon)}
+-    >
+-      ${icon === null ? icons.circleX : glyph ? resolveSessionIconGraphic(icon) : icon}
+-    </button>
+-  `;
+   return html`
+     <div class="session-menu__icon-picker session-menu__icon-panel" data-mode=${props.mode}>
+       <div
+@@ -157,27 +122,17 @@ function renderSessionIconGrid(props: AppearancePickerProps) {
+         aria-label=${t("sessionsView.setIconMenu")}
+         @keydown=${props.onGridKeydown}
+       >
+-        <div class="session-menu__icon-section-label">${t("sessionsView.iconEmojiSection")}</div>
+-        <div class="session-menu__icon-grid">
+-          ${SESSION_ICON_EMOJI_CHOICES.map((icon) => renderChoice(icon))}
+-          <button
+-            type="button"
+-            class="session-menu__icon-choice session-menu__icon-choice--custom"
+-            aria-label=${t(props.allowSvg ? "sessionsView.customIconCell" : "sessionsView.customEmojiCell")}
+-            aria-pressed="false"
+-            tabindex="-1"
+-            ?disabled=${props.disabled}
+-            title=${props.disabledReason ?? nothing}
+-            @click=${props.onShowCustom}
+-          >
+-            ${icons.moreHorizontal}
+-          </button>
+-        </div>
+-        <div class="session-menu__icon-section-label">${t("sessionsView.iconGlyphSection")}</div>
+-        <div class="session-menu__icon-grid">
+-          ${props.clearable !== false ? renderChoice(null, true) : nothing}
+-          ${SESSION_ICON_GLYPH_IDS.map((icon) => renderChoice(icon, true))}
+-        </div>
++        <openclaw-session-icon-catalog
++          .props=${{
++            currentIcon: props.currentIcon,
++            allowSvg: props.allowSvg === true,
++            clearable: props.clearable !== false,
++            disabled: props.disabled,
++            disabledReason: props.disabledReason,
++            onSelect: props.onSelect,
++            onShowCustom: props.onShowCustom,
++          }}
++        ></openclaw-session-icon-catalog>
+       </div>
+       ${renderCustomSessionIconEntry(props)}
+     </div>
+diff --git a/ui/src/components/session-menu.test.ts b/ui/src/components/session-menu.test.ts
+index 95be34c3..51f21883 100644
+--- a/ui/src/components/session-menu.test.ts
++++ b/ui/src/components/session-menu.test.ts
+@@ -1,6 +1,6 @@
+ /* @vitest-environment jsdom */
+ 
+-import { afterEach, describe, expect, it, vi } from "vitest";
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import { createDeferred as deferred } from "../../../test/helpers/promise.js";
+ import type { ApplicationContextProvider } from "../test-helpers/application-context.ts";
+ import {
+@@ -20,6 +20,9 @@ import { waitForFast } from "../test-helpers/wait-for.ts";
+ import type { SessionMenuAction } from "./session-menu.ts";
+ 
+ describe("session menu", () => {
++  // The icon picker keeps recent choices in this browser; start each test without them.
++  beforeEach(() => localStorage.clear());
++
+   it("keeps self, agents, and the current owner while the directory loads, then retries a visible failure", async () => {
+     const pending = deferred<ReturnType<typeof sessionOwnerProfiles>>();
+     const { context, request } = createSessionOwnerMenuHarness(() => pending.promise);
+@@ -572,7 +575,7 @@ describe("session menu", () => {
+     expect(onAction).not.toHaveBeenCalled();
+   });
+ 
+-  it("renders emoji and glyph sections with a custom entry and combined reset", async () => {
++  it("renders Emoji and Icons tabs with a custom entry and combined reset", async () => {
+     const onAction = vi.fn<(action: SessionMenuAction) => void>();
+     const menu = await mountMenu({ session: { icon: "🦞" }, onAction });
+     const submenu = menuItem(menu, "Icon & color");
+@@ -582,25 +585,22 @@ describe("session menu", () => {
+     expect(submenu.querySelector(".session-menu__icon-options")?.getAttribute("role")).toBe(
+       "group",
+     );
+-    expect(
+-      Array.from(submenu.querySelectorAll(".session-menu__icon-section-label")).map((label) =>
+-        label.textContent?.trim(),
+-      ),
+-    ).toEqual(["Color", "Emoji", "Icons"]);
++    const tabs = Array.from(submenu.querySelectorAll<HTMLElement>("wa-tab"));
++    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(["Emoji", "Icons"]);
++    expect(tabs.map((tab) => tab.hasAttribute("active"))).toEqual([true, false]);
+     const grids = submenu.querySelectorAll(".session-menu__icon-grid");
++    expect(
++      submenu.querySelector(".session-menu__icon-scroll .session-menu__icon-section-label")
++        ?.textContent?.trim(),
++    ).toBe("Frequently used");
+     expect(
+       Array.from(grids[0]?.querySelectorAll<HTMLButtonElement>("button") ?? []).map((choice) =>
+         choice.textContent?.trim(),
+       ),
+     ).toEqual(["🦞", "🚀", "🐛", "✅", "🔥", "📦", "🧪", "📝", "🔍", "⚡", "🎯", ""]);
+-    expect(grids[0]?.querySelectorAll("button")).toHaveLength(12);
+     expect(grids[0]?.querySelector("button:nth-child(12)")?.getAttribute("aria-label")).toBe(
+       "Custom icon…",
+     );
+-    const noIcon = grids[1]?.querySelector<HTMLButtonElement>('[aria-label="No icon"]');
+-    expect(noIcon).not.toBeNull();
+-    noIcon?.click();
+-    expect(onAction).toHaveBeenCalledWith({ kind: "set-icon", icon: null });
+     const current = choices[0];
+     if (!current) {
+       throw new Error("Expected the first icon choice");
+@@ -613,6 +613,23 @@ describe("session menu", () => {
+ 
+     choices[1]?.click();
+     expect(onAction).toHaveBeenCalledWith({ kind: "set-icon", icon: "🚀" });
++
++    submenu
++      .querySelector("wa-tab-group")
++      ?.dispatchEvent(new CustomEvent("wa-tab-show", { detail: { name: "icons" }, bubbles: true }));
++    await menu.updateComplete;
++    await waitForFast(() =>
++      expect(submenu.querySelectorAll(".session-menu__icon-choice img").length).toBe(72),
++    );
++    const builtIn = submenu.querySelector(".session-menu__icon-grid");
++    expect(
++      Array.from(builtIn?.querySelectorAll<HTMLButtonElement>("button") ?? []).map((choice) =>
++        choice.getAttribute("aria-label"),
++      ),
++    ).toEqual(["No icon", "braces", "book", "monitor", "bot", "kanban", "coins", "Custom icon…"]);
++    builtIn?.querySelector<HTMLButtonElement>('[aria-label="No icon"]')?.click();
++    expect(onAction).toHaveBeenCalledWith({ kind: "set-icon", icon: null });
++
+     const remove = submenu.querySelector<HTMLButtonElement>(".session-menu__icon-remove");
+     expect(remove?.previousElementSibling?.getAttribute("role")).toBe("separator");
+     expect(remove?.textContent?.trim()).toBe("Reset to default");
+@@ -703,7 +720,7 @@ describe("session menu", () => {
+     expect(submenu.querySelector(".session-menu__icon-options")?.hasAttribute("inert")).toBe(false);
+     expect(document.activeElement).toBe(submenu.querySelector('[aria-label="Custom icon…"]'));
+     const currentIcon = submenu.querySelector<HTMLButtonElement>(
+-      '.session-menu__icon-options button[tabindex="0"]',
++      '.session-menu__icon-options .session-menu__icon-choice[tabindex="0"]',
+     );
+     const reset = submenu.querySelector<HTMLButtonElement>(".session-menu__icon-remove");
+     if (!currentIcon || !reset) {
+diff --git a/ui/src/components/session-people-search.test.ts b/ui/src/components/session-people-search.test.ts
+index 11b536b0..1813a8e7 100644
+--- a/ui/src/components/session-people-search.test.ts
++++ b/ui/src/components/session-people-search.test.ts
+@@ -16,7 +16,8 @@ describe("searchable session people", () => {
+     const { context, request } = createSessionOwnerMenuHarness(() => pending.promise);
+     const menu = await mountMenu({ context });
+     await waitForFast(() => expect(request).toHaveBeenCalledWith("users.list", {}));
+-    const search = menu.querySelector<HTMLInputElement>('input[type="search"]')!;
++    // The session menu also holds the icon picker's search; this is the people search.
++    const search = menu.querySelector<HTMLInputElement>('.people-menu__search input[type="search"]')!;
+     search.value = "Carol";
+     search.dispatchEvent(new InputEvent("input", { bubbles: true }));
+ 
+diff --git a/ui/src/i18n/locales/en.ts b/ui/src/i18n/locales/en.ts
+index 2a5a19f3..fe361a3c 100644
+--- a/ui/src/i18n/locales/en.ts
++++ b/ui/src/i18n/locales/en.ts
+@@ -976,6 +976,110 @@ export const en: TranslationMap & {
+     },
+     iconEmojiSection: "Emoji",
+     iconGlyphSection: "Icons",
++    iconSearch: "Search emoji and icons",
++    iconSearchEmpty: "Nothing matches “{query}”.",
++    iconRecentSection: "Frequently used",
++    iconBuiltInSection: "Built-in",
++    iconEmojiLoading: "Loading emoji…",
++    iconEmojiLoadFailed: "Emoji could not be loaded.",
++    iconEmojiGroups: {
++      smileys: "Smileys & emotion",
++      people: "People & body",
++      animals: "Animals & nature",
++      food: "Food & drink",
++      travel: "Travel & places",
++      activities: "Activities",
++      objects: "Objects",
++      symbols: "Symbols",
++      flags: "Flags",
++    },
++    iconLibrary: {
++      groups: {
++        aerospace: "Aerospace & simulation",
++        ai: "AI & agents",
++        code: "Code & tools",
++        homelab: "Home lab & infrastructure",
++        security: "Security & reliability",
++        business: "Business & career",
++        finance: "Finance & markets",
++        creative: "Creative & media",
++        life: "Life & interests",
++      },
++      icons: {
++        aircraft: "Aircraft",
++        propeller: "Propeller",
++        "control-loop": "Control loop",
++        simulation: "Simulation blocks",
++        "six-dof": "6-DOF dynamics",
++        airflow: "Aerodynamics",
++        telemetry: "Telemetry",
++        satellite: "Satellite",
++        agent: "AI agent",
++        "agent-team": "Agent team",
++        "neural-net": "Neural network",
++        memory: "Shared memory",
++        workflow: "Agent workflow",
++        factory: "Software factory",
++        research: "Research",
++        voice: "Voice assistant",
++        terminal: "Terminal",
++        code: "Code",
++        git: "Git branches",
++        debug: "Debugging",
++        tests: "Test suite",
++        api: "API integration",
++        package: "Package build",
++        web: "Web application",
++        server: "Server rack",
++        cluster: "Compute cluster",
++        storage: "Storage",
++        network: "Networking",
++        cloud: "Cloud compute",
++        chip: "GPU & hardware",
++        linux: "Linux systems",
++        observability: "Monitoring",
++        shield: "Security",
++        key: "Credentials",
++        lock: "Privacy",
++        scanner: "Security scan",
++        backup: "Backup & recovery",
++        review: "Review council",
++        firewall: "Firewall",
++        incident: "Incident response",
++        consulting: "Consulting",
++        startup: "Startup",
++        strategy: "Strategy",
++        career: "Career search",
++        meeting: "Meetings",
++        handshake: "Partnerships",
++        documents: "Documents",
++        mail: "Email",
++        markets: "Markets",
++        bitcoin: "Bitcoin",
++        wallet: "Budget",
++        credit: "Credit repair",
++        savings: "Savings",
++        receipt: "Expenses",
++        analysis: "Market analysis",
++        value: "Cost optimization",
++        video: "Video production",
++        camera: "Photography",
++        design: "Design",
++        audio: "Audio production",
++        writing: "Writing",
++        social: "Social media",
++        presentation: "Presentations",
++        "smart-glasses": "Smart glasses",
++        surf: "Surf & ocean",
++        coffee: "Coffee",
++        dining: "Dining",
++        "live-music": "Live music",
++        comedy: "Comedy & shows",
++        travel: "Travel & outings",
++        home: "Home & moving",
++        health: "Health & wellbeing",
++      },
++    },
+     noIcon: "No icon",
+     noColor: "No color",
+     customEmojiCell: "Custom emoji…",
+diff --git a/ui/src/styles/layout.css b/ui/src/styles/layout.css
+index 1feb73d0..9e1a98dc 100644
+--- a/ui/src/styles/layout.css
++++ b/ui/src/styles/layout.css
+@@ -3060,6 +3060,155 @@ wa-dropdown.sidebar-session-sort-menu::part(menu) {
+   gap: 3px;
+ }
+ 
++.session-menu__icon-search {
++  box-sizing: border-box;
++  width: 100%;
++  min-height: 28px;
++  padding: 4px 8px;
++  border: 1px solid var(--border);
++  border-radius: var(--menu-item-radius);
++  background: var(--bg);
++  color: var(--text);
++  font: inherit;
++  font-size: calc(13px * var(--control-ui-text-scale));
++}
++
++.session-menu__icon-search:focus {
++  outline: 2px solid color-mix(in srgb, var(--accent) 48%, transparent);
++  outline-offset: -1px;
++}
++
++/* One fixed frame for the tabs or the search results, so the menu keeps its size
++   and place while searching or switching tabs; the scrolling list fills it. */
++.session-menu__icon-body {
++  display: flex;
++  flex-direction: column;
++  height: min(320px, 52vh);
++  margin-top: 6px;
++}
++
++/* Emoji and Icons: Web Awesome's tab group, sized like the menu's own controls. */
++.session-menu__icon-tabs {
++  --track-width: 0;
++  flex: 1 1 auto;
++  min-height: 0;
++}
++
++.session-menu__icon-tabs::part(base) {
++  height: 100%;
++}
++
++.session-menu__icon-tabs::part(nav) {
++  padding: 0;
++}
++
++.session-menu__icon-tabs::part(tabs) {
++  gap: 3px;
++}
++
++.session-menu__icon-tabs::part(body) {
++  display: flex;
++  flex: 1 1 auto;
++  flex-direction: column;
++  min-height: 0;
++  padding: 0;
++  overflow: hidden;
++}
++
++.session-menu__icon-tabs wa-tab {
++  flex: 1 1 0;
++}
++
++.session-menu__icon-tabs wa-tab::part(base) {
++  justify-content: center;
++  width: 100%;
++  min-height: 26px;
++  padding: 0 6px;
++  border-radius: var(--menu-item-radius);
++  background: transparent;
++  color: var(--muted);
++  font: inherit;
++  font-size: calc(12px * var(--control-ui-text-scale));
++  font-weight: 600;
++}
++
++.session-menu__icon-tabs wa-tab:hover::part(base) {
++  background: var(--bg-hover);
++  color: var(--text);
++}
++
++.session-menu__icon-tabs wa-tab[active]::part(base) {
++  background: color-mix(in srgb, var(--accent) 14%, transparent);
++  color: var(--text);
++}
++
++.session-menu__icon-tabs wa-tab-panel {
++  --padding: 0;
++  padding: 0;
++}
++
++.session-menu__icon-tabs wa-tab-panel[active] {
++  display: flex;
++  flex: 1 1 auto;
++  flex-direction: column;
++  min-height: 0;
++}
++
++.session-menu__icon-tabs wa-tab-panel::part(base) {
++  display: flex;
++  flex: 1 1 auto;
++  flex-direction: column;
++  min-height: 0;
++  padding: 0;
++}
++
++.session-menu__icon-groups {
++  display: grid;
++  grid-template-columns: repeat(9, minmax(0, 1fr));
++  margin-top: 4px;
++}
++
++.session-menu__icon-group-jump {
++  height: 22px;
++  padding: 0;
++  border: 0;
++  border-radius: var(--menu-item-radius);
++  background: transparent;
++  cursor: var(--cursor-action);
++  filter: grayscale(0.7);
++  font-size: 14px;
++  line-height: 1;
++}
++
++.session-menu__icon-group-jump:hover {
++  background: var(--bg-hover);
++  filter: none;
++}
++
++/* Every emoji and library icon: the scrolling list inside the fixed frame. */
++.session-menu__icon-scroll {
++  display: flex;
++  flex: 1 1 auto;
++  flex-direction: column;
++  gap: 3px;
++  min-height: 0;
++  margin-top: 4px;
++  overflow-y: auto;
++  overscroll-behavior: contain;
++  scrollbar-width: thin;
++}
++
++.session-menu__icon-choice img {
++  width: 20px;
++  height: 20px;
++}
++
++.session-menu__icon-empty {
++  padding: 8px 4px;
++  color: var(--muted);
++  font-size: calc(12px * var(--control-ui-text-scale));
++}
++
+ .session-menu__icon-choice {
+   box-sizing: border-box;
+   display: inline-flex;

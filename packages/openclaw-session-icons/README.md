@@ -1,5 +1,10 @@
 # openclaw-session-icons
 
+> **Deprecated.** Since openclaw-nix 2026.10.3-r3 the Control UI's own session icon picker
+> has these 72 icons under **Icons**, beside every emoji (README, "Session icons"), and
+> keeps recognising every value this plugin saved. The plugin goes after the 2026.11
+> releases.
+
 A searchable library of 72 bold-colour session icons in nine groups (aerospace and
 simulation, AI and agents, code, home lab, security, business, finance, creative,
 life and interests), opened from a session's menu: **Custom icons…**.
