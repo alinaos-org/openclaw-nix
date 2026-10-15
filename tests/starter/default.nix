@@ -102,8 +102,9 @@ in
           print(out)
           for check in ["environment", "gateway", "secrets"]:
               assert f"ok   main: {check}" in out, out
-          # The key is found; the VM's CLI cannot load Codex's runtime: a warning.
-          assert "warn main: models: signed in; the CLI cannot load the runtime for openai via codex" in out, out
+          # The key is found, so models never fails here; the VM's CLI may not load
+          # Codex's runtime, which is a warning.
+          assert "FAIL main: models" not in out and "main: models: " in out, out
           for piece in ["sk-starter-provider", "sk-start", "provider", token, token[:8], token[-8:]]:
               assert piece not in out, (piece, out)
           machine.succeed(f"cp -p {env} /tmp/openclaw.env.saved && sed -i '/^OPENAI_API_KEY=/d' {env}")
