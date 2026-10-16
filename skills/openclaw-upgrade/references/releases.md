@@ -2,8 +2,9 @@
 
 ## The release pull request
 
-The `release-watch` workflow runs daily (06:17 UTC). When OpenClaw publishes a stable
-release newer than `release.nix`'s `current`, it runs:
+The `release-watch` workflow runs daily (06:17 UTC); dispatch it by hand to pick up a
+release the same day (2026.10.4). When OpenClaw publishes a stable release newer than
+`release.nix`'s `current`, it runs:
 
 - `scripts/new-release.py <v>`: tag to the commit it peels to, which must equal the
   release notes' "release SHA"; the source hash; the pnpm bootstrap version; the pnpm
@@ -27,8 +28,11 @@ the pull request by hand and CI starts on it (2026.10.3). While a release pull r
 stays open, each run rebases its branch onto a moved `main` and reruns CI, as long as
 the branch holds only the watcher's own commit; anything else it leaves for a person.
 
-Merging the release pull request needs a code owner's approval, and tags `<release>-r1`
-(the `tag-release` workflow). A later openclaw-nix fix on the same release is tagged
+`main` takes a pull request once `eval`, `build` and `nixos-module` pass on a branch up
+to date with it. The code-owner ruleset is disabled until there is a second
+maintainer, so arm auto-merge with a rebase and the pull request lands when CI is
+green. GitHub refuses to arm one that is already mergeable; merge that one directly.
+Merging tags `<release>-r1` (the `tag-release` workflow). A later openclaw-nix fix on the same release is tagged
 `-r2` and up by dispatching that workflow. Hosts that pin tags move to the new tag
 instead of running `nix flake update`.
 
