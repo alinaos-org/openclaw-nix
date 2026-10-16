@@ -42,7 +42,8 @@
     since = "2026.9.4";
     fixes = ''
       Shutdown: a plain stop drained for up to upstream's full budget. Clamp only the
-      stop path to a 30 s drain and 90 s hard exit; every restart keeps upstream's.
+      stop path to a 120 s drain and 180 s hard exit; every restart keeps upstream's.
+      (30 s / 90 s until 2026.10.4, which cut running agent turns at a stop.)
     '';
     test = ./test-stop-budget.mjs;
     upstream = null;
