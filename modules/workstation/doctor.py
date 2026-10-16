@@ -5,11 +5,13 @@ Run it as the desktop user. Per instance it checks:
 - environment: each variable in requiredEnvironment is set in the instance's env
   files, not empty and not a placeholder, and not removed by the unit;
 - gateway: the user unit is active and /readyz answers ready;
-- secrets: `openclaw secrets audit --check` (no plaintext secrets, no unresolved refs);
+- secrets: `openclaw secrets audit` (no plaintext secrets, no unresolved refs), run with
+  the gateway password its launcher derives or reads, as the gateway sees it;
 - models: `openclaw models status --check` (the default route's sign-in or key).
 It reads secret values only to see whether they are set and never prints one.
 Exit 0 when everything passes, 1 otherwise.
 """
+import hashlib
 import json
 import os
 import subprocess
@@ -74,6 +76,36 @@ def environment(name, spec):
     return env
 
 
+def with_password(name, spec, env):
+    # The OPENCLAW_GATEWAY_PASSWORD the unit's launcher gives its gateway, so the audit
+    # resolves the config's reference to it: the first line of its file, or, derived,
+    # sha256(token NUL instance) from the first OPENCLAW_GATEWAY_TOKEN line of the
+    # shared env file, with one pair of double quotes stripped, as the launcher does.
+    how = spec.get("password")
+    if not how or env is None:
+        return env
+    try:
+        if "file" in how:
+            with open(how["file"]) as handle:
+                password = handle.readline().rstrip("\n")
+        else:
+            password = ""
+            with open(how["deriveFrom"]) as handle:
+                for line in handle:
+                    if line.startswith("OPENCLAW_GATEWAY_TOKEN="):
+                        token = line.rstrip("\n").partition("=")[2]
+                        token = token[1:] if token.startswith('"') else token
+                        token = token[:-1] if token.endswith('"') else token
+                        if token:
+                            password = hashlib.sha256(f"{token}\0{name}".encode()).hexdigest()
+                        break
+    except OSError as error:
+        report(None, name, "secrets", f"cannot read the gateway password's source ({error.strerror}); "
+               "the audit may report its reference as unresolved")
+        return env
+    return dict(env, OPENCLAW_GATEWAY_PASSWORD=password) if password else env
+
+
 def gateway(name, spec):
     unit = spec["unit"]
     active = subprocess.run(["systemctl", "--user", "is-active", unit], capture_output=True, text=True).stdout.strip()
@@ -133,19 +165,48 @@ def show(output):
         print(f"       | {line}")
 
 
+AUDIT_PROBLEMS = {
+    "plaintextCount": "plaintext secret(s)",
+    "unresolvedRefCount": "unresolved reference(s)",
+    "shadowedRefCount": "shadowed reference(s)",
+    "storeResidueCount": "secret(s) left in a store",
+}
+
+
 def secrets_audit(name, spec, env):
-    code, _, output = openclaw(name, spec, env, ["secrets", "audit", "--check"])
+    # Judged from the audit's own counts. Legacy residue alone is not a problem: a
+    # subscription sign-in (an auth profile's OAuth credentials) is stored by OpenClaw,
+    # outside SecretRefs, and every signed-in instance has some.
+    code, raw, output = openclaw(name, spec, env, ["secrets", "audit", "--json"])
     cli = spec["command"]
-    if code == 0:
-        report(True, name, "secrets", "no plaintext secrets, every reference resolves")
+    try:
+        audit = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+        summary = audit["summary"]
+        findings = [f for f in audit.get("findings") or [] if isinstance(f, dict)]
+    except (ValueError, KeyError, TypeError, AttributeError):
+        report(None, name, "secrets", f"could not read `secrets audit --json` (exit {code})", f"{cli} secrets audit")
+        show(output)
         return
-    if code == 1:
-        report(False, name, "secrets", "plaintext secrets in the config or auth stores", f"{cli} secrets audit")
-    elif code == 2:
-        report(False, name, "secrets", "unresolved secret references", f"{cli} secrets audit")
+    problems = [f"{summary[key]} {label}" for key, label in AUDIT_PROBLEMS.items() if summary.get(key)]
+    legacy = [f for f in findings if f.get("code") == "LEGACY_RESIDUE"]
+    sign_ins = [f for f in legacy if f.get("profileId")]
+    if problems:
+        report(False, name, "secrets", ", ".join(problems), f"{cli} secrets audit")
+        for finding in findings:
+            if finding.get("code") == "LEGACY_RESIDUE":
+                continue
+            where = f"{os.path.basename(str(finding.get('file') or ''))}:{finding.get('jsonPath') or ''}"
+            # Only an unresolved reference's message is shown: it names the variable,
+            # where another finding's could quote part of the secret.
+            why = redact(str(finding.get("message") or ""), env)[:160] if finding.get("code") == "REF_UNRESOLVED" else ""
+            print(f"       | {finding.get('code')} {where} {why}".rstrip())
+    elif len(sign_ins) < len(legacy):
+        report(None, name, "secrets", f"no plaintext secrets, every reference resolves; "
+               f"{len(legacy) - len(sign_ins)} other legacy entr{'y' if len(legacy) - len(sign_ins) == 1 else 'ies'}",
+               f"{cli} secrets audit")
     else:
-        report(None, name, "secrets", f"audit did not finish (exit {code})", f"{cli} secrets audit")
-    show(output)
+        note = f" ({len(sign_ins)} sign-in(s) kept by OpenClaw)" if sign_ins else ""
+        report(True, name, "secrets", f"no plaintext secrets, every reference resolves{note}")
 
 
 def models(name, spec, env):
@@ -212,7 +273,7 @@ def main():
         env = environment(name, spec)
         gateway(name, spec)
         if env is not None:
-            secrets_audit(name, spec, env)
+            secrets_audit(name, spec, with_password(name, spec, env))
             models(name, spec, env)
     print("all checks passed" if not failures else f"{failures} problem(s)")
     return 1 if failures else 0
