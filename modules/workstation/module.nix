@@ -372,6 +372,14 @@
           ++ lib.optional (inst.environmentFile != null) inst.environmentFile;
         required = inst.requiredEnvironment;
         unset = strippedEnvironmentFor inst;
+        # How the launcher sets OPENCLAW_GATEWAY_PASSWORD (passwordLauncherFor), so
+        # the doctor's secrets audit resolves the config's reference the same way.
+        password =
+          if inst.gatewayPasswordFile != null
+          then {file = inst.gatewayPasswordFile;}
+          else if inst.deriveGatewayPassword && hasOpenclawEnv
+          then {deriveFrom = openclawEnv;}
+          else null;
         # The instance's own CLI and the environment its gateway runs with (as
         # oc-<name>, but keeping the token its config references).
         openclaw = "${packageFor name inst}/bin/openclaw";
