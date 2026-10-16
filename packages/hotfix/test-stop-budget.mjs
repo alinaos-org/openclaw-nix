@@ -23,10 +23,10 @@ if (atLeast(receipt.upstreamVersion, "2026.9.6")) {
   assert(patchedSrc.includes("openclaw-nix-stop-budget-v1"), "patch receipt present but resolver is unpatched");
   const v97 = atLeast(receipt.upstreamVersion, "2026.9.7");
   const baselineSrc = patchedSrc
-    .replace("Math.min(30e3, Math.max(0, budget.timeoutMs - budget.reserveMs)), /* openclaw-nix-stop-budget-v1 */",
+    .replace("Math.min(120e3, Math.max(0, budget.timeoutMs - budget.reserveMs)), /* openclaw-nix-stop-budget-v1 */",
              "Math.max(0, budget.timeoutMs - budget.reserveMs),")
-    .replace(v97 ? "forceExitMs: !isRestart ? Math.min(budget.timeoutMs, 90e3) : action === \"external-restart\" && budget.nativeStopBudget ?"
-                 : "forceExitMs: !isRestart ? Math.min(budget.timeoutMs, 90e3) :",
+    .replace(v97 ? "forceExitMs: !isRestart ? Math.min(budget.timeoutMs, 180e3) : action === \"external-restart\" && budget.nativeStopBudget ?"
+                 : "forceExitMs: !isRestart ? Math.min(budget.timeoutMs, 180e3) :",
              v97 ? "forceExitMs: !isRestart || action === \"external-restart\" && budget.nativeStopBudget ?"
                  : "forceExitMs: !isRestart ? budget.timeoutMs :");
   assert(!baselineSrc.includes("openclaw-nix-stop-budget-v1"), "baseline reversal failed");
