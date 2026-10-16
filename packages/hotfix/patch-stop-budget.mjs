@@ -19,29 +19,33 @@ let source = fs.readFileSync(file, "utf8");
 // during activation cut a running agent turn, its databases closed with
 // "active-leases", and the next start failed inspection. 10.4 no longer hangs a
 // stop on a stalled transcript worker, so the longer drain stays bounded.)
+// The clamp, in one place: the receipt records it and the test reads it from there.
+const STOP_DRAIN_MS = 120e3;
+const STOP_HARD_EXIT_MS = 180e3;
+const seconds = (ms) => `${ms / 1e3}e3`;
 const drainClamp = ["drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.max(0, budget.timeoutMs - budget.reserveMs),",
-  "drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.min(120e3, Math.max(0, budget.timeoutMs - budget.reserveMs)), /* openclaw-nix-stop-budget-v1 */"];
+  `drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.min(${seconds(STOP_DRAIN_MS)}, Math.max(0, budget.timeoutMs - budget.reserveMs)), /* openclaw-nix-stop-budget-v1 */`];
 // 9.7 derives isRestart from params.action and gives native external restarts
 // the stop budget too. Split that shared branch so only a true stop is clamped;
 // external-restart keeps upstream's full budget, like every other restart.
 const replacements = atLeast(version, "2026.9.7") ? [
   drainClamp,
   ["forceExitMs: !isRestart || action === \"external-restart\" && budget.nativeStopBudget ? budget.timeoutMs : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)",
-    "forceExitMs: !isRestart ? Math.min(budget.timeoutMs, 180e3) : action === \"external-restart\" && budget.nativeStopBudget ? budget.timeoutMs : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)"],
+    `forceExitMs: !isRestart ? Math.min(budget.timeoutMs, ${seconds(STOP_HARD_EXIT_MS)}) : action === \"external-restart\" && budget.nativeStopBudget ? budget.timeoutMs : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)`],
 ] : version === "2026.9.6" ? [
   ["drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.max(0, budget.timeoutMs - budget.reserveMs),",
-    "drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.min(120e3, Math.max(0, budget.timeoutMs - budget.reserveMs)), /* openclaw-nix-stop-budget-v1 */"],
+    `drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.min(${seconds(STOP_DRAIN_MS)}, Math.max(0, budget.timeoutMs - budget.reserveMs)), /* openclaw-nix-stop-budget-v1 */`],
   ["forceExitMs: !isRestart ? budget.timeoutMs : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)",
-    "forceExitMs: !isRestart ? Math.min(budget.timeoutMs, 180e3) : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)"],
+    `forceExitMs: !isRestart ? Math.min(budget.timeoutMs, ${seconds(STOP_HARD_EXIT_MS)}) : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)`],
 ] : version === "2026.9.5" ? [
   ["if (!isRestart) armForceExitTimer(acceptedShutdownTimeoutMs);",
-    "if (!isRestart) armForceExitTimer(Math.min(acceptedShutdownTimeoutMs, 180e3)); /* openclaw-nix-stop-budget-v1 */"],
+    `if (!isRestart) armForceExitTimer(Math.min(acceptedShutdownTimeoutMs, ${seconds(STOP_HARD_EXIT_MS)})); /* openclaw-nix-stop-budget-v1 */`],
   ["const drainTimeoutMs = isRestart ? restartDrainTimeoutMs : Math.max(0, acceptedShutdownTimeoutMs - RESTART_CLOSE_REPLY_DRAIN_SHUTDOWN_RESERVE_MS);",
-    "const drainTimeoutMs = isRestart ? restartDrainTimeoutMs : Math.min(120e3, Math.max(0, acceptedShutdownTimeoutMs - RESTART_CLOSE_REPLY_DRAIN_SHUTDOWN_RESERVE_MS));"],
+    `const drainTimeoutMs = isRestart ? restartDrainTimeoutMs : Math.min(${seconds(STOP_DRAIN_MS)}, Math.max(0, acceptedShutdownTimeoutMs - RESTART_CLOSE_REPLY_DRAIN_SHUTDOWN_RESERVE_MS));`],
 ] : [
-  ["if (!isRestart) armForceExitTimer(SHUTDOWN_TIMEOUT_MS);", "if (!isRestart) armForceExitTimer(180e3); /* openclaw-nix-stop-budget-v1 */"],
+  ["if (!isRestart) armForceExitTimer(SHUTDOWN_TIMEOUT_MS);", `if (!isRestart) armForceExitTimer(${seconds(STOP_HARD_EXIT_MS)}); /* openclaw-nix-stop-budget-v1 */`],
   ["const drainTimeoutMs = isRestart ? restartDrainTimeoutMs : Math.max(0, 315e3);",
-    "const drainTimeoutMs = isRestart ? restartDrainTimeoutMs : Math.max(0, 120e3);"],
+    `const drainTimeoutMs = isRestart ? restartDrainTimeoutMs : Math.max(0, ${seconds(STOP_DRAIN_MS)});`],
 ];
 for (const [before, after] of replacements) {
   assert.equal(source.split(before).length, 2, `stop-budget anchor changed: ${before}`);
@@ -50,6 +54,6 @@ for (const [before, after] of replacements) {
 fs.writeFileSync(file, source);
 fs.writeFileSync(path.join(root, ".stop-budget-hotfix.json"), JSON.stringify({
   id: "openclaw-nix-stop-budget-v1", upstreamVersion: version, patchedFile: candidates[0],
-  stopDrainMs: 120000, stopHardExitMs: 180000, restartPolicyUnchanged: true,
+  stopDrainMs: STOP_DRAIN_MS, stopHardExitMs: STOP_HARD_EXIT_MS, restartPolicyUnchanged: true,
 }, null, 2) + "\n");
-console.log("Applied stop-only 120s drain / 180s hard-exit budget; restart policy unchanged");
+console.log(`Applied stop-only ${STOP_DRAIN_MS / 1e3}s drain / ${STOP_HARD_EXIT_MS / 1e3}s hard-exit budget; restart policy unchanged`);
