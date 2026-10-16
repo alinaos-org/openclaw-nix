@@ -50,11 +50,11 @@ if (atLeast(receipt.upstreamVersion, "2026.9.6")) {
   // A long native stop budget: both stop values must be clamped.
   const long = { timeoutMs: 325000, reserveMs: 10000, nativeStopBudget: true };
   const longStop = call(patchedFn, long, false);
-  assert.equal(longStop.drainTimeoutMs, 30000);
-  assert.equal(longStop.forceExitMs, 90000);
+  assert.equal(longStop.drainTimeoutMs, 120000);
+  assert.equal(longStop.forceExitMs, 180000);
   assert.equal(call(baseFn, long, false).drainTimeoutMs, 315000);
   assert.equal(call(baseFn, long, false).forceExitMs, 325000);
-  console.log("PASS 9.6 resolver: stop drain 30s / hard exit 90s");
+  console.log("PASS 9.6 resolver: stop drain 120s / hard exit 180s");
 
   // Across budgets the clamp may only ever lower a stop value, never raise one,
   // and must land exactly on min(clamp, upstream).
@@ -63,8 +63,8 @@ if (atLeast(receipt.upstreamVersion, "2026.9.6")) {
                         { timeoutMs: 325000, reserveMs: 10000, nativeStopBudget: false }]) {
     const p = call(patchedFn, budget, false);
     const b = call(baseFn, budget, false);
-    assert.equal(p.drainTimeoutMs, Math.min(30000, b.drainTimeoutMs));
-    assert.equal(p.forceExitMs, Math.min(90000, b.forceExitMs));
+    assert.equal(p.drainTimeoutMs, Math.min(120000, b.drainTimeoutMs));
+    assert.equal(p.forceExitMs, Math.min(180000, b.forceExitMs));
     assert(p.drainTimeoutMs <= b.drainTimeoutMs && p.forceExitMs <= b.forceExitMs);
   }
   // A budget already inside the clamp is left exactly alone.
@@ -170,7 +170,7 @@ for (const scenario of scenarios) {
     restartIntent: { force: scenario === "forced-restart" } });
   // Flush deterministic promise jobs, not wall-clock timers.
   for (let i = 0; i < 40; i++) await Promise.resolve();
-  const expectedExitBudget = restarting ? 505000 : Math.min(90000, acceptedStopBudget);
+  const expectedExitBudget = restarting ? 505000 : Math.min(180000, acceptedStopBudget);
   assert.equal(timers[0].ms, expectedExitBudget);
   assert(events.some((e) => e[0] === "watchdog" && e[1] === expectedExitBudget + 2000));
   if (scenario === "hung-close") {
@@ -185,7 +185,7 @@ for (const scenario of scenarios) {
     assert(events.some((e) => e[0] === "watchdog-cancel"));
     assert.equal(events.some((e) => e[0] === "forced-exit"), false);
     if (!restarting) {
-      assert.deepEqual(events.filter((e) => e[0] === "drain"), [["drain", Math.min(30000, acceptedStopBudget - 10000)]]);
+      assert.deepEqual(events.filter((e) => e[0] === "drain"), [["drain", Math.min(120000, acceptedStopBudget - 10000)]]);
       assert(events.findIndex((e) => e[0] === "startup-drain") < events.findIndex((e) => e[0] === "server-close"));
       assert(events.some((e) => e[0] === "complete" && e[1] === (scenario === "close-error" ? "forced_stop" : "clean_stop")));
       assert(events.some((e) => e[0] === "exit" && e[1] === (scenario === "close-error" ? 1 : 0)));
