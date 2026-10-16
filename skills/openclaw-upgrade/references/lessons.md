@@ -64,6 +64,9 @@ records and no unreadable database. Never run the candidate against live state.
 - Doctor rewrites the copy's config (`doctor-config.json` against `.before.json`): that
   diff is what it would propose on the live gateway.
 - It refuses to start without twice the state size plus 20 GB free.
+- Run instances in parallel only with memory to spare: each doctor holds its copy's
+  databases open beside the live gateways. With about 6 GB available, one host ran them
+  one at a time (2026.10.4: 8 minutes, the main gateway 4.5 of them).
 
 ## Doctor proposals
 
@@ -73,6 +76,21 @@ them (from qualification, or the host's migration step), read the reason in doct
 log, check the live behavior, then adopt each in the Nix source or reject it on purpose.
 Record standing decisions in the host profile so the next release does not re-litigate
 them.
+
+## First start on a new release
+
+For an instance with `migrateStateOnUpgrade`, the workstation module's prepare-config
+(`ExecStartPre`) runs the version migration before the gateway starts. It tars and gzips
+a pre-migrate snapshot of the state, then runs the new doctor on the real state, within
+900 s (the unit's start timeout is 20 minutes). Until both finish the gateway is not
+listening, so readyz reports connection refused rather than "not ready". On one host, a
+1.5 GB main gateway's state took 2 minutes to snapshot and 3 for doctor, so it was down
+6 minutes in all, against about 90 seconds for a restart on the same release. Follow
+progress in the newest `backups/pre-migrate-*`: `state-snapshot.tgz`, then `doctor.log`,
+then `.migrated-for-version` holding the new version. A `.migration-failed-for-version`
+marker means the gateway refuses to start (see [restart hazards](#restart-hazards)).
+Doctor's proposals land in `upgrade-config-drift.json` and
+`upgrade-workspace-drift.json`; see [doctor proposals](#doctor-proposals).
 
 ## What a version sweep misses
 
@@ -114,6 +132,16 @@ host. Work them alongside the patch layers.
   calls). Worktrees and transcripts survive; the turn does not. List running sessions
   (`gateway call sessions.list --params '{"limit":60}'`, status `running`) on each
   gateway and wait for them, or have them reach a checkpoint first.
+- Scheduled runs and the outgoing stop budget: `sessions.list` shows only turns already
+  running, not a cron job due a minute later. The stop that activation triggers runs
+  under the outgoing build's shutdown budget, so a release that changes the drain
+  budget (openclaw-nix's stop-budget hotfix) protects only the stops after it. A cron
+  turn the drain cuts closes its agent databases with `clean-close receipt:
+  active-leases`, and the next start fails readiness with "database configuration
+  changed during startup inspection". One clean restart with nothing running fixes it;
+  no doctor. Before activating, list the cron jobs running or due in the next ten
+  minutes: `nextRunAtMs` and `runningAtMs` in `cron_jobs.state_json` of each instance's
+  `state/openclaw.sqlite`, opened read-only. Then activate after they finish.
 - Agents that work on the host's repository land commits on main, often unpushed:
   rebase the candidate onto the newest local main just before activating, so a
   fast-forward-only activation refuses rather than dropping their commits.
