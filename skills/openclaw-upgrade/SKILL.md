@@ -57,13 +57,16 @@ generic scripts their host defaults. If there is no host profile, stop and write
    (the copy layers build locally, about 1.5 min each), then
    `scripts/check-plugin-sdk-imports.py <package>` against the package the main gateway
    will run.
-5. **Qualify** each instance on copies of its state, in parallel and never beside a
-   source build: `scripts/qualify-candidate.sh <package>/bin/openclaw <instance>`
+5. **Qualify** each instance on copies of its state, never beside a source build, and
+   in parallel only with memory to spare (one at a time below about 8 GB available):
+   `scripts/qualify-candidate.sh <package>/bin/openclaw <instance>`
    ([qualifying on copies](references/lessons.md#qualifying-on-copies)). Then the host's
-   contracts in small memory-capped batches.
+   contracts in small memory-capped batches, as the host profile lists them.
 6. **Activate** as the host profile says: commit, rebase onto the newest main, wait for
-   running sessions, clear the [restart hazards](references/lessons.md#restart-hazards),
-   activate, restart any keep-old instance, check every instance's version, run the
+   running sessions and for scheduled runs due in the window, clear the
+   [restart hazards](references/lessons.md#restart-hazards), activate, wait out each
+   gateway's [first start](references/lessons.md#first-start-on-a-new-release), restart
+   any keep-old instance, check every instance's version, run the
    canaries and the [native UI check](references/lessons.md#native-control-ui), and read
    each gateway's startup log.
 7. **Record** the release, timings and anything that surprised you, and fold lessons into
