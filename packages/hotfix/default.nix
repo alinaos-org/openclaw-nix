@@ -51,6 +51,12 @@ in
         ${node} ${./test-skill-delivery-description.mjs} "${root}"
         ${node} ${./test-node-bootstrap-layout.mjs} "${root}"
 
+        # Codex: request Daybreak Blue per turn (cyberAccessProgram) for the agents in
+        # OPENCLAW_CODEX_DAYBREAK_BLUE_AGENTS and for the cyber-failover retry, whose
+        # default moves off the retiring gpt-daybreak-blue-latest alias to gpt-6-sol.
+        ${node} ${./patch-codex-cyber-access-program.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-codex-cyber-access-program.mjs} "${root}"
+
         # Native Control UI: serve bundled plugins' browser builds although Nix
         # store optimisation hard-links their files.
         ${node} ${./patch-control-ui-store-hardlinks.mjs} "${root}" "${upstreamVersion}"
@@ -67,6 +73,7 @@ in
             skillTreeStoreHardlinks = "openclaw-nix-skill-tree-store-hardlinks-v1";
             skillDeliveryDescription = "openclaw-nix-skill-delivery-description-v1";
             controlUiStoreHardlinks = "openclaw-nix-control-ui-store-hardlinks-v1";
+            codexCyberAccessProgram = "openclaw-nix-codex-cyber-access-program-v1";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
@@ -76,6 +83,7 @@ in
             skillTreeStoreHardlinks = ./test-skill-tree-store-hardlinks.mjs;
             skillDeliveryDescription = ./test-skill-delivery-description.mjs;
             controlUiStoreHardlinks = ./test-control-ui-store-hardlinks.mjs;
+            codexCyberAccessProgram = ./test-codex-cyber-access-program.mjs;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;
