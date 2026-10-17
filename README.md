@@ -486,7 +486,7 @@ deployment, and every patch is a security-review item. Each one:
 `checks.hotfix-register` fails evaluation when a patch or test file is unregistered,
 an entry lacks a test reason, an upstream status or a removal condition, or the
 package's advertised markers (`passthru.hotfixes`) differ from the register. The
-register is also `passthru.hotfixRegister`. As of 2026.10.3 there are seven patches,
+register is also `passthru.hotfixRegister`. As of 2026.10.4 there are eight patches,
 none reported upstream yet, and one (the Codex stale-registration edit inside
 `patch-mcp-close-rejection.mjs`) without a test.
 

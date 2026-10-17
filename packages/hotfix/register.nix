@@ -127,4 +127,22 @@
     upstreamStatus = "not reported";
     removeWhen = "Upstream accepts hard links from an immutable store.";
   };
+
+  codexCyberAccessProgram = {
+    patch = ./patch-codex-cyber-access-program.mjs;
+    marker = "openclaw-nix-codex-cyber-access-program-v1";
+    since = "2026.10.4";
+    fixes = ''
+      Codex: OpenAI retires the gpt-daybreak-blue-latest / -red-latest aliases on
+      2026-10-28 and makes Daybreak a per-request choice, which OpenClaw never sends.
+      turn/start now carries cyberAccessProgram "daybreakBlue" for the agents listed in
+      OPENCLAW_CODEX_DAYBREAK_BLUE_AGENTS and for the cyber-failover retry; the failover
+      default moves to gpt-6-sol, and a plain refusal on that model is retried once with
+      Daybreak. Every other turn omits the field, as upstream does.
+    '';
+    test = ./test-codex-cyber-access-program.mjs;
+    upstream = null;
+    upstreamStatus = "not reported";
+    removeWhen = "Upstream sends cyberAccessProgram itself and its failover default leaves the alias.";
+  };
 }
