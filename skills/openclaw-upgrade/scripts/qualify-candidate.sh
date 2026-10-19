@@ -165,7 +165,7 @@ for inst in "$@"; do
   echo "   admission rc=$arc"
 
   python3 - "$I" "$inst" "$rc" "$arc" <<'PY'
-import json, sys
+import json, re, sys
 I, inst, rc, arc = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
 b = json.load(open(f"{I}/census-before.json")); a = json.load(open(f"{I}/census-after.json"))
 schema = {k: (b[k].get("user_version"), a.get(k, {}).get("user_version")) for k in b}
@@ -173,11 +173,23 @@ changed = {k: v for k, v in schema.items() if v[0] != v[1]}
 # Records must never shrink; derived caches and work queues may (9.9's doctor drops
 # stale cached systemPromptReport snapshots and drains validation queues).
 derived_tables = ("snapshot", "pending", "cache", "queue")
-lost, trimmed = {}, {}
+# Doctor removes a database whose only rows are metadata or search-index shadow rows
+# (2026.10.5 repairs agent databases a bug registered as "(multiple)*.sqlite"), and
+# drops tables a release retired once the log says so. Neither is a lost record.
+metadata = re.compile(r"^(schema_meta|session_key_contract|memory_index_state)$|fts\w*_(config|data|idx|docsize)$")
+retired_tables = {t: "Retired the Skill Workshop proposal tables" for t in (  # 2026.10.5
+    "skill_workshop_proposal_events", "skill_workshop_proposal_rollbacks",
+    "skill_workshop_collection_reviews", "skill_workshop_proposals")}
+log = open(f"{I}/doctor.log", errors="replace").read()
+lost, trimmed, removed, retired = {}, {}, {}, {}
 for k in b:
+    if k not in a and "error" not in b[k] and all(not n or metadata.search(t) for t, n in b[k]["rows"].items()):
+        removed[k] = sum(b[k]["rows"].values()); continue
     for t, n in b[k].get("rows", {}).items():
         m = a.get(k, {}).get("rows", {}).get(t)
-        if m is None or m < n:
+        if m is None and k in a and retired_tables.get(t, "\0") in log:
+            retired[f"{k}:{t}"] = n
+        elif m is None or m < n:
             (trimmed if any(d in t.lower() for d in derived_tables) else lost)[f"{k}:{t}"] = (n, m)
 errors = {k: v["error"] for k, v in a.items() if "error" in v}
 total_b = sum(sum(v.get("rows", {}).values()) for v in b.values())
@@ -188,8 +200,11 @@ print(f"{'PASS' if ok else 'FAIL'} {inst}: doctor rc={rc} admission rc={arc} dbs
 for k, v in list(changed.items())[:8]: print(f"     schema {k}: {v[0]} -> {v[1]}")
 for k, v in list(lost.items())[:8]: print(f"     LOST {k}: {v[0]} -> {v[1]}")
 for k, v in list(trimmed.items())[:8]: print(f"     trimmed (derived) {k}: {v[0]} -> {v[1]}")
+for k, v in list(removed.items())[:8]: print(f"     removed (no user rows) {k}: {v} metadata rows")
+for k, v in list(retired.items())[:8]: print(f"     retired by the release {k}: {v} rows")
 for k, v in list(errors.items())[:5]: print(f"     ERROR {k}: {v}")
-json.dump({"inst": inst, "ok": ok, "schema_changes": changed, "lost": lost, "trimmed": trimmed, "errors": errors,
+json.dump({"inst": inst, "ok": ok, "schema_changes": changed, "lost": lost, "trimmed": trimmed,
+           "removed": removed, "retired": retired, "errors": errors,
            "rows_before": total_b, "rows_after": total_a}, open(f"{I}/result.json", "w"), indent=1)
 PY
   [ "${QUAL_KEEP:-0}" = 1 ] || rm -rf "$I/state" "$I/home"
