@@ -11,9 +11,11 @@ const read = (name) => fs.readFileSync(root + "/dist/" + name, "utf8");
 const admission = read(receipt.patchedFiles.admission);
 const serverStart = read(receipt.patchedFiles.serverStart);
 
-// The admission owner calls prepareAgent only through the helper, once.
-assert.equal(admission.split("activation.prepareAgent({").length, 2, "prepareAgent call site moved");
-assert.match(admission, /await openclawNixRetrySupersededPreparation\(\(\) => activation\.prepareAgent\(\{/);
+// The admission owner makes the retried call (prepareAgent until 10.4, the
+// publication phase's publishAgent from 10.5) only through the helper, once.
+const call = `activation.${receipt.retriedCall}(`;
+assert.equal(admission.split(call).length, 2, `${receipt.retriedCall} call site moved`);
+assert(admission.includes(`await openclawNixRetrySupersededPreparation(() => ${call}`), `${receipt.retriedCall} is not wrapped by the retry`);
 assert(admission.includes(`isStopped: () => this.stopped`), "retry is not bound to the admission's stop");
 // Every supersession names its cause, and none keeps upstream's combined message.
 for (const kind of ["secrets", "startup"]) {
@@ -22,7 +24,7 @@ for (const kind of ["secrets", "startup"]) {
   }
   assert(!serverStart.includes(`${kind} preparation was superseded\`)`), `${kind}: upstream's undifferentiated message remains`);
 }
-assert.equal(serverStart.split(marker).length, 3, "server-start carries both marked edits");
+assert.equal(serverStart.split(marker).length, receipt.serverStartEdits + 1, `server-start carries its ${receipt.serverStartEdits} marked edits`);
 
 // Evaluate the packaged helper itself, with a frozen clock and immediate timers.
 const head = admission.indexOf("const OPENCLAW_NIX_PREPARATION_RETRY_WINDOW_MS");

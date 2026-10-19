@@ -43,6 +43,13 @@ edit(serverStart, [
     "if (!params.isCurrent()) throw new Error(`Agent ${agentId} startup preparation was superseded (the Gateway is closing)`); "
     + "if (params.getConfig() !== cfg) throw new Error(`Agent ${agentId} startup preparation was superseded (runtime config changed)`); "
     + `if (getActiveSecretsRuntimeSnapshotRevision() !== secretsRevision) throw new Error(\`Agent \${agentId} startup preparation was superseded (secrets revision \${secretsRevision} -> \${getActiveSecretsRuntimeSnapshotRevision()})\`); /* ${MARKER} */`],
+  // 10.5 splits the preparation into open, migration and publication phases. The open
+  // and migration guard tolerates a new config object and supersedes only for a
+  // closing Gateway; publication keeps the strict check above.
+  ...(atLeast(version, "2026.10.5") ? [[
+    "\t\t\tif (!params.isCurrent()) throw new Error(`Agent ${agentId} startup preparation was superseded`);",
+    `\t\t\tif (!params.isCurrent()) throw new Error(\`Agent \${agentId} startup preparation was superseded (the Gateway is closing)\`); /* ${MARKER} */`,
+  ]] : []),
 ]);
 
 // 2. Retry a superseded preparation in the admission owner, which otherwise marks
@@ -71,7 +78,14 @@ async function openclawNixRetrySupersededPreparation(run, params) {
 		params.assertCurrent();
 	}
 }`],
-  [`								await activation.prepareAgent({
+  atLeast(version, "2026.10.5") ? [`							await activation.publishAgent(input);`,
+    `							await openclawNixRetrySupersededPreparation(() => activation.publishAgent(input), {
+								agentId,
+								assertCurrent,
+								isStopped: () => this.stopped,
+								log
+							}); /* ${MARKER} */`]
+  : [`								await activation.prepareAgent({
 									agentId,
 									paths,
 									env,
@@ -94,5 +108,7 @@ async function openclawNixRetrySupersededPreparation(run, params) {
 
 fs.writeFileSync(path.join(root, ".agent-db-preparation-retry-hotfix.json"), JSON.stringify({
   id: MARKER, upstreamVersion: version, patchedFiles: { serverStart, admission }, retryWindowMs: RETRY_WINDOW_MS,
+  retriedCall: atLeast(version, "2026.10.5") ? "publishAgent" : "prepareAgent",
+  serverStartEdits: atLeast(version, "2026.10.5") ? 3 : 2,
 }, null, 2) + "\n");
 console.log(`Applied superseded agent-preparation retry (${RETRY_WINDOW_MS / 1e3}s window) and named supersession causes`);

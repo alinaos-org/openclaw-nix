@@ -19,7 +19,11 @@ const file = (pattern) => {
   assert.equal(hits.length, 1, `receipt lists ${hits.length} files matching ${pattern}`);
   return path.join(root, hits[0]);
 };
-const turnStartFile = file(/^thread-lifecycle-.*\.mjs$/);
+// The turn/start chunk's name follows the bundler (thread-lifecycle until 10.4,
+// dynamic-tools in 10.5): it is the patched file that defines the builder.
+const turnStartHits = receipt.patchedFiles.filter((name) => fs.readFileSync(path.join(root, name), "utf8").includes("function buildTurnStartParams(params, options) {"));
+assert.equal(turnStartHits.length, 1, `receipt lists ${turnStartHits.length} files defining buildTurnStartParams`);
+const turnStartFile = path.join(root, turnStartHits[0]);
 const harnessFile = file(/^harness\.js$/);
 const failoverFile = file(/^cyber-failover-.*\.mjs$/);
 for (const name of [turnStartFile, harnessFile, failoverFile]) execFileSync(process.execPath, ["--check", name]);
@@ -33,7 +37,7 @@ const withEnv = (value, run) => {
 // 1. turn/start, through upstream's packaged builder.
 const turnStartText = fs.readFileSync(turnStartFile, "utf8");
 const buildAlias = exportAlias(turnStartText, "buildTurnStartParams");
-assert(buildAlias, "thread-lifecycle no longer exports buildTurnStartParams");
+assert(buildAlias, "the turn/start chunk no longer exports buildTurnStartParams");
 const buildTurnStartParams = (await import(pathToFileURL(turnStartFile).href))[buildAlias];
 const turn = (env, extraParams = {}, extraOptions = {}) => withEnv(env, () => buildTurnStartParams(
   { agentId: "reverser", prompt: "hi", images: [], config: {}, hostCapabilities: { activeComputerContext: () => "test" }, ...extraParams },
@@ -70,7 +74,7 @@ const helperOf = (text, name) => {
   return text.slice(start, end + 2);
 };
 const helper = helperOf(harnessText, "harness.js");
-assert.equal(helper, helperOf(turnStartText, "thread-lifecycle"), "harness and turn/start helpers differ");
+assert.equal(helper, helperOf(turnStartText, "turn/start chunk"), "harness and turn/start helpers differ");
 const run = (env, params) => vm.runInNewContext(`${helper}\nopenclawNixCodexCyberAccessProgram(params)`, { process: { env: env === undefined ? {} : { [ENV]: env } }, params });
 assert.equal(run("reverser", { agentId: "reverser" }), "daybreakBlue");
 assert.equal(run("reverser", { agentId: "coder" }), undefined);
