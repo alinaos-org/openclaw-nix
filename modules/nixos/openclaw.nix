@@ -103,7 +103,9 @@
       AmbientCapabilities = "";
       RestrictAddressFamilies = ["AF_UNIX" "AF_INET" "AF_INET6" "AF_NETLINK"];
       SystemCallArchitectures = "native";
-      SystemCallFilter = ["@system-service" "~@privileged"];
+      # 2026.10.5's page-cache warm worker reads residency with mincore, which no
+      # syscall group carries.
+      SystemCallFilter = ["@system-service" "mincore" "~@privileged"];
       UMask = "0077";
     };
   in {

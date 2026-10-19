@@ -471,12 +471,21 @@
               machine.succeed("systemctl start openclaw-test")
               machine.wait_until_succeeds(ready, timeout=600)
 
-              listed = sessions()
+              # The listener binds before the restored agent database finishes its
+              # background inspection (2026.10.5 on), and main's sessions list once
+              # it is admitted.
+              for _ in range(60):
+                  listed = sessions()
+                  if "agent:main:before-upgrade" in listed:
+                      break
+                  machine.sleep(2)
               assert "agent:main:before-upgrade" in listed, listed
               assert "agent:main:after-upgrade" not in listed, listed
               assert machine.succeed(f"cat {state}/.migrated-for-version").strip() == base_version
               # Restored state is marked for this package: the start did not migrate again.
               assert snapshot_count() == before + 1
+              # No worker the gateway starts trips the syscall filter.
+              machine.fail("journalctl -b --no-pager | grep -q 'exited with signal SIGSYS'")
               machine.succeed(f"ls {state}/backups/restore-*/replaced/agents")
         '';
       };
