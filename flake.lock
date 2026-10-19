@@ -52,11 +52,11 @@
         "qmd": "qmd"
       },
       "locked": {
-        "lastModified": 1792018270,
-        "narHash": "sha256-w4oZ4RrRKRfS4KR7ROGCLcTzQ5+qmYWCT58VZCIIUak=",
+        "lastModified": 1792430347,
+        "narHash": "sha256-LMJOirndS/0DPcSvW/VoIuL2JGgbaVCdxpf1LvQIgPU=",
         "owner": "alinaos-org",
         "repo": "nix-openclaw",
-        "rev": "99d52518ba0d868082714270f0db4b1ad788eb47",
+        "rev": "80a84d67bce22a094924edf2e25dfd1ebe510773",
         "type": "github"
       },
       "original": {
