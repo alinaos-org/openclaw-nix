@@ -1,4 +1,4 @@
-# Generated from upstream OpenClaw schema at rev 383c124cc32ffee3f8e56f549b88da94d269a4af. DO NOT EDIT.
+# Generated from upstream OpenClaw schema at rev 1b58cb9a1b4f4353e1add63c8506db4d890962e8. DO NOT EDIT.
 # Generator: nix/scripts/generate-config-options.ts
 { lib }:
 let
@@ -1947,6 +1947,15 @@ in
       };
       tools = lib.mkOption {
         type = t.nullOr (t.submodule { options = {
+        agentToAgent = lib.mkOption {
+          type = t.nullOr (t.submodule { options = {
+          send = lib.mkOption {
+            type = t.nullOr (t.listOf (t.str));
+            default = null;
+          };
+        }; });
+          default = null;
+        };
         allow = lib.mkOption {
           type = t.nullOr (t.listOf (t.str));
           default = null;
@@ -3075,6 +3084,10 @@ in
     };
     projectProfiles = lib.mkOption {
       type = t.nullOr (t.attrsOf (t.str));
+      default = null;
+    };
+    requiredProfile = lib.mkOption {
+      type = t.nullOr (t.str);
       default = null;
     };
   }; });
@@ -4857,56 +4870,7 @@ in
     queue = lib.mkOption {
       type = t.nullOr (t.submodule { options = {
       byChannel = lib.mkOption {
-        type = t.nullOr (t.submodule { options = {
-        discord = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]);
-          default = null;
-        };
-        googlechat = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]);
-          default = null;
-        };
-        imessage = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]);
-          default = null;
-        };
-        irc = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]);
-          default = null;
-        };
-        matrix = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]);
-          default = null;
-        };
-        mattermost = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]);
-          default = null;
-        };
-        msteams = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]);
-          default = null;
-        };
-        signal = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]);
-          default = null;
-        };
-        slack = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]);
-          default = null;
-        };
-        telegram = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]);
-          default = null;
-        };
-        webchat = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]);
-          default = null;
-        };
-        whatsapp = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]);
-          default = null;
-        };
-      }; });
+        type = t.nullOr (t.attrsOf (t.oneOf [ (t.enum [ "steer" ]) (t.enum [ "followup" ]) (t.enum [ "collect" ]) (t.enum [ "interrupt" ]) ]));
         default = null;
       };
       cap = lib.mkOption {
@@ -6732,21 +6696,13 @@ in
     };
     workshop = lib.mkOption {
       type = t.nullOr (t.submodule { options = {
-      approvalPolicy = lib.mkOption {
-        type = t.nullOr (t.oneOf [ (t.enum [ "pending" ]) (t.enum [ "auto" ]) ]);
-        default = null;
-      };
       autonomous = lib.mkOption {
         type = t.nullOr (t.submodule { options = {
         mode = lib.mkOption {
-          type = t.nullOr (t.oneOf [ (t.enum [ "off" ]) (t.enum [ "propose" ]) (t.enum [ "auto" ]) ]);
+          type = t.nullOr (t.oneOf [ (t.enum [ "off" ]) (t.enum [ "auto" ]) ]);
           default = null;
         };
       }; });
-        default = null;
-      };
-      maxPending = lib.mkOption {
-        type = t.nullOr (t.int);
         default = null;
       };
       maxSkillBytes = lib.mkOption {
@@ -9513,6 +9469,11 @@ in
 
   worktreeAcceleration = lib.mkOption {
     type = t.nullOr (t.bool);
+    default = null;
+  };
+
+  worktreeMaxCount = lib.mkOption {
+    type = t.nullOr (t.int);
     default = null;
   };
 

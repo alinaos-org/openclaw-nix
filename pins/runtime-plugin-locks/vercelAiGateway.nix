@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.9";
   expectedIntegrity = "";
   packageName = "@openclaw/vercel-ai-gateway-provider";
-  version = "2026.10.4";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/vercel-ai-gateway-provider/-/vercel-ai-gateway-provider-2026.10.4.tgz";
-  npmIntegrity = "sha512-0Trso4GhK6bq7dNPTGKUdUtDd/SJfdWBAvbkLww0DxOJpuOS+R/Jzxb5kvn4yqDmrlvSHBHmsdVhmX79665DRw==";
-  npmShasum = "e0d39e72d29af0fa3a1176e96fd2621714fb49b7";
-  nixHash = "sha256-eIo06DUEidJwG+Ir9HPz88oURhY/KyGRLOnjAsU1WS4=";
+  version = "2026.10.5";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/vercel-ai-gateway-provider/-/vercel-ai-gateway-provider-2026.10.5.tgz";
+  npmIntegrity = "sha512-tzXoaSqwUD6T0dOFM2SfEQBLzWEZTkL5UIvqFUP5O6muwjD3ZxfQpQqoosza8KURtFM3o4iGX3ux83VI51SsLQ==";
+  npmShasum = "b5cb7059b49c381dfdc01721843a178d7b466565";
+  nixHash = "sha256-2fGRohoXMdyeFcrQY2Xl33XvRRxMSDjO4OswpfD/Hks=";
   dependencyMode = "none";
   manifestId = "vercel-ai-gateway";
-  openclawCompat = ">=2026.10.4";
-  peerOpenClaw = ">=2026.10.4";
+  openclawCompat = ">=2026.10.5";
+  peerOpenClaw = ">=2026.10.5";
   runtimeExtensions = [
     "./dist/index.js"
   ];

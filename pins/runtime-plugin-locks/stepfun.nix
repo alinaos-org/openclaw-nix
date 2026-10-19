@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.9";
   expectedIntegrity = "";
   packageName = "@openclaw/stepfun-provider";
-  version = "2026.10.4";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/stepfun-provider/-/stepfun-provider-2026.10.4.tgz";
-  npmIntegrity = "sha512-lecUZh0b3tm8rivkYtQ+sLf5e7WcFnuSSeeEH40pvJjBiFcefNfm+p1EqjU2GkEOilnnhAr2rghOMuJ8Qya8VQ==";
-  npmShasum = "65e13d1843ad45513dc95efc49ba04a813cc1f66";
-  nixHash = "sha256-Wq2DOI3M+kPOFRZLhPzk17N6WUqFml14jUtNlYiiC0Y=";
+  version = "2026.10.5";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/stepfun-provider/-/stepfun-provider-2026.10.5.tgz";
+  npmIntegrity = "sha512-g2t2hccI1VN6Yuxwive/mGq0tF+L2+x30Ahr6Oi0HXrDdPjROPIdOB2Dqn1jaBuPKOol75QZ+CXtgrpcgMjeRQ==";
+  npmShasum = "be7c873a30603c7fd2d056d00befc11fe1fb52c3";
+  nixHash = "sha256-8Kqlbkp7INy7ViXtS6AnaXsfcglPjnlyEf70SMJPRdg=";
   dependencyMode = "none";
   manifestId = "stepfun";
-  openclawCompat = ">=2026.10.4";
-  peerOpenClaw = ">=2026.10.4";
+  openclawCompat = ">=2026.10.5";
+  peerOpenClaw = ">=2026.10.5";
   runtimeExtensions = [
     "./dist/index.js"
   ];
