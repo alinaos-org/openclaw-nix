@@ -48,6 +48,7 @@ Bash, sourced by the generic scripts. Plain `KEY="words"` values are also read b
 | `OPENCLAW_UPGRADE_STATE_DIR_PATTERN` | qualify-candidate.sh: an instance's state dir (`printf` pattern) | `$HOME/.openclaw-%s` |
 | `OPENCLAW_UPGRADE_CONFIG_NAME` | qualify-candidate.sh: the config file in it | `openclaw.json` |
 | `OPENCLAW_UPGRADE_BACKUP_ROOT` | qualify-candidate.sh, scratch-patch-chain.sh: output root | `$HOME/openclaw-backups` |
+| `OPENCLAW_UPGRADE_SCRATCH_ROOT` | qualify-candidate.sh, scratch-patch-chain.sh: working copies (put it where snapshots do not pin them) | the backup root |
 | `OPENCLAW_UPGRADE_INSTALLED_BIN` | qualify-candidate.sh `QUAL_ARCHIVE=1`: the installed binary | none |
 | `OPENCLAW_UPGRADE_HOTFIX_ATTR` | scratch-patch-chain.sh: the host's hotfixed package | `.#gateway-hotfixed` |
 | `OPENCLAW_UPGRADE_PLUGIN_DIRS` | check-plugin-sdk-imports.py: repo dirs with plugins | the whole repo |

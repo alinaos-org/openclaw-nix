@@ -85,6 +85,14 @@ it, each failing the build when a release moves the code it changes:
   chunk it expects; worker copies are found by content, and sandboxed checks take
   minified helper names from the call shape. Gates read "from release X on" (`atLeast`),
   so a new release needs no version edit and inherits every patch.
+- **Own source patches** (`ownSourcePatches` in `packages/gateway`, such as the session
+  icon picker): applied to the source at `--fuzz=0` before the compile, so a release that
+  rewrites their context fails release-watch's build. Re-port the patch at
+  `patches/<name>` and keep the previous one as `patches/<previous release>/<name>`,
+  chosen with `lib.versionOlder upstreamVersion "<new release>"`; the same file name
+  keeps the older release's store path. 2026.10.5 rewrote the session menu's icon tests:
+  the patch was regenerated with `git diff` in a scratch repository of the release
+  source, and the build's UI tests ran the patched tests.
 - **The consumer's customize layer** (`packages/custom`): `replaceBundledChannels` fails
   when the release stops bundling a replaced channel; `extraCommands` carry their own
   anchor checks (for example a plugin SDK export patch).
@@ -104,6 +112,8 @@ evaluates the layer's own `installPhase` and runs it on a scratch copy of that b
 (about a minute), reporting every failing patch at once where each Nix rebuild stops at
 the first. Start each retry from a fresh copy: a patch that fails part-way leaves its
 edit behind, and the next run fails with "already patched" or a phantom "anchor changed".
+A re-ported patch must still apply to every release the table accepts: run the chain on
+the previous release's base too (2026.10.5's four re-ports were checked on 2026.10.4).
 Afterwards, `scripts/check-plugin-sdk-imports.py <patched package>` checks every host
 plugin's `openclaw/plugin-sdk/*` imports against the candidate's built exports; a missing
 one would only show at gateway start.

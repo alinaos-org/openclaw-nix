@@ -19,8 +19,9 @@
 #   OPENCLAW_UPGRADE_STATE_DIR_PATTERN  an instance's state dir   ($HOME/.openclaw-%s)
 #   OPENCLAW_UPGRADE_CONFIG_NAME        its config file there     (openclaw.json)
 #   OPENCLAW_UPGRADE_BACKUP_ROOT        output root               ($HOME/openclaw-backups)
+#   OPENCLAW_UPGRADE_SCRATCH_ROOT       working copies' root      (the backup root)
 #   OPENCLAW_UPGRADE_INSTALLED_BIN      installed binary, for QUAL_ARCHIVE=1
-# Env: QUAL_DIR       output root (default <backup root>/qual-<candidate>-<date>)
+# Env: QUAL_DIR       output root (default <scratch root>/qual-<candidate>-<date>)
 #      QUAL_KEEP=1    keep the migrated working copy for inspection
 #      QUAL_ARCHIVE=1 also write a verified `backup create` archive (slow; needs
 #                     INSTALLED_BIN or OPENCLAW_UPGRADE_INSTALLED_BIN)
@@ -31,6 +32,7 @@ here=$(dirname "$(readlink -f "$0")")
 state_pattern=${OPENCLAW_UPGRADE_STATE_DIR_PATTERN:-$HOME/.openclaw-%s}
 config_name=${OPENCLAW_UPGRADE_CONFIG_NAME:-openclaw.json}
 backup_root=${OPENCLAW_UPGRADE_BACKUP_ROOT:-$HOME/openclaw-backups}
+scratch_root=${OPENCLAW_UPGRADE_SCRATCH_ROOT:-$backup_root}
 
 [ $# -ge 2 ] || { echo "usage: $0 <candidate-bin/openclaw> <instance>..." >&2; exit 64; }
 CAND=$1; shift
@@ -49,7 +51,7 @@ probe=$(mktemp -d)
 cand_version=$(OPENCLAW_STATE_DIR="$probe" OPENCLAW_CONFIG_PATH="$probe/openclaw.json" "$CAND" --version 2>/dev/null \
   | head -1 | tr -c 'A-Za-z0-9.\n-' '_' || true)
 rmdir "$probe" 2>/dev/null || true
-Q=${QUAL_DIR:-$backup_root/qual-${cand_version:-candidate}-$(date +%Y%m%d)}
+Q=${QUAL_DIR:-$scratch_root/qual-${cand_version:-candidate}-$(date +%Y%m%d)}
 mkdir -p "$Q"
 echo "candidate: $CAND (${cand_version:-unknown}); output: $Q"
 
