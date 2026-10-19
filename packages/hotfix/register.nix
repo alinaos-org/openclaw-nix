@@ -145,4 +145,25 @@
     upstreamStatus = "not reported";
     removeWhen = "Upstream sends cyberAccessProgram itself and its failover default leaves the alias.";
   };
+
+  agentDbPreparationRetry = {
+    patch = ./patch-agent-db-preparation-retry.mjs;
+    marker = "openclaw-nix-agent-db-preparation-retry-v1";
+    since = "2026.10.4";
+    fixes = ''
+      Agent databases: a start that defers an agent's database to background
+      inspection (after a stop that left worker leases behind, main's 1.28 GB database
+      on nova prod) prepares it after startup and refuses to publish if the runtime
+      config object or the secrets revision changes meanwhile. Upstream then leaves the
+      agent degraded until a restart ("Agent main startup preparation was superseded",
+      2026-10-18). The admission owner now retries a superseded preparation with the
+      current configuration for up to 600 s while the Gateway owns it, and each
+      supersession names its cause (config changed, secrets revision a -> b, or the
+      Gateway closing, which is not retried).
+    '';
+    test = ./test-agent-db-preparation-retry.mjs;
+    upstream = null;
+    upstreamStatus = "not reported";
+    removeWhen = "Upstream recovers a superseded deferred preparation itself.";
+  };
 }

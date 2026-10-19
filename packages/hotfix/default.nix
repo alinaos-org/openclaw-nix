@@ -61,6 +61,12 @@ in
         # store optimisation hard-links their files.
         ${node} ${./patch-control-ui-store-hardlinks.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-control-ui-store-hardlinks.mjs} "${root}"
+
+        # Agent databases: retry a deferred agent's preparation that a runtime
+        # config or secrets republish superseded, instead of leaving the agent
+        # degraded until a restart, and name which republish it was.
+        ${node} ${./patch-agent-db-preparation-retry.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-agent-db-preparation-retry.mjs} "${root}"
       '';
       passthru =
         (gateway.passthru or {})
@@ -74,6 +80,7 @@ in
             skillDeliveryDescription = "openclaw-nix-skill-delivery-description-v1";
             controlUiStoreHardlinks = "openclaw-nix-control-ui-store-hardlinks-v1";
             codexCyberAccessProgram = "openclaw-nix-codex-cyber-access-program-v1";
+            agentDbPreparationRetry = "openclaw-nix-agent-db-preparation-retry-v1";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
@@ -84,6 +91,7 @@ in
             skillDeliveryDescription = ./test-skill-delivery-description.mjs;
             controlUiStoreHardlinks = ./test-control-ui-store-hardlinks.mjs;
             codexCyberAccessProgram = ./test-codex-cyber-access-program.mjs;
+            agentDbPreparationRetry = ./test-agent-db-preparation-retry.mjs;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;
