@@ -45,9 +45,13 @@ for (const name of files) {
     // `t.aborted || de(n)`), so take their local names from the call shape.
     const cleanupName = /\.catch\(\(\)\s*=>\s*([A-Za-z_$][\w$]*)\(\)\)/.exec(slice)?.[1] ?? "recordAgentCleanupFailure";
     const timeoutName = /\.aborted\s*\|\|\s*([A-Za-z_$][\w$]*)\(/.exec(slice)?.[1] ?? "isMcpRequestTimeoutError";
+    // 10.5 races the connect against its abort signal (racePromiseWithAbortSignal);
+    // the fixture never aborts, so the race is the connect itself.
+    const raceName = /await\s+([A-Za-z_$][\w$]*)\(\(async\s*\(\)\s*=>/.exec(slice)?.[1];
     const connect = vm.runInNewContext(
       slice + ";connectMcpClient",
-      { AbortSignal, Error, Promise, [cleanupName]: () => failures++, [timeoutName]: () => false },
+      { AbortSignal, Error, Promise, [cleanupName]: () => failures++, [timeoutName]: () => false,
+        ...(raceName ? { [raceName]: (promise) => promise } : {}) },
     );
     const initializationError = new Error("fixture initialization failure");
     const closeError = new Error("fixture unconfirmed descendant cleanup");

@@ -61,7 +61,9 @@ const patchOne = (files, needle, anchors, edit) => {
 const buildHeader = "function buildTurnStartParams(params, options) {";
 const modelSelection = "const modelSelection = options.preserveNativeTurnSettings ? void 0 : resolveCodexAppServerRequestModelSelection({";
 const tail = "\t\t...params.requireWorkspaceOnly === true ? { environments: [] } : options.environmentSelection ? { environments: options.environmentSelection } : {}\n\t};\n}";
-const turnStart = patchOne(ownFiles(setup, /^thread-lifecycle-.*\.mjs$/), buildHeader, [buildHeader, modelSelection, tail], (text) => text
+// The builder's chunk is named by what the bundler groups with it (thread-lifecycle
+// through 10.4, dynamic-tools in 10.5): find it by its header among the .setup chunks.
+const turnStart = patchOne(ownFiles(setup, /\.mjs$/), buildHeader, [buildHeader, modelSelection, tail], (text) => text
   .replace(buildHeader, `${helper}\n${buildHeader}`)
   .replace(tail, "\t\t...modelSelection && openclawNixCodexCyberAccessProgram(params) ? { cyberAccessProgram: openclawNixCodexCyberAccessProgram(params) } : {},\n" + tail));
 

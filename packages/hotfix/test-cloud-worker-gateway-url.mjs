@@ -71,7 +71,9 @@ const routeContracts = [
   [/^node-desktop-stream-.*\.mjs$/, 'NODE_PORTAL_ATTACH_PATH = "/node-portal/attach"'],
   [/^startup-state-readiness-.*\.mjs$/, "TICKET_PATTERN$1 = /^[a-f0-9]{48}$/u"],
   [/^artifact-transfer-http-.*\.mjs$/, "SHA256_PATTERN = /^[a-f0-9]{64}$/u"],
-  [/^project-preparation-.*\.mjs$/, "`worker:${digest.slice(0, 32)}`"],
+  // deriveEnvironmentIntent (worker-environments/service-contract.ts): bundled into
+  // project-preparation through 10.4, its own service-contract chunk from 10.5.
+  [/^(project-preparation|service-contract)-.*\.mjs$/, "`worker:${digest.slice(0, 32)}`"],
 ];
 for (const [file, needle] of routeContracts) assert(distText(file).includes(needle), `worker route contract changed: ${needle} (re-derive the ingress allowlist)`);
 
