@@ -1,9 +1,9 @@
 diff --git a/ui/src/components/session-icon-catalog.test.ts b/ui/src/components/session-icon-catalog.test.ts
 new file mode 100644
-index 00000000..deebcd84
+index 0000000..b4479de
 --- /dev/null
 +++ b/ui/src/components/session-icon-catalog.test.ts
-@@ -0,0 +1,238 @@
+@@ -0,0 +1,237 @@
 +/* @vitest-environment jsdom */
 +
 +import { createHash } from "node:crypto";
@@ -127,7 +127,6 @@ index 00000000..deebcd84
 +        onBack: () => {},
 +        onInput: () => {},
 +        onApply: () => {},
-+        onGridKeydown: () => {},
 +        ...overrides,
 +      }),
 +      host,
@@ -244,7 +243,7 @@ index 00000000..deebcd84
 +});
 diff --git a/ui/src/components/session-icon-catalog.ts b/ui/src/components/session-icon-catalog.ts
 new file mode 100644
-index 00000000..4cecc6b8
+index 0000000..4cecc6b
 --- /dev/null
 +++ b/ui/src/components/session-icon-catalog.ts
 @@ -0,0 +1,591 @@
@@ -841,7 +840,7 @@ index 00000000..4cecc6b8
 +}
 diff --git a/ui/src/components/session-icon-emoji-data.ts b/ui/src/components/session-icon-emoji-data.ts
 new file mode 100644
-index 00000000..44567d01
+index 0000000..44567d0
 --- /dev/null
 +++ b/ui/src/components/session-icon-emoji-data.ts
 @@ -0,0 +1,28 @@
@@ -875,7 +874,7 @@ index 00000000..44567d01
 +];
 diff --git a/ui/src/components/session-icon-library.ts b/ui/src/components/session-icon-library.ts
 new file mode 100644
-index 00000000..58b53b81
+index 0000000..58b53b8
 --- /dev/null
 +++ b/ui/src/components/session-icon-library.ts
 @@ -0,0 +1,465 @@
@@ -1346,7 +1345,7 @@ index 00000000..58b53b81
 +};
 diff --git a/ui/src/components/session-icon-library.values.test-support.ts b/ui/src/components/session-icon-library.values.test-support.ts
 new file mode 100644
-index 00000000..79224432
+index 0000000..7922443
 --- /dev/null
 +++ b/ui/src/components/session-icon-library.values.test-support.ts
 @@ -0,0 +1,81 @@
@@ -1432,7 +1431,7 @@ index 00000000..79224432
 +  { id: "health", bold: "5b78de8522da09874b7c9dfe27ae8bdfaccd797be7dd71ead40743b0810cd8b3", pastel: "fb887ff6b8901e2962f6b77e3f04b3de306af16770fc84698a4dfaf82760c384", outline: "8cdb44abdf95e42a803ed7cec7c123991994462f30e103cc606a2373670cc06d" },
 +];
 diff --git a/ui/src/components/session-icon-picker.ts b/ui/src/components/session-icon-picker.ts
-index 3ed9dfb6..b0ec848f 100644
+index 3e922f9..04cd2c7 100644
 --- a/ui/src/components/session-icon-picker.ts
 +++ b/ui/src/components/session-icon-picker.ts
 @@ -1,29 +1,14 @@
@@ -1466,7 +1465,7 @@ index 3ed9dfb6..b0ec848f 100644
  export function sessionEmojiPickerShortcut(): readonly string[] | null {
    const platform = globalThis.navigator?.platform ?? "";
    if (/Mac|iPhone|iPad|iPod/u.test(platform)) {
-@@ -127,26 +112,6 @@ function renderCustomSessionIconEntry(props: AppearancePickerProps) {
+@@ -126,26 +111,6 @@ function renderCustomSessionIconEntry(props: AppearancePickerProps) {
  }
  
  function renderSessionIconGrid(props: AppearancePickerProps) {
@@ -1493,9 +1492,9 @@ index 3ed9dfb6..b0ec848f 100644
    return html`
      <div class="session-menu__icon-picker session-menu__icon-panel" data-mode=${props.mode}>
        <div
-@@ -157,27 +122,17 @@ function renderSessionIconGrid(props: AppearancePickerProps) {
+@@ -156,27 +121,17 @@ function renderSessionIconGrid(props: AppearancePickerProps) {
          aria-label=${t("sessionsView.setIconMenu")}
-         @keydown=${props.onGridKeydown}
+         @keydown=${handleAppearanceGridKeydown}
        >
 -        <div class="session-menu__icon-section-label">${t("sessionsView.iconEmojiSection")}</div>
 -        <div class="session-menu__icon-grid">
@@ -1533,7 +1532,7 @@ index 3ed9dfb6..b0ec848f 100644
        ${renderCustomSessionIconEntry(props)}
      </div>
 diff --git a/ui/src/components/session-menu.test.ts b/ui/src/components/session-menu.test.ts
-index 95be34c3..51f21883 100644
+index f89e580..5d0b3b2 100644
 --- a/ui/src/components/session-menu.test.ts
 +++ b/ui/src/components/session-menu.test.ts
 @@ -1,6 +1,6 @@
@@ -1544,8 +1543,8 @@ index 95be34c3..51f21883 100644
  import { createDeferred as deferred } from "../../../test/helpers/promise.js";
  import type { ApplicationContextProvider } from "../test-helpers/application-context.ts";
  import {
-@@ -20,6 +20,9 @@ import { waitForFast } from "../test-helpers/wait-for.ts";
- import type { SessionMenuAction } from "./session-menu.ts";
+@@ -33,6 +33,9 @@ function focusButton() {
+ }
  
  describe("session menu", () => {
 +  // The icon picker keeps recent choices in this browser; start each test without them.
@@ -1554,52 +1553,70 @@ index 95be34c3..51f21883 100644
    it("keeps self, agents, and the current owner while the directory loads, then retries a visible failure", async () => {
      const pending = deferred<ReturnType<typeof sessionOwnerProfiles>>();
      const { context, request } = createSessionOwnerMenuHarness(() => pending.promise);
-@@ -572,7 +575,7 @@ describe("session menu", () => {
-     expect(onAction).not.toHaveBeenCalled();
+@@ -512,9 +515,20 @@ describe("session menu", () => {
+         .querySelector<HTMLButtonElement>('.session-menu__color-choice[aria-label="Purple"]')
+         ?.click();
+       iconChoices(menu)[1]?.click();
++      // openclaw-nix's picker keeps "No icon" with the built-in glyphs under Icons.
++      const showTab = async (name: "emoji" | "icons") => {
++        menu
++          .querySelector("wa-tab-group")
++          ?.dispatchEvent(new CustomEvent("wa-tab-show", { detail: { name }, bubbles: true }));
++        await menu.updateComplete;
++      };
++      await showTab("icons");
++      await waitForFast(() =>
++        expect(menu.querySelector<HTMLButtonElement>('[aria-label="No icon"]')).not.toBeNull(),
++      );
+       const noIcon = menu.querySelector<HTMLButtonElement>('[aria-label="No icon"]');
+-      expect(noIcon).not.toBeNull();
+       noIcon?.click();
++      await showTab("emoji");
+       menu
+         .querySelector<HTMLButtonElement>('.session-menu__color-choice[aria-label="No color"]')
+         ?.click();
+@@ -619,6 +633,69 @@ describe("session menu", () => {
+     expect(calls).toEqual([`set-icon:${icon}`]);
    });
  
--  it("renders emoji and glyph sections with a custom entry and combined reset", async () => {
 +  it("renders Emoji and Icons tabs with a custom entry and combined reset", async () => {
-     const onAction = vi.fn<(action: SessionMenuAction) => void>();
-     const menu = await mountMenu({ session: { icon: "🦞" }, onAction });
-     const submenu = menuItem(menu, "Icon & color");
-@@ -582,25 +585,22 @@ describe("session menu", () => {
-     expect(submenu.querySelector(".session-menu__icon-options")?.getAttribute("role")).toBe(
-       "group",
-     );
--    expect(
--      Array.from(submenu.querySelectorAll(".session-menu__icon-section-label")).map((label) =>
--        label.textContent?.trim(),
--      ),
--    ).toEqual(["Color", "Emoji", "Icons"]);
++    const onAction = vi.fn<(action: SessionMenuAction) => void>();
++    const menu = await mountMenu({ session: { icon: "🦞" }, onAction });
++    const submenu = menuItem(menu, "Icon & color");
++    (submenu as SessionMenuItem & { submenuOpen: boolean }).submenuOpen = true;
++
++    const choices = iconChoices(submenu);
++    expect(submenu.querySelector(".session-menu__icon-options")?.getAttribute("role")).toBe(
++      "group",
++    );
 +    const tabs = Array.from(submenu.querySelectorAll<HTMLElement>("wa-tab"));
 +    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(["Emoji", "Icons"]);
 +    expect(tabs.map((tab) => tab.hasAttribute("active"))).toEqual([true, false]);
-     const grids = submenu.querySelectorAll(".session-menu__icon-grid");
++    const grids = submenu.querySelectorAll(".session-menu__icon-grid");
 +    expect(
 +      submenu.querySelector(".session-menu__icon-scroll .session-menu__icon-section-label")
 +        ?.textContent?.trim(),
 +    ).toBe("Frequently used");
-     expect(
-       Array.from(grids[0]?.querySelectorAll<HTMLButtonElement>("button") ?? []).map((choice) =>
-         choice.textContent?.trim(),
-       ),
-     ).toEqual(["🦞", "🚀", "🐛", "✅", "🔥", "📦", "🧪", "📝", "🔍", "⚡", "🎯", ""]);
--    expect(grids[0]?.querySelectorAll("button")).toHaveLength(12);
-     expect(grids[0]?.querySelector("button:nth-child(12)")?.getAttribute("aria-label")).toBe(
-       "Custom icon…",
-     );
--    const noIcon = grids[1]?.querySelector<HTMLButtonElement>('[aria-label="No icon"]');
--    expect(noIcon).not.toBeNull();
--    noIcon?.click();
--    expect(onAction).toHaveBeenCalledWith({ kind: "set-icon", icon: null });
-     const current = choices[0];
-     if (!current) {
-       throw new Error("Expected the first icon choice");
-@@ -613,6 +613,23 @@ describe("session menu", () => {
- 
-     choices[1]?.click();
-     expect(onAction).toHaveBeenCalledWith({ kind: "set-icon", icon: "🚀" });
++    expect(
++      Array.from(grids[0]?.querySelectorAll<HTMLButtonElement>("button") ?? []).map((choice) =>
++        choice.textContent?.trim(),
++      ),
++    ).toEqual(["🦞", "🚀", "🐛", "✅", "🔥", "📦", "🧪", "📝", "🔍", "⚡", "🎯", ""]);
++    expect(grids[0]?.querySelector("button:nth-child(12)")?.getAttribute("aria-label")).toBe(
++      "Custom icon…",
++    );
++    const current = choices[0];
++    if (!current) {
++      throw new Error("Expected the first icon choice");
++    }
++    // Click/Enter-only activation: pressed-state action grid, not radio semantics,
++    // so arrow keys may move focus without changing the persisted selection.
++    expect(current.getAttribute("role")).toBeNull();
++    expect(current.getAttribute("aria-pressed")).toBe("true");
++    expect(choices.filter((choice) => choice.tabIndex === 0)).toEqual([current]);
++
++    choices[1]?.click();
++    expect(onAction).toHaveBeenCalledWith({ kind: "set-icon", icon: "🚀" });
 +
 +    submenu
 +      .querySelector("wa-tab-group")
@@ -1617,10 +1634,18 @@ index 95be34c3..51f21883 100644
 +    builtIn?.querySelector<HTMLButtonElement>('[aria-label="No icon"]')?.click();
 +    expect(onAction).toHaveBeenCalledWith({ kind: "set-icon", icon: null });
 +
-     const remove = submenu.querySelector<HTMLButtonElement>(".session-menu__icon-remove");
-     expect(remove?.previousElementSibling?.getAttribute("role")).toBe("separator");
-     expect(remove?.textContent?.trim()).toBe("Reset to default");
-@@ -703,7 +720,7 @@ describe("session menu", () => {
++    const remove = submenu.querySelector<HTMLButtonElement>(".session-menu__icon-remove");
++    expect(remove?.previousElementSibling?.getAttribute("role")).toBe("separator");
++    expect(remove?.textContent?.trim()).toBe("Reset to default");
++    remove?.click();
++    expect(onAction).toHaveBeenCalledWith({ kind: "reset-appearance" });
++  });
++
++
+   it("returns from custom entry on Escape without closing the menu", async () => {
+     const onClose = vi.fn();
+     const menu = await mountMenu({ onClose, session: { icon: "braces" } });
+@@ -642,7 +719,7 @@ describe("session menu", () => {
      expect(submenu.querySelector(".session-menu__icon-options")?.hasAttribute("inert")).toBe(false);
      expect(document.activeElement).toBe(submenu.querySelector('[aria-label="Custom icon…"]'));
      const currentIcon = submenu.querySelector<HTMLButtonElement>(
@@ -1630,7 +1655,7 @@ index 95be34c3..51f21883 100644
      const reset = submenu.querySelector<HTMLButtonElement>(".session-menu__icon-remove");
      if (!currentIcon || !reset) {
 diff --git a/ui/src/components/session-people-search.test.ts b/ui/src/components/session-people-search.test.ts
-index 11b536b0..1813a8e7 100644
+index 11b536b..1813a8e 100644
 --- a/ui/src/components/session-people-search.test.ts
 +++ b/ui/src/components/session-people-search.test.ts
 @@ -16,7 +16,8 @@ describe("searchable session people", () => {
@@ -1644,10 +1669,10 @@ index 11b536b0..1813a8e7 100644
      search.dispatchEvent(new InputEvent("input", { bubbles: true }));
  
 diff --git a/ui/src/i18n/locales/en.ts b/ui/src/i18n/locales/en.ts
-index 2a5a19f3..fe361a3c 100644
+index 44d1bdf..8df0f0e 100644
 --- a/ui/src/i18n/locales/en.ts
 +++ b/ui/src/i18n/locales/en.ts
-@@ -976,6 +976,110 @@ export const en: TranslationMap & {
+@@ -979,6 +979,110 @@ export const en: TranslationMap & {
      },
      iconEmojiSection: "Emoji",
      iconGlyphSection: "Icons",
@@ -1759,10 +1784,10 @@ index 2a5a19f3..fe361a3c 100644
      noColor: "No color",
      customEmojiCell: "Custom emoji…",
 diff --git a/ui/src/styles/layout.css b/ui/src/styles/layout.css
-index 1feb73d0..9e1a98dc 100644
+index 8b720e2..0cd6ed2 100644
 --- a/ui/src/styles/layout.css
 +++ b/ui/src/styles/layout.css
-@@ -3060,6 +3060,155 @@ wa-dropdown.sidebar-session-sort-menu::part(menu) {
+@@ -2856,6 +2856,155 @@ wa-dropdown.sidebar-session-sort-menu::part(menu) {
    gap: 3px;
  }
  

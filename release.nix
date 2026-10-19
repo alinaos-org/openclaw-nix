@@ -6,6 +6,6 @@
 # `current`; the previous release stays in `accepted` so a consumer can keep a
 # recovery instance one release behind.
 {
-  current = "2026.10.4";
-  accepted = ["2026.10.1" "2026.10.2" "2026.10.3" "2026.10.4"];
+  current = "2026.10.5";
+  accepted = ["2026.10.1" "2026.10.2" "2026.10.3" "2026.10.4" "2026.10.5"];
 }

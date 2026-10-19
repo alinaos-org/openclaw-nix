@@ -70,7 +70,13 @@
   ownSourcePatches = [
     {
       name = "session-icon-picker.patch";
-      patch = ./patches/session-icon-picker.patch;
+      # 2026.10.5 rewrote the session menu's icon tests and made the grid's
+      # keydown handler private; earlier releases keep the patch they were
+      # qualified with (same file name, so their store paths are unchanged).
+      patch =
+        if lib.versionOlder upstreamVersion "2026.10.5"
+        then ./patches/2026.10.4/session-icon-picker.patch
+        else ./patches/session-icon-picker.patch;
     }
   ];
   # Control UI tests the own patches change; run with the UI's vitest config.
