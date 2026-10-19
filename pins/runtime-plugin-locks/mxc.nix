@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.11";
   expectedIntegrity = "";
   packageName = "@openclaw/mxc-sandbox";
-  version = "2026.10.4";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/mxc-sandbox/-/mxc-sandbox-2026.10.4.tgz";
-  npmIntegrity = "sha512-IwgF58v0mht74Tg86P6Tgn0iArFWmVGkufg++/2MQisWOi1u5/yd6I3Kx4B1W5wj7+lFV2vuoTZLKLeIJ7Ysjg==";
-  npmShasum = "69dc57d1d37b8ef8776ed4bd848374cecf87eef4";
-  nixHash = "sha256-Wn7mMHZ8T8JItUOQF2o/A/Z7SSJEcW50bqwO2nu3ozo=";
+  version = "2026.10.5";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/mxc-sandbox/-/mxc-sandbox-2026.10.5.tgz";
+  npmIntegrity = "sha512-yz49ojbbyEQVCf0qbmQeM/dkYqFWqBp4Hp5SdYTUUM1IK03c/QjV0VE/OtPmJC3aDBypS3Q1ZAePhbhTu9Cpxg==";
+  npmShasum = "9253e4786e065ad005cf63f2a378a6e57bbe9fff";
+  nixHash = "sha256-vgQxASeVuD+n8/bj3BSkuXXYbw2P2QYnGiDjEI3smXE=";
   dependencyMode = "bundled";
   manifestId = "mxc";
-  openclawCompat = ">=2026.10.4";
-  peerOpenClaw = ">=2026.10.4";
+  openclawCompat = ">=2026.10.5";
+  peerOpenClaw = ">=2026.10.5";
   runtimeExtensions = [
     "./dist/index.js"
   ];
@@ -29,7 +29,7 @@
   channels = [];
   contracts = {};
   dependencies = {
-    "@microsoft/mxc-sdk" = "0.8.0";
+    "@microsoft/mxc-sdk" = "0.9.0";
     zod = "4.6.5";
   };
   optionalDependencies = {};
@@ -38,10 +38,31 @@
     "zod"
   ];
   bundledPackageRoots = [
+    "node_modules/@koromix/koffi-android-arm64"
+    "node_modules/@koromix/koffi-android-x64"
+    "node_modules/@koromix/koffi-darwin-arm64"
+    "node_modules/@koromix/koffi-darwin-x64"
+    "node_modules/@koromix/koffi-freebsd-arm64"
+    "node_modules/@koromix/koffi-freebsd-ia32"
+    "node_modules/@koromix/koffi-freebsd-x64"
+    "node_modules/@koromix/koffi-linux-arm"
+    "node_modules/@koromix/koffi-linux-arm64"
+    "node_modules/@koromix/koffi-linux-ia32"
+    "node_modules/@koromix/koffi-linux-loong64"
+    "node_modules/@koromix/koffi-linux-ppc64"
+    "node_modules/@koromix/koffi-linux-riscv64"
+    "node_modules/@koromix/koffi-linux-x64"
+    "node_modules/@koromix/koffi-openbsd-arm64"
+    "node_modules/@koromix/koffi-openbsd-ia32"
+    "node_modules/@koromix/koffi-openbsd-x64"
+    "node_modules/@koromix/koffi-win32-arm64"
+    "node_modules/@koromix/koffi-win32-ia32"
+    "node_modules/@koromix/koffi-win32-x64"
     "node_modules/@microsoft/mxc-sdk"
-    "node_modules/@microsoft/mxc-sdk/node_modules/node-addon-api"
-    "node_modules/@microsoft/mxc-sdk/node_modules/node-pty"
-    "node_modules/@microsoft/mxc-sdk/node_modules/semver"
+    "node_modules/koffi"
+    "node_modules/node-addon-api"
+    "node_modules/node-pty"
+    "node_modules/semver"
     "node_modules/zod"
   ];
 }

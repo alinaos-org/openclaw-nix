@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.9";
   expectedIntegrity = "";
   packageName = "@openclaw/tavily-plugin";
-  version = "2026.10.4";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/tavily-plugin/-/tavily-plugin-2026.10.4.tgz";
-  npmIntegrity = "sha512-vCEhfg7Oc9lKeamKPci38rHxvLFHFDUZfk49cGjfsZ7ryUPozqDO1pdIUf1jFXNlx7Qx5CyHb/Ou1nwTo0bORg==";
-  npmShasum = "e9e9b4cdf798430278f5a8af95141199b6cc98ea";
-  nixHash = "sha256-vyScbv5qlGR7irkf3BnYHrdbii6fVwLxAiDrAc6bnWU=";
+  version = "2026.10.5";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/tavily-plugin/-/tavily-plugin-2026.10.5.tgz";
+  npmIntegrity = "sha512-PHGSdOzcNf41WdbDKT3X2UzTKWOdrSa9vEmMOjpNTzOTS8H/YGJzy1lw44w4zvEk3cR32dRFF+AQXxMzrzo8ww==";
+  npmShasum = "6d4e0ce6fe19e1449603b0546e2fcd8208eb493f";
+  nixHash = "sha256-OEQpfAVBfNYZZooBx68JDBWmK5018QrWCEtoWfaIziM=";
   dependencyMode = "bundled";
   manifestId = "tavily";
-  openclawCompat = ">=2026.10.4";
-  peerOpenClaw = ">=2026.10.4";
+  openclawCompat = ">=2026.10.5";
+  peerOpenClaw = ">=2026.10.5";
   runtimeExtensions = [
     "./dist/index.js"
   ];
