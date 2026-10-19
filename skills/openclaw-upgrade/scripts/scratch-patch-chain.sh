@@ -12,15 +12,16 @@
 # built: when the layer fails in a real build, it is. Each command runs in order with
 # errexit off, so a later patch is still tried after an earlier one fails. A patch
 # that failed may have written part of its change, so when re-running one patch use a
-# fresh copy (this script makes one per run). The copy is about 2.6 GB on /home and is
-# deleted at the end unless KEEP=1. Assumes one command per line, as the hotfix layer
+# fresh copy (this script makes one per run). The copy is about 2.6 GB under the scratch
+# root (OPENCLAW_UPGRADE_SCRATCH_ROOT, else the backup root) and is deleted at the end
+# unless KEEP=1. Assumes one command per line, as the hotfix layer
 # writes them.
 set -uo pipefail
 here=$(dirname "$(readlink -f "$0")")
 # shellcheck source=/dev/null
 [ ! -f "$here/host.env" ] || . "$here/host.env"
 attr=${1:-${OPENCLAW_UPGRADE_HOTFIX_ATTR:-.#gateway-hotfixed}}
-work=${2:-${OPENCLAW_UPGRADE_BACKUP_ROOT:-$HOME/openclaw-backups}/scratch-patch-chain}
+work=${2:-${OPENCLAW_UPGRADE_SCRATCH_ROOT:-${OPENCLAW_UPGRADE_BACKUP_ROOT:-$HOME/openclaw-backups}}/scratch-patch-chain}
 phase=$(nix eval --raw "$attr.installPhase") || { echo "cannot evaluate $attr.installPhase" >&2; exit 2; }
 base=$(grep -oE '^cp -a /nix/store/[^ ]+/\.' <<<"$phase" | head -1 | sed 's|^cp -a ||; s|/\.$||')
 [ -n "$base" ] && [ -d "$base" ] || { echo "base package ${base:-?} is not built; build the gateway first" >&2; exit 2; }

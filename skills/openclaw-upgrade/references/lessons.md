@@ -57,13 +57,21 @@ records and no unreadable database. Never run the candidate against live state.
   alive, so doctor would refuse with "An agent database is in use".
 - Only records may not shrink. Doctor drops derived caches (cached
   `systemPromptReport` snapshots) and drains queues: reported as "trimmed (derived)".
+  It also deletes a database whose only rows are metadata and search-index shadow rows
+  (2026.10.5 repairs agent databases a bug registered as `(multiple)*.sqlite`), and
+  drops tables a release retires (2026.10.5: the Skill Workshop proposal tables):
+  reported as "removed (no user rows)" and "retired by the release". A new retirement
+  is a lost record until its table and doctor's log line are added to the census, after
+  reading the release's retirement code.
 - Doctor exit 1 whose only errors are plugin dependencies missing from the copy is the
   harness (the snapshot skips plugin `node_modules`), not a failure.
 - A fenced binary refuses to run without its own state: probe its version with a
   scratch state.
 - Doctor rewrites the copy's config (`doctor-config.json` against `.before.json`): that
   diff is what it would propose on the live gateway.
-- It refuses to start without twice the state size plus 20 GB free.
+- It refuses to start without twice the state size plus 20 GB free. Put the copies
+  (`OPENCLAW_UPGRADE_SCRATCH_ROOT`) on a filesystem whose snapshots do not keep them: on
+  ZFS a deleted copy stays allocated while any snapshot taken during the run holds it.
 - Run instances in parallel only with memory to spare: each doctor holds its copy's
   databases open beside the live gateways. With about 6 GB available, one host ran them
   one at a time (2026.10.4: 8 minutes, the main gateway 4.5 of them).
