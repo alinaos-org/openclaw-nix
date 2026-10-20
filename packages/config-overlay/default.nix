@@ -214,8 +214,31 @@
           materialized_plugins_root=${lib.escapeShellArg materializePluginsRoot}
           install -d -m 0700 "$materialized_plugins_root"
 
-          plugin_set_id="$(jq -c '.plugins.load.paths // []' "$tmp_config" | sha256sum | cut -d' ' -f1)"
+          plugin_set_list="$(jq -c '.plugins.load.paths // []' "$tmp_config")"
+          plugin_set_id="$(printf '%s\n' "$plugin_set_list" | sha256sum | cut -d' ' -f1)"
           materialized_plugin_set="$materialized_plugins_root/$plugin_set_id"
+
+          # A set is used only if this script built it for this exact plugin list:
+          # its manifest names the list and every plugin is there. Anything else
+          # under the set's name (a partial set someone staged by hand, an older
+          # set without a manifest) is moved aside and rebuilt; 2026-10-19 a lane
+          # staged one plugin under the next render's set id and the gateway's
+          # start failed on the plugins that set lacked.
+          plugin_set_manifest=.openclaw-nix-plugin-set.json
+          plugin_set_complete() {
+            [ -d "$1" ] && [ ! -L "$1" ] && [ -f "$1/$plugin_set_manifest" ] || return 1
+            [ "$(cat -- "$1/$plugin_set_manifest")" = "$plugin_set_list" ] || return 1
+            while IFS= read -r plugin_source; do
+              [ -n "$plugin_source" ] || continue
+              [ -d "$1/$(basename "$plugin_source")" ] || return 1
+            done < <(jq -r '.plugins.load.paths[]?' "$tmp_config")
+          }
+          if { [ -e "$materialized_plugin_set" ] || [ -L "$materialized_plugin_set" ]; } \
+            && ! plugin_set_complete "$materialized_plugin_set"; then
+            untrusted_plugin_set="$materialized_plugins_root/.untrusted-plugin-set-$plugin_set_id-$(date +%s)"
+            mv -- "$materialized_plugin_set" "$untrusted_plugin_set"
+            echo "WARN ${name}: $materialized_plugin_set was not a complete set built for this plugin list; moved it to $untrusted_plugin_set and rebuilding" >&2
+          fi
 
           if [ ! -d "$materialized_plugin_set" ]; then
             plugin_staging="$(mktemp -d "$materialized_plugins_root/.plugin-set-$plugin_set_id.XXXXXX")"
@@ -234,6 +257,7 @@
               fi
               cp -a --no-preserve=ownership --reflink=never -- "$plugin_source" "$plugin_target"
             done < <(jq -r '.plugins.load.paths[]?' "$tmp_config")
+            printf '%s\n' "$plugin_set_list" > "$plugin_staging/$plugin_set_manifest"
             mv "$plugin_staging" "$materialized_plugin_set"
           fi
 
@@ -242,7 +266,8 @@
           # to 2026.7.1). Keep this set and the most recently used other one;
           # older sets are copies of store paths, and a rollback recreates its
           # own. Staging left by a failed copy goes after an hour. Never fatal:
-          # a cleanup error must not stop the gateway starting.
+          # a cleanup error must not stop the gateway starting. A set moved aside
+          # as untrusted stays a week, for inspection.
           touch "$materialized_plugin_set"
           prune_plugin_sets() {
             find "$materialized_plugins_root" -mindepth 1 -maxdepth 1 -type d \
@@ -252,6 +277,8 @@
                   chmod -R u+w -- "$stale_set" && rm -rf -- "$stale_set"
                 done
             find "$materialized_plugins_root" -mindepth 1 -maxdepth 1 -type d -name '.plugin-set-*' -mmin +60 \
+              -exec chmod -R u+w {} + -exec rm -rf {} +
+            find "$materialized_plugins_root" -mindepth 1 -maxdepth 1 -type d -name '.untrusted-plugin-set-*' -mtime +7 \
               -exec chmod -R u+w {} + -exec rm -rf {} +
           }
           prune_plugin_sets || echo "WARN ${name}: could not prune old materialized plugin sets in $materialized_plugins_root" >&2
