@@ -167,19 +167,21 @@
     removeWhen = "Upstream recovers a superseded deferred preparation itself.";
   };
 
-  hookGenerationOverlay = {
-    patch = ./patch-hook-generation-overlay.mjs;
-    marker = "openclaw-nix-hook-generation-overlay-v1";
+  pluginRuntimeOwnerGeneration = {
+    patch = ./patch-plugin-runtime-owner-generation.mjs;
+    marker = "openclaw-nix-plugin-runtime-owner-generation-v1";
     since = "2026.10.5";
     fixes = ''
-      Plugin hooks: an active prepared model generation replaced the global hook
-      registry wholesale, so unrelated process-root observers received no llm_input
-      or llm_output events. Compose root, request and generation registries instead;
-      the generation still replaces matching plugin/hook pairs without double dispatch.
+      Plugin hooks: the Gateway authenticates an in-process plugin owner and persists
+      that authority on the session, but agent admission omitted the owner when it
+      selected the run's prepared model-runtime generation. The generation therefore
+      contained the model provider but not the initiating plugin's llm_input or
+      llm_output hooks. Carry only that authenticated owner into the admitted run's
+      prepared registry; generation isolation remains authoritative.
     '';
-    test = ./test-hook-generation-overlay.mjs;
+    test = ./test-plugin-runtime-owner-generation.mjs;
     upstream = "https://github.com/openclaw/openclaw/pull/177903";
     upstreamStatus = "open";
-    removeWhen = "An OpenClaw release composes prepared-generation hooks over root and request hooks.";
+    removeWhen = "An OpenClaw release carries the authenticated runtime plugin owner into the run-prepared generation.";
   };
 }
