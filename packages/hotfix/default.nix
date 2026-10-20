@@ -12,7 +12,7 @@
   nodejs_24,
   gateway,
   # Bump when the patch set changes for the same gateway.
-  revision ? "hotfix.2",
+  revision ? "hotfix.3",
 }: let
   inherit (gateway.passthru) upstreamVersion;
   node = "${nodejs_24}/bin/node";
@@ -68,10 +68,10 @@ in
         ${node} ${./patch-agent-db-preparation-retry.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-agent-db-preparation-retry.mjs} "${root}"
 
-        # Hook dispatch: prepared model generations replace matching plugin hooks
-        # without hiding unrelated process-root observers.
-        ${node} ${./patch-hook-generation-overlay.mjs} "${root}" "${upstreamVersion}"
-        ${node} ${./test-hook-generation-overlay.mjs} "${root}"
+        # Plugin-owned runs: carry the authenticated initiating plugin into the
+        # run's prepared generation without widening generation-scoped hooks.
+        ${node} ${./patch-plugin-runtime-owner-generation.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-plugin-runtime-owner-generation.mjs} "${root}"
       '';
       passthru =
         (gateway.passthru or {})
@@ -86,7 +86,7 @@ in
             controlUiStoreHardlinks = "openclaw-nix-control-ui-store-hardlinks-v1";
             codexCyberAccessProgram = "openclaw-nix-codex-cyber-access-program-v1";
             agentDbPreparationRetry = "openclaw-nix-agent-db-preparation-retry-v1";
-            hookGenerationOverlay = "openclaw-nix-hook-generation-overlay-v1";
+            pluginRuntimeOwnerGeneration = "openclaw-nix-plugin-runtime-owner-generation-v1";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
@@ -98,7 +98,7 @@ in
             controlUiStoreHardlinks = ./test-control-ui-store-hardlinks.mjs;
             codexCyberAccessProgram = ./test-codex-cyber-access-program.mjs;
             agentDbPreparationRetry = ./test-agent-db-preparation-retry.mjs;
-            hookGenerationOverlay = ./test-hook-generation-overlay.mjs;
+            pluginRuntimeOwnerGeneration = ./test-plugin-runtime-owner-generation.mjs;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;
