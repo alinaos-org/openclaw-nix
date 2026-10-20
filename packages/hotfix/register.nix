@@ -163,8 +163,8 @@
     '';
     test = ./test-agent-db-preparation-retry.mjs;
     upstream = null;
-    upstreamStatus = "not reported";
-    removeWhen = "Upstream recovers a superseded deferred preparation itself.";
+    upstreamStatus = "fixed on main by openclaw/openclaw#171054 (2026-10-13; issue #171018); 2026.10.x stable diverged before it, so 2026.10.5 lacks it. Reported as #177587, closed 2026-10-20: ships in the next stable release.";
+    removeWhen = "The release carries openclaw/openclaw#171054 (AgentDatabaseStartupSupersededError and its bounded retry); this patch's anchors then fail, and it is dropped.";
   };
 
   pluginRuntimeOwnerGeneration = {

@@ -166,6 +166,15 @@ host. Work them alongside the patch layers.
   `backups/pre-migrate-*/doctor.log` before removing it.
 - After freeing disk space, a unit stuck in `start-limit-hit` needs
   `systemctl --user reset-failed <unit>` before `start`.
+- Live-applied plugins: a gateway's `runtime-plugins/<set id>` and its rendered config
+  belong to its start script. On 2026-10-19 an agent lane staged one plugin under the
+  set id the next render would compute and pointed the live config at it; the next
+  start skipped the copy, found the other plugins missing and hit `start-limit-hit`
+  (prod down 6.4 min). The start script now uses a set only if its manifest
+  (`.openclaw-nix-plugin-set.json`) names the exact plugin list and every plugin is
+  there, and otherwise moves it to `.untrusted-plugin-set-<id>-<time>` (kept a week)
+  with a WARN. A WARN like that after an activation means someone staged by hand:
+  find who before the next one. Plugin changes go through Nix and an activation.
 
 ## Native Control UI
 
