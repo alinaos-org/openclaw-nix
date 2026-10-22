@@ -176,6 +176,31 @@
     removeWhen = "The release carries openclaw/openclaw#171054 (AgentDatabaseStartupSupersededError and its bounded retry); this patch's anchors then fail, and it is dropped.";
   };
 
+  corpusRevisionReadOnly = {
+    patch = ./patch-corpus-revision-read-only.mjs;
+    marker = "openclaw-nix-corpus-revision-read-only-v1";
+    since = "2026.10.5";
+    fixes = ''
+      Agent databases: memory's transcript corpus (the dreaming job, session backfill,
+      memory forget) is read in the pooled session-history Workers, but each entry's
+      content revision opened the agent database writable there
+      (readTranscriptStatsSync). That lease stays in the Worker's handle cache until the
+      process exits, and no stop releases it. On nova prod the 04:30 dreaming run left
+      one on every agent database, so every later stop, however clean, ended
+      `active-leases`, and the next start held all 16 agents for background inspection
+      (92 s on 2026-10-22; main's boot run failed). The Worker inventory now projects
+      read-only and its revisions come from readTranscriptStatsBatchReadOnlySync, which
+      takes no lease; an unavailable transcript has no revision, as a failed read
+      already had. Other callers keep the writable read. Checked in a lab copy of prod's
+      state: `memory session-backfill` left one lease from a dead process before, none
+      after, and all 13 of herald's revisions are identical on both readers.
+    '';
+    test = ./test-corpus-revision-read-only.mjs;
+    upstream = null;
+    upstreamStatus = "fixed on main by openclaw/openclaw#168631 (2026-10-13); 2026.10.x stable diverged before it, so 2026.10.5 and 2026.10.6 lack it. Not reported.";
+    removeWhen = "The release carries openclaw/openclaw#168631 (readTranscriptContentRevisionSync's readOnly path); this patch's anchors then fail, and it is dropped.";
+  };
+
   pluginRuntimeOwnerGeneration = {
     patch = ./patch-plugin-runtime-owner-generation.mjs;
     marker = "openclaw-nix-plugin-runtime-owner-generation-v1";
