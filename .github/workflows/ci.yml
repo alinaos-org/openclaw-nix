@@ -45,7 +45,10 @@ jobs:
     # A larger runner (repository variable BUILD_RUNNER, for example a 16-core
     # one) roughly halves the source build; the default 4-core runner works.
     runs-on: ${{ vars.BUILD_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 150
+    # A release that also moves the gateway's Node compiles Node first: 2026.10.6
+    # (Node 24.22.1) is about an hour and a half of Node and half an hour of
+    # gateway on the 4-core runner, past the 150 minutes this was.
+    timeout-minutes: 300
     steps:
       - name: Free disk space
         run: |
@@ -64,6 +67,18 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
           # Only what consumers reuse is pushed (below), not every build output.
           skipPush: true
+      # The gateway's Node first, cached on its own as soon as it is built: when
+      # nixpkgs is behind OpenClaw's Node floor (packages/nodejs.nix) it is a long
+      # compile, and a later failure or timeout must not throw it away.
+      - name: The gateway's Node
+        env:
+          CACHIX_CACHE: ${{ vars.CACHIX_CACHE }}
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: |
+          node=$(nix build -L --no-link --print-out-paths .#gateway.passthru.node)
+          if [ -n "$CACHIX_CACHE" ] && [ -n "$CACHIX_AUTH_TOKEN" ]; then
+            cachix push "$CACHIX_CACHE" "$node"
+          fi
       - name: Gateway, hotfix layer, CLI and runtime plugins
         run: nix build -L --max-jobs 1 .#gateway-hotfixed .#openclaw .#runtime-plugins
       - name: Single release, state fence, customize layer and upgrade skill
@@ -92,7 +107,10 @@ jobs:
   # (checks.nixos-module, checks.workstation, checks.starter). Not a required check until it
   # has proven stable on hosted runners.
   nixos-module:
-    needs: eval
+    # After the build, so the VM tests take the gateway from the cache instead of
+    # compiling it again in parallel (2026.10.6's Node and gateway did not fit 90
+    # minutes here).
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
