@@ -3,6 +3,15 @@
 # or tag. scripts/new-release.py writes new entries; pnpmDepsHash is per system
 # because the dependency store is fetched for the host platform only.
 {
+  "2026.10.6" = {
+    rev = "fe06181dc5ecc01cf8904abbfc26925925efefbc";
+    sourceHash = "sha256-bobJYn46LJzAmo9Naz6W3nla1rsVGPiptYpHxTegneg=";
+    pnpmDepsHash.x86_64-linux = "sha256-X7ymog1YJp8RMU62ZvRXW9F1/ewtzP5ytzXvC84fKpQ=";
+    buildTimestamp = "2026-10-22T08:45:01Z";
+    pnpmBootstrapVersion = "12.15.0";
+    tsdownHeapMb = "6144";
+  };
+
   "2026.10.5" = {
     rev = "1b58cb9a1b4f4353e1add63c8506db4d890962e8";
     sourceHash = "sha256-+Bqk2u4hDiyqK1upJ96tc6Zu5dDNjIl/yhKtMB1XUZw=";
