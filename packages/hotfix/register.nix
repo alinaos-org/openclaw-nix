@@ -118,12 +118,18 @@
 
   controlUiStoreHardlinks = {
     patch = ./patch-control-ui-store-hardlinks.mjs;
-    marker = "openclaw-nix-control-ui-store-hardlinks-v1";
+    marker = "openclaw-nix-control-ui-store-hardlinks-v2";
     since = "2026.10.2";
     fixes = ''
       Native Control UI: bundled plugins' browser builds (workboard, slack, discord)
       were refused as missing because store optimisation hardlinks them. Allow hard
       links only under /nix/store; symlinks stay refused.
+      v2 (added with 2026.10.5; the code is unchanged since 2026.10.2): an explicit
+      UI reload rereads the plugin's manifest with hard links refused, although
+      discovery allows them for bundled plugins, so reloading a bundled panel failed
+      ("Control UI assets could not be loaded"; workboard's manifest has 30 store
+      links). The reload allows hard links for the same /nix/store roots only; a
+      symlinked manifest is still refused.
     '';
     test = ./test-control-ui-store-hardlinks.mjs;
     upstream = null;

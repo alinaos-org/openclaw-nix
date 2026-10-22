@@ -62,8 +62,8 @@ in
         ${node} ${./patch-codex-cyber-access-program.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-codex-cyber-access-program.mjs} "${root}"
 
-        # Native Control UI: serve bundled plugins' browser builds although Nix
-        # store optimisation hard-links their files.
+        # Native Control UI: serve and reload bundled plugins' browser builds
+        # although Nix store optimisation hard-links their files and manifests.
         ${node} ${./patch-control-ui-store-hardlinks.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-control-ui-store-hardlinks.mjs} "${root}"
 
@@ -94,7 +94,7 @@ in
             cloudWorkerGatewayUrl = "openclaw-nix-cloud-worker-gateway-url-v1";
             skillTreeStoreHardlinks = "openclaw-nix-skill-tree-store-hardlinks-v1";
             skillDeliveryDescription = "openclaw-nix-skill-delivery-description-v1";
-            controlUiStoreHardlinks = "openclaw-nix-control-ui-store-hardlinks-v1";
+            controlUiStoreHardlinks = "openclaw-nix-control-ui-store-hardlinks-v2";
             codexCyberAccessProgram = "openclaw-nix-codex-cyber-access-program-v1";
             agentDbPreparationRetry = "openclaw-nix-agent-db-preparation-retry-v1";
             pluginRuntimeOwnerGeneration = "openclaw-nix-plugin-runtime-owner-generation-v1";
