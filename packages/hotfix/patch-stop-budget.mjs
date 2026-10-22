@@ -28,10 +28,28 @@ const drainClamp = ["drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.ma
 // 9.7 derives isRestart from params.action and gives native external restarts
 // the stop budget too. Split that shared branch so only a true stop is clamped;
 // external-restart keeps upstream's full budget, like every other restart.
-const replacements = atLeast(version, "2026.9.7") ? [
+const hardExitBefore = "forceExitMs: !isRestart || action === \"external-restart\" && budget.nativeStopBudget ? budget.timeoutMs : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)";
+const hardExitAfter = `forceExitMs: !isRestart ? Math.min(budget.timeoutMs, ${seconds(STOP_HARD_EXIT_MS)}) : action === \"external-restart\" && budget.nativeStopBudget ? budget.timeoutMs : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)`;
+// 2026.10.6 bounds the stop drain itself: active runs get STOP_DRAIN_TIMEOUT_MS
+// (20 s), then are cancelled and cleaned up within the rest of the budget
+// (openclaw/openclaw#171308). That is below this clamp, so the drain is
+// upstream's and only the hard exit is clamped (upstream's is the whole native
+// budget, about 325 s under prod's 6 min TimeoutStopSec).
+const v106 = atLeast(version, "2026.10.6");
+let upstreamStopDrainMs = null;
+if (v106) {
+  const upstreamDrain = "drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.min(STOP_DRAIN_TIMEOUT_MS, Math.max(0, budget.timeoutMs - budget.reserveMs)),";
+  assert.equal(source.split(upstreamDrain).length, 2, "stop-budget: upstream's bounded stop drain moved");
+  const constant = source.match(/\nconst STOP_DRAIN_TIMEOUT_MS = ([0-9.e]+);\n/);
+  assert(constant, "stop-budget: STOP_DRAIN_TIMEOUT_MS not found");
+  upstreamStopDrainMs = Number(constant[1]);
+  assert(upstreamStopDrainMs > 0 && upstreamStopDrainMs <= STOP_DRAIN_MS, `stop-budget: upstream's stop drain ${upstreamStopDrainMs} ms is above the clamp`);
+}
+const replacements = v106 ? [
+  [hardExitBefore, `${hardExitAfter} /* openclaw-nix-stop-budget-v1 */`],
+] : atLeast(version, "2026.9.7") ? [
   drainClamp,
-  ["forceExitMs: !isRestart || action === \"external-restart\" && budget.nativeStopBudget ? budget.timeoutMs : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)",
-    `forceExitMs: !isRestart ? Math.min(budget.timeoutMs, ${seconds(STOP_HARD_EXIT_MS)}) : action === \"external-restart\" && budget.nativeStopBudget ? budget.timeoutMs : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)`],
+  [hardExitBefore, hardExitAfter],
 ] : version === "2026.9.6" ? [
   ["drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.max(0, budget.timeoutMs - budget.reserveMs),",
     `drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.min(${seconds(STOP_DRAIN_MS)}, Math.max(0, budget.timeoutMs - budget.reserveMs)), /* openclaw-nix-stop-budget-v1 */`],
@@ -54,6 +72,9 @@ for (const [before, after] of replacements) {
 fs.writeFileSync(file, source);
 fs.writeFileSync(path.join(root, ".stop-budget-hotfix.json"), JSON.stringify({
   id: "openclaw-nix-stop-budget-v1", upstreamVersion: version, patchedFile: candidates[0],
-  stopDrainMs: STOP_DRAIN_MS, stopHardExitMs: STOP_HARD_EXIT_MS, restartPolicyUnchanged: true,
+  stopDrainMs: upstreamStopDrainMs ?? STOP_DRAIN_MS, stopDrainOwner: v106 ? "upstream" : "openclaw-nix",
+  stopHardExitMs: STOP_HARD_EXIT_MS, restartPolicyUnchanged: true,
 }, null, 2) + "\n");
-console.log(`Applied stop-only ${STOP_DRAIN_MS / 1e3}s drain / ${STOP_HARD_EXIT_MS / 1e3}s hard-exit budget; restart policy unchanged`);
+console.log(v106
+  ? `Applied stop-only ${STOP_HARD_EXIT_MS / 1e3}s hard-exit budget over upstream's ${upstreamStopDrainMs / 1e3}s stop drain; restart policy unchanged`
+  : `Applied stop-only ${STOP_DRAIN_MS / 1e3}s drain / ${STOP_HARD_EXIT_MS / 1e3}s hard-exit budget; restart policy unchanged`);

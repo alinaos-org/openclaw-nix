@@ -43,12 +43,15 @@
     fixes = ''
       Shutdown: a plain stop drained for up to upstream's full budget. Clamp only the
       stop path to a 120 s drain and 180 s hard exit; every restart keeps upstream's.
-      (30 s / 90 s until 2026.10.4, which cut running agent turns at a stop.)
+      (30 s / 90 s until 2026.10.4, which cut running agent turns at a stop.) From
+      2026.10.6 upstream bounds the stop drain itself (20 s, then cancellation and
+      durable cleanup), so only the hard exit is clamped: upstream's is the whole
+      native budget, about 325 s under a 6 min TimeoutStopSec.
     '';
     test = ./test-stop-budget.mjs;
     upstream = null;
-    upstreamStatus = "not reported";
-    removeWhen = "Upstream bounds the stop drain (or makes it configurable).";
+    upstreamStatus = "drain bounded upstream from 2026.10.6 (openclaw/openclaw#171308); the hard exit is still the native budget; not reported";
+    removeWhen = "Upstream bounds a stop's hard exit below the native budget (or makes it configurable).";
   };
 
   nodeBootstrapLayout = {
