@@ -1,7 +1,8 @@
 # A consumer's own changes, applied to a copy of a finished gateway tree, so the
 # source build stays the one this flake's CI builds and its cache serves. Same
 # copy discipline as the hotfix layer (../hotfix): a real copy keeps
-# worker-relative imports and bundled-plugin trust boundaries intact.
+# worker-relative imports and bundled-plugin trust boundaries intact, and is
+# self-contained (../copy-layer.nix).
 {
   lib,
   stdenvNoCC,
@@ -18,6 +19,7 @@
   extraCommands ? "",
 }: let
   node = "${gateway.passthru.node}/bin/node";
+  copyLayer = import ../copy-layer.nix {inherit lib;};
 in
   assert lib.assertMsg (replaceBundledChannels != [] || extraCommands != "")
   "openclaw-nix: the customize layer has nothing to apply";
@@ -26,10 +28,11 @@ in
       inherit (gateway) version;
       dontUnpack = true;
       phases = ["installPhase"];
+      # The finished tree leads to no tree it was copied from.
+      disallowedRequisites = copyLayer.pathsOf (copyLayer.treesOf gateway);
       installPhase =
         ''
-          cp -a ${gateway}/. "$out"
-          chmod -R u+w "$out"
+          ${copyLayer.copyTree gateway}
           root="$out/lib/openclaw"
           node=${node}
         ''

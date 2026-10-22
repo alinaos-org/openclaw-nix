@@ -23,12 +23,15 @@
   protectedStateDirs ? [stateDir],
 }: let
   node = gateway.passthru.node;
+  copyLayer = import ./copy-layer.nix {inherit lib;};
 in
   stdenvNoCC.mkDerivation {
     pname = "${gateway.pname or "openclaw-gateway"}-fenced";
     inherit (gateway) version;
     dontUnpack = true;
     phases = ["installPhase"];
+    # It links its own tree, and that tree leads to none it was copied from.
+    disallowedRequisites = copyLayer.pathsOf (lib.tail (copyLayer.treesOf gateway));
     installPhase = ''
       mkdir -p $out/bin
       for entry in ${gateway}/*; do
