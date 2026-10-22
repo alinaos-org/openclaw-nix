@@ -243,7 +243,7 @@
             ${fenced}/bin/openclaw --version 2>err || rc=$?
           test "$rc" -eq 78 && grep -q 'protected production paths' err
           OPENCLAW_STATE_DIR=$TMPDIR/state OPENCLAW_CONFIG_PATH=$TMPDIR/state/openclaw.json HOME=$TMPDIR \
-            ${fenced}/bin/openclaw --version | grep -F '${pkgs.openclawNix.release.current}'
+            ${fenced}/bin/openclaw --version | grep -F '${pkgs.openclawNix.packageVersion}'
           touch $out
         '';
       # The customize layer over the current release: a bundled channel that an
@@ -871,6 +871,14 @@
         inherit pkgs self nix-openclaw sops-nix;
         inherit (p) init;
       };
+
+      # release-watch's choice of release (scripts/newest-stable.jq): by version,
+      # with backports, correction releases, betas and drafts in the listing.
+      release-selection = pkgs.runCommand "openclaw-release-selection" {nativeBuildInputs = [pkgs.jq];} ''
+        select=${./scripts/newest-stable.jq} fixture=${./tests/release-selection/releases.json} \
+          bash ${./tests/release-selection/test.sh}
+        touch $out
+      '';
 
       formatting = pkgs.runCommand "openclaw-nix-formatting" {nativeBuildInputs = [pkgs.alejandra];} ''
         alejandra --check --exclude ${self}/pins/openclaw-config-options.nix ${self}

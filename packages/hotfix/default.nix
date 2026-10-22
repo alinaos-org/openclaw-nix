@@ -14,7 +14,9 @@
   # Bump when the patch set changes for the same gateway.
   revision ? "hotfix.3",
 }: let
-  inherit (gateway.passthru) upstreamVersion;
+  # A correction release (2026.7.1-2) is its base release's code, so the patches'
+  # release gates read the base.
+  upstreamVersion = lib.head (lib.splitString "-" gateway.passthru.upstreamVersion);
   node = "${nodejs_24}/bin/node";
   root = "$out/lib/openclaw";
 in
