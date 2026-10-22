@@ -25,6 +25,30 @@ When a contract, closure, formatter, or diff-integrity gate fails against the ca
 3. With restart authorization and validated config, restart one affected secondary gateway through the supported lifecycle path. Require its original authenticated agent-list and exact-model response checks to pass before applying the same recovery to other affected gateways. Keep a working production gateway untouched. Respect the host’s restart controls; do not turn a secondary-instance recovery into a shell self-restart workaround.
 4. Rerun fleet version, API, model, actual startup-log, and readiness comparisons after recovery. Preserve failed receipts separately, publish the verified replacement, and report remaining channel or event-loop degradation rather than claiming clean fleet health. Complete only when the original functional checks pass; a restart command alone is not recovery evidence.
 
+## Leaked agent-database leases
+
+A stop that ends `active-leases` on every agent database even with nothing running
+means a handle outlives the work that opened it: the next start runs background
+inspection and refuses those agents meanwhile. Find the owner from data, not code:
+
+1. Read the shared state database's `agent_database_leases` (read-only) before and
+   after a stop, and match each lease id to the `clean-close receipt` lines: the leaked
+   one never gets a receipt. Correlate its `opened_at` with the gateway's log (on nova
+   prod, 2026-10-22: 04:30 dreaming opened one on every agent database).
+2. Reproduce on a copy: an online backup of the state database and one agent's database
+   (lease rows dropped), the config's paths rewritten to the copy and its gateway port
+   pointed at nothing, and a CLI command that runs the same code in-process (here
+   `memory session-backfill --agent <id>`, a preview that writes nothing), in a
+   `systemd-run` scope with `ProtectHome=read-only`. A lease left by the exited process
+   is the leak.
+3. In a scratch copy of the package's `dist` (other entries symlinked, top-level files
+   copied: the worker resolver refuses a symlinked `package.json`), log
+   `new Error().stack` with `Error.stackTraceLimit` raised and the Worker `threadId` at
+   every `insertInto("agent_database_leases")` and at `releaseOpenClawAgentDatabaseLease`.
+   That named the writable open inside the history Worker (openclaw-nix's
+   `corpusRevisionReadOnly`, fixed upstream on main), then proved the patch: no lease
+   left, and the same output.
+
 ## Unchanged cache recovery
 
 When an unrelated cache download blocks the closure, compare running and candidate build dependencies with `nix why-depends --derivation`, then check the exact output with `nix-store --check-validity`; runtime-closure absence does not prove the dependency changed, and a partial output directory is not reusable. For repeated large-transfer resets, recover the unchanged official cache artifact using bounded 1 MiB HTTP/1.1 range requests with six concurrent transfers, retaining completed chunks and validating each response's Content-Range and byte count. Assemble in offset order, verify the official narinfo FileHash, and import from a local file cache containing the original narinfo/signature through `nix copy --from`; keep normal signature verification enabled. Run `nix store verify`, retain a GC root with `nix-store --add-root … --realise`, and prove exact-derivation reuse with `nix build --offline --no-link` before retrying the closure.
