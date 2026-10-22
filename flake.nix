@@ -197,7 +197,9 @@
       # packages/hotfix/register.nix covers every patch and test file, each entry has a
       # test (or the reason there is none), an upstream status and a removal
       # condition, default.nix applies and runs them, and the package advertises
-      # exactly the registered markers. Evaluation fails otherwise.
+      # exactly the registered markers. An entry with no patch is a check on the
+      # final tree: it needs a test, which grafted trees rerun (passthru.hotfixTests),
+      # and has no marker. Evaluation fails otherwise.
       hotfix-register = let
         inherit (pkgs) lib;
         register = import ./packages/hotfix/register.nix;
@@ -206,10 +208,12 @@
         named = prefix: sorted (lib.filter (f: lib.hasPrefix prefix f && lib.hasSuffix ".mjs" f) files);
         base = path: baseNameOf (toString path);
         entries = lib.attrValues register;
+        patches = lib.filter (e: e.patch != null) entries;
+        rerun = map base (lib.attrValues p.gateway-hotfixed.passthru.hotfixTests);
         applied = builtins.readFile ./packages/hotfix/default.nix;
         has = e: field: (e.${field} or null) != null && e.${field} != "";
         problems =
-          lib.optional (named "patch-" != sorted (map (e: base e.patch) entries))
+          lib.optional (named "patch-" != sorted (map (e: base e.patch) patches))
           "patch files and register entries differ"
           ++ lib.optional (named "test-" != sorted (map (e: base e.test) (lib.filter (e: e.test != null) entries)))
           "test files and registered tests differ"
@@ -218,10 +222,13 @@
             ++ lib.optional (!(has e "fixes")) "${name}: no description"
             ++ lib.optional (!(has e "removeWhen")) "${name}: no removal condition"
             ++ lib.optional (e.upstream == null && !(has e "upstreamStatus")) "${name}: no upstream status"
-            ++ lib.optional (!(lib.hasInfix "./${base e.patch}" applied)) "${name}: default.nix does not apply it"
+            ++ lib.optional (e.patch != null && !(lib.hasInfix "./${base e.patch}" applied)) "${name}: default.nix does not apply it"
+            ++ lib.optional (e.patch == null && e.test == null) "${name}: neither a patch nor a test"
+            ++ lib.optional (e.patch == null && e.test != null && !(lib.elem (base e.test) rerun)) "${name}: a check without a patch is not rerun on grafted trees (passthru.hotfixTests)"
+            ++ lib.optional (e.patch == null && e.marker != null) "${name}: a check without a patch has no marker"
             ++ lib.optional (e.test != null && !(lib.hasInfix "./${base e.test}" applied)) "${name}: default.nix does not run its test")
           register)
-          ++ lib.optional (sorted (lib.attrValues p.gateway-hotfixed.passthru.hotfixes) != sorted (map (e: e.marker) entries))
+          ++ lib.optional (sorted (lib.attrValues p.gateway-hotfixed.passthru.hotfixes) != sorted (map (e: e.marker) patches))
           "the package's passthru.hotfixes and the register's markers differ";
       in
         if problems == []
