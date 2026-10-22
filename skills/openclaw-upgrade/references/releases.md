@@ -126,6 +126,17 @@ the first. Start each retry from a fresh copy: a patch that fails part-way leave
 edit behind, and the next run fails with "already patched" or a phantom "anchor changed".
 A re-ported patch must still apply to every release the table accepts: run the chain on
 the previous release's base too (2026.10.5's four re-ports were checked on 2026.10.4).
+Before any build exists, the published npm package predicts the hotfix breaks: its
+`dist/` comes from the same bundler. Check the tarball against the release notes'
+`integrity`, unpack it as `<work>/lib/openclaw`, and run each `node` line of the layer's
+`installPhase` (`nix eval --raw .#gateway-hotfixed.installPhase`, with the version
+argument raised to the new release) on a fresh copy. Calibrate on the previous release's
+npm package, where every patch is known to apply: patches that need `dist/worker`,
+`dist/extensions/codex/.setup` or installed dependencies, and most tests, fail on both from
+the package layout alone, so only a failure the previous release does not show counts.
+2026.10.6 took a minute this way and named its one re-port (the stop budget) about two
+hours before the source build could.
+
 Afterwards, `scripts/check-plugin-sdk-imports.py <patched package>` checks every host
 plugin's `openclaw/plugin-sdk/*` imports against the candidate's built exports; a missing
 one would only show at gateway start.
