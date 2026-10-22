@@ -187,4 +187,37 @@
     upstreamStatus = "open";
     removeWhen = "An OpenClaw release carries the authenticated runtime plugin owner into the run-prepared generation.";
   };
+
+  missingPluginAutoInstall = {
+    patch = ./patch-missing-plugin-auto-install.mjs;
+    marker = "openclaw-nix-missing-plugin-auto-install-v1";
+    since = "2026.10.5";
+    fixes = ''
+      Configured plugins: doctor's repair downloads (npm or ClawHub) every configured
+      plugin, channel or provider plugin it cannot discover, and writes the package and
+      an install record into the state directory, beside the plugins Nix provides (stray
+      records broke merlin once). Every caller goes through the two candidate loops of
+      missing-configured-plugin-install (and its two worker copies):
+      - `openclaw doctor --fix`: config repair, plugin convergence before state
+        migrations, and the release install backfill. The config overlay runs it, with
+        OPENCLAW_NIX_MODE=0, on the first start of each new release;
+      - `openclaw update`: post-core plugin convergence;
+      - model selection: the codex/copilot runtime repair after `openclaw models set`, a
+        provider login (CLI, or the Gateway's models.auth.login) or a promotion claim;
+      - plain doctor, doctor lint and the triage after a failed Gateway start read the
+        detection loop only. The Gateway's own startup preflight only verifies payloads.
+      Upstream nix-openclaw skips the loops only with OPENCLAW_NIX_MODE=1; prod and merlin
+      run with 0. Both loops now skip every candidate unless
+      OPENCLAW_NIX_ALLOW_RUNTIME_PLUGIN_INSTALL=1. The repair warns "plugin <id> is
+      configured but not provided by Nix; add it to the gateway's runtime plugins" and
+      reports the plugin failed, as for a failed download, so doctor keeps its config
+      entry; detection reports it as not provided by Nix instead of offering an install.
+      Recorded installs (updateNpmInstalledPlugins) and `openclaw plugins install` are
+      unchanged.
+    '';
+    test = ./test-missing-plugin-auto-install.mjs;
+    upstream = null;
+    upstreamStatus = "not reported: upstream intends these installs; nix-openclaw disables them only with OPENCLAW_NIX_MODE=1";
+    removeWhen = "Upstream (or nix-openclaw) can turn configured-plugin auto-install off independently of Nix mode, or these gateways run with OPENCLAW_NIX_MODE=1.";
+  };
 }

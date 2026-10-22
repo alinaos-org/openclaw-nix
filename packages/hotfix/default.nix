@@ -12,7 +12,7 @@
   stdenvNoCC,
   gateway,
   # Bump when the patch set changes for the same gateway.
-  revision ? "hotfix.3",
+  revision ? "hotfix.4",
 }: let
   # A correction release (2026.7.1-2) is its base release's code, so the patches'
   # release gates read the base.
@@ -77,6 +77,12 @@ in
         # run's prepared generation without widening generation-scoped hooks.
         ${node} ${./patch-plugin-runtime-owner-generation.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-plugin-runtime-owner-generation.mjs} "${root}"
+
+        # Configured plugins: never download a configured plugin that Nix does not
+        # provide (doctor --fix, update, model selection); report it instead.
+        # OPENCLAW_NIX_ALLOW_RUNTIME_PLUGIN_INSTALL=1 restores upstream's installs.
+        ${node} ${./patch-missing-plugin-auto-install.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-missing-plugin-auto-install.mjs} "${root}"
       '';
       passthru =
         (gateway.passthru or {})
@@ -92,6 +98,7 @@ in
             codexCyberAccessProgram = "openclaw-nix-codex-cyber-access-program-v1";
             agentDbPreparationRetry = "openclaw-nix-agent-db-preparation-retry-v1";
             pluginRuntimeOwnerGeneration = "openclaw-nix-plugin-runtime-owner-generation-v1";
+            missingPluginAutoInstall = "openclaw-nix-missing-plugin-auto-install-v1";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
@@ -104,6 +111,7 @@ in
             codexCyberAccessProgram = ./test-codex-cyber-access-program.mjs;
             agentDbPreparationRetry = ./test-agent-db-preparation-retry.mjs;
             pluginRuntimeOwnerGeneration = ./test-plugin-runtime-owner-generation.mjs;
+            missingPluginAutoInstall = ./test-missing-plugin-auto-install.mjs;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;
