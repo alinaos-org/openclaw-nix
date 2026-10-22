@@ -226,4 +226,30 @@
     upstreamStatus = "not reported: upstream intends these installs; nix-openclaw disables them only with OPENCLAW_NIX_MODE=1";
     removeWhen = "Upstream (or nix-openclaw) can turn configured-plugin auto-install off independently of Nix mode, or these gateways run with OPENCLAW_NIX_MODE=1.";
   };
+
+  mcpOAuthIssuerBinding = {
+    patch = ./patch-mcp-oauth-issuer-binding.mjs;
+    marker = "openclaw-nix-mcp-oauth-issuer-binding-v1";
+    since = "2026.10.5";
+    fixes = ''
+      MCP OAuth (CVE-2026-104850, GHSA-6qxp-vccf-f47h): @modelcontextprotocol/sdk
+      stamps the client information and tokens it saves with their authorization
+      server (`issuer`) and discards a stamped value read back for another server, but
+      still presents an unstamped one, saved by an earlier SDK, to whichever server
+      discovery names. OpenClaw's provider (dist/mcp-oauth-*.mjs and its two worker
+      copies) handed stored values to the SDK unchanged. Its clientInformation() and
+      tokens() now read a value without an issuer as absent: a login registers again
+      and stores stamped values (OpenClaw's store keeps the SDK's stamp), and a
+      gateway refresh fails with "requires OAuth authorization. Run openclaw mcp login
+      <server>" instead of registering in the background. A fresh access token still
+      goes to its own MCP server until it expires. Servers whose credentials predate
+      the stamp need `openclaw mcp logout <server>` and then `openclaw mcp login
+      <server>` once (login alone returns early while the old access token is
+      unexpired). On nova (2026-10-22) every prod MCP OAuth store is already stamped.
+    '';
+    test = ./test-mcp-oauth-issuer-binding.mjs;
+    upstream = null;
+    upstreamStatus = "not reported";
+    removeWhen = "An openclaw/openclaw release whose MCP OAuth provider itself treats client information and tokens without an issuer as absent.";
+  };
 }
