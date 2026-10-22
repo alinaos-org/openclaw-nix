@@ -26,9 +26,14 @@ if (atLeast(receipt.upstreamVersion, "2026.9.6")) {
   const patchedSrc = source.slice(head, tail);
   assert(patchedSrc.includes("openclaw-nix-stop-budget-v1"), "patch receipt present but resolver is unpatched");
   const v97 = atLeast(receipt.upstreamVersion, "2026.9.7");
-  const baselineSrc = patchedSrc
-    .replace(`Math.min(${seconds(drainMs)}, Math.max(0, budget.timeoutMs - budget.reserveMs)), /* openclaw-nix-stop-budget-v1 */`,
-             "Math.max(0, budget.timeoutMs - budget.reserveMs),")
+  // From 2026.10.6 the stop drain is upstream's own (STOP_DRAIN_TIMEOUT_MS) and
+  // only the hard exit is clamped, with the marker after it.
+  const v106 = atLeast(receipt.upstreamVersion, "2026.10.6");
+  assert.equal(receipt.stopDrainOwner ?? "openclaw-nix", v106 ? "upstream" : "openclaw-nix");
+  const baselineSrc = (v106
+    ? patchedSrc.replace("restartTimeoutMs(restartDrainTimeoutMs) /* openclaw-nix-stop-budget-v1 */", "restartTimeoutMs(restartDrainTimeoutMs)")
+    : patchedSrc.replace(`Math.min(${seconds(drainMs)}, Math.max(0, budget.timeoutMs - budget.reserveMs)), /* openclaw-nix-stop-budget-v1 */`,
+                         "Math.max(0, budget.timeoutMs - budget.reserveMs),"))
     .replace(v97 ? `forceExitMs: !isRestart ? Math.min(budget.timeoutMs, ${seconds(hardExitMs)}) : action === "external-restart" && budget.nativeStopBudget ?`
                  : `forceExitMs: !isRestart ? Math.min(budget.timeoutMs, ${seconds(hardExitMs)}) :`,
              v97 ? "forceExitMs: !isRestart || action === \"external-restart\" && budget.nativeStopBudget ?"
@@ -41,7 +46,8 @@ if (atLeast(receipt.upstreamVersion, "2026.9.6")) {
   // a real clock let the patched and baseline calls straddle a millisecond
   // (189999 !== 190000, 2026-10-04).
   const load = (src) => vm.runInNewContext(`${src}\n;resolveGatewayShutdownDrainBudget`,
-    { GATEWAY_SHUTDOWN_TIMEOUT_MS: 325000, performance$1: { now: () => 1000 }, Date: { now: () => 5e6 }, Math, Infinity });
+    { GATEWAY_SHUTDOWN_TIMEOUT_MS: 325000, STOP_DRAIN_TIMEOUT_MS: v106 ? drainMs : undefined,
+      performance$1: { now: () => 1000 }, Date: { now: () => 5e6 }, Math, Infinity });
   const patchedFn = load(patchedSrc);
   const baseFn = load(baselineSrc);
   // 9.7 reads params.action ("stop" | "restart" | "external-restart") and
@@ -57,7 +63,7 @@ if (atLeast(receipt.upstreamVersion, "2026.9.6")) {
   const longStop = call(patchedFn, long, false);
   assert.equal(longStop.drainTimeoutMs, drainMs);
   assert.equal(longStop.forceExitMs, hardExitMs);
-  assert.equal(call(baseFn, long, false).drainTimeoutMs, 315000);
+  assert.equal(call(baseFn, long, false).drainTimeoutMs, v106 ? drainMs : 315000);
   assert.equal(call(baseFn, long, false).forceExitMs, 325000);
   console.log(`PASS 9.6 resolver: stop drain ${drainMs / 1e3}s / hard exit ${hardExitMs / 1e3}s`);
 
