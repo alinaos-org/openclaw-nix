@@ -512,6 +512,11 @@ Pin a release tag rather than `main`. A tag is `<OpenClaw release>-r<N>`:
   when the gateway build does, so a fix release that leaves the gateway alone keeps its
   store path and its cached build.
 
+The gateway is built and runs on nixpkgs' Node 24, raised to the Node release OpenClaw
+requires while nixpkgs is behind it (`packages/nodejs.nix`: 2026.10.6 refuses to start on
+Node older than 24.22.1). Only the OpenClaw build uses it; the rest of a host keeps its
+own `nodejs_24`.
+
 What is supported:
 
 - **The latest tag.** Fixes land on `main` and in the next tag only; there are no

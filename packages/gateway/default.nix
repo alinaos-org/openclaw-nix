@@ -42,7 +42,7 @@
   release ? (import ../../release.nix).current,
   # Appended to the version: <release>-<localRevision>. Bump when this build
   # changes for the same upstream release.
-  localRevision ? "nix.3",
+  localRevision ? "nix.4",
   # Source patches applied in order, before pnpm: a list of paths, or of
   # { name, patch } attrsets. Applied with -p1 and zero fuzz.
   extraSourcePatches ? [],

@@ -9,7 +9,6 @@
 {
   lib,
   stdenvNoCC,
-  nodejs_24,
   gateway,
   # Bump when the patch set changes for the same gateway.
   revision ? "hotfix.3",
@@ -17,7 +16,8 @@
   # A correction release (2026.7.1-2) is its base release's code, so the patches'
   # release gates read the base.
   upstreamVersion = lib.head (lib.splitString "-" gateway.passthru.upstreamVersion);
-  node = "${nodejs_24}/bin/node";
+  # The gateway's own Node, which the patched tree runs on.
+  node = "${gateway.passthru.node}/bin/node";
   root = "$out/lib/openclaw";
 in
   assert lib.assertMsg (lib.versionAtLeast upstreamVersion "2026.10.1")

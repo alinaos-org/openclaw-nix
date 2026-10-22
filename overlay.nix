@@ -47,6 +47,10 @@
   # Plugins outside those catalogs, pinned to the release by scripts/pin-runtime-plugins.py.
   pins = builtins.fromJSON (builtins.readFile ./pins/runtime-plugins.json);
 
+  # The Node the gateway is built and runs on: nixpkgs' Node 24, at least the
+  # release OpenClaw requires (packages/nodejs.nix).
+  node = final.callPackage ./packages/nodejs.nix {};
+
   # The gateway's source recipe: our nix-openclaw's nix/gateway-recipe (the
   # August recipe packages/gateway's repairs are written against; upstream's
   # later one breaks the @openclaw/ai step on 2026.10.x). Only that directory,
@@ -65,6 +69,7 @@
     else
       final.callPackage ./packages/gateway ({
           inherit gatewayRecipe;
+          nodejs_24 = node;
           # The recipe's own pnpm (nix-openclaw's overlay no longer exports it,
           # and nixpkgs' pnpm_11 is built on another Node).
           pnpm_11 = prev.callPackage "${gatewayRecipe}/packages/pnpm-11.nix" {};
@@ -168,7 +173,7 @@ in {
     };
 
   openclawNix = {
-    inherit release packageVersion pins gateway compiledGateway mkRuntimePlugin buildRuntimePlugin runtimePluginIds;
+    inherit release packageVersion pins node gateway compiledGateway mkRuntimePlugin buildRuntimePlugin runtimePluginIds;
     # The release's lock set ({id = lock;}) and the directory it was generated in.
     runtimePluginLocks = releaseLocks;
     runtimePluginLocksDir = releaseLocksDir;

@@ -144,7 +144,7 @@
       # Cloud workers pack this final grafted tree, not the tree the hotfix
       # layer tested: rerun the hotfix tests on it.
       + lib.concatMapStrings (test: ''
-        ${pkgs.nodejs_24}/bin/node ${test} "$out/lib/openclaw"
+        ${gateway.passthru.node}/bin/node ${test} "$out/lib/openclaw"
       '') (lib.attrValues hotfixTests);
   in
     if effectiveGraftIds == []
