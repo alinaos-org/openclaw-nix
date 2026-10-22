@@ -12,7 +12,7 @@
   stdenvNoCC,
   gateway,
   # Bump when the patch set changes for the same gateway.
-  revision ? "hotfix.4",
+  revision ? "hotfix.5",
 }: let
   # A correction release (2026.7.1-2) is its base release's code, so the patches'
   # release gates read the base.
@@ -73,6 +73,12 @@ in
         ${node} ${./patch-agent-db-preparation-retry.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-agent-db-preparation-retry.mjs} "${root}"
 
+        # Agent databases: memory's transcript corpus (dreaming, backfill) reads each
+        # entry's content revision read-only in the history Workers, instead of a
+        # writable open whose lease outlives every stop.
+        ${node} ${./patch-corpus-revision-read-only.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-corpus-revision-read-only.mjs} "${root}"
+
         # Plugin-owned runs: carry the authenticated initiating plugin into the
         # run's prepared generation without widening generation-scoped hooks.
         ${node} ${./patch-plugin-runtime-owner-generation.mjs} "${root}" "${upstreamVersion}"
@@ -105,6 +111,7 @@ in
             controlUiStoreHardlinks = "openclaw-nix-control-ui-store-hardlinks-v2";
             codexCyberAccessProgram = "openclaw-nix-codex-cyber-access-program-v1";
             agentDbPreparationRetry = "openclaw-nix-agent-db-preparation-retry-v1";
+            corpusRevisionReadOnly = "openclaw-nix-corpus-revision-read-only-v1";
             pluginRuntimeOwnerGeneration = "openclaw-nix-plugin-runtime-owner-generation-v1";
             missingPluginAutoInstall = "openclaw-nix-missing-plugin-auto-install-v1";
             mcpOAuthIssuerBinding = "openclaw-nix-mcp-oauth-issuer-binding-v1";
@@ -119,6 +126,7 @@ in
             controlUiStoreHardlinks = ./test-control-ui-store-hardlinks.mjs;
             codexCyberAccessProgram = ./test-codex-cyber-access-program.mjs;
             agentDbPreparationRetry = ./test-agent-db-preparation-retry.mjs;
+            corpusRevisionReadOnly = ./test-corpus-revision-read-only.mjs;
             pluginRuntimeOwnerGeneration = ./test-plugin-runtime-owner-generation.mjs;
             missingPluginAutoInstall = ./test-missing-plugin-auto-install.mjs;
             mcpOAuthIssuerBinding = ./test-mcp-oauth-issuer-binding.mjs;
