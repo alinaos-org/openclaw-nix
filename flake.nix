@@ -522,7 +522,9 @@
               # Restored state is marked for this package: the start did not migrate again.
               assert snapshot_count() == before + 1
               # No worker the gateway starts trips the syscall filter.
-              machine.fail("journalctl -b --no-pager | grep -q 'exited with signal SIGSYS'")
+              # grep reads all of the journal: with -q a match would end it early,
+              # journalctl's SIGPIPE would fail the pipeline, and fail() would pass.
+              machine.fail("journalctl -b --no-pager | grep 'exited with signal SIGSYS' > /dev/null")
               machine.succeed(f"ls {state}/backups/restore-*/replaced/agents")
         '';
       };

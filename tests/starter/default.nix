@@ -97,7 +97,9 @@ in
 
       with subtest("the gateway process gets the provider key (unsetOpenAIApiKey off for it)"):
           pid = machine.succeed(as_alice + "systemctl --user show -p MainPID --value openclaw-gateway-main.service").strip()
-          machine.succeed(f"tr '\\0' '\\n' < /proc/{pid}/environ | grep -qx OPENAI_API_KEY=sk-starter-provider")
+          # Not grep -q: it exits at the first match, tr then dies of SIGPIPE, and
+          # under pipefail the found key failed the test (run 39773003720).
+          machine.succeed(f"tr '\\0' '\\n' < /proc/{pid}/environ | grep -x OPENAI_API_KEY=sk-starter-provider > /dev/null")
 
       with subtest("openclaw-doctor passes, and names a missing variable"):
           doctor = as_alice + "/etc/profiles/per-user/alice/bin/openclaw-doctor"
