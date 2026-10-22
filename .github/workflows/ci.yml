@@ -25,6 +25,14 @@ jobs:
         run: |
           nix eval --json .#packages.x86_64-linux --apply 'builtins.mapAttrs (_: p: p.drvPath)'
           nix eval --json .#checks.x86_64-linux --apply 'builtins.mapAttrs (_: c: c.drvPath)'
+      # nix-openclaw's checks on this release (checks.nix-openclaw-*, its
+      # lib.mkChecks): its Home Manager module typed with our options (their
+      # assertions ran in the evaluation above), its lock checker on our plugin
+      # locks, and its script tests. Small builds; none compiles OpenClaw.
+      - name: nix-openclaw's module, lock and script checks
+        run: |
+          nix eval --json .#checks.x86_64-linux --apply 'c: builtins.filter (n: builtins.substring 0 13 n == "nix-openclaw-") (builtins.attrNames c)' \
+            | jq -r '.[] | ".#checks.x86_64-linux." + .' | xargs nix build -L
       - name: Formatting
         run: nix build -L .#checks.x86_64-linux.formatting
       # init generates a laptop flake as a teammate's machine would, and its whole

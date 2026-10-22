@@ -81,6 +81,35 @@
         inherit system;
         overlays = [self.overlays.default];
       };
+
+    # nix-openclaw's own checks (its lib.mkChecks) on this release: its Home
+    # Manager module typed with our options and evaluated over our package set,
+    # its lock checker on our runtime-plugin locks, and its script tests. None
+    # builds OpenClaw; the module checks are evaluation-time assertions.
+    nixOpenclawChecks = pkgs: let
+      release = import ./release.nix;
+      source = (import ./releases.nix).${release.current};
+    in
+      lib.mapAttrs' (name: lib.nameValuePair "nix-openclaw-${name}") (nix-openclaw.lib.mkChecks {
+        inherit pkgs;
+        openclawConfigOptionsFile = self.lib.configOptionsFile;
+        runtimePluginLockDir = ./pins/runtime-plugin-locks;
+        # The source the locks were generated from (scripts/generate-plugin-locks.sh).
+        openclawSourceInfo = {
+          releaseTag = "v${release.current}";
+          releaseVersion = release.current;
+          # The release's package.json version, which a correction release keeps at
+          # its base: the generator recorded it in the lock report.
+          inherit (lib.importJSON ./pins/runtime-plugin-locks/report.json) runtimePluginVersion;
+          inherit (source) rev;
+          hash = source.sourceHash;
+        };
+        # The plugins from the lock set that alinaos's nova loads (prod and
+        # merlin, 2026-10-22; its own buzz, fusion and in-house plugins are not
+        # from the lock set): a release that stops supporting one fails here,
+        # not on the host.
+        requiredRuntimePluginIds = ["acpx" "brave" "codex" "firecrawl" "kimi" "moonshot" "qwen" "tavily" "voyage" "zai"];
+      });
   in {
     lib = {
       inherit mkOverlay mkPackageSetOverlay mkUpgradeSkill mkConfigOverlay;
@@ -101,8 +130,15 @@
 
     overlays.default = mkOverlay {};
 
-    # programs.openclaw.instances.<name>.configOverlay, for nix-openclaw's
-    # Home Manager module.
+    # nix-openclaw's Home Manager module (programs.openclaw) with this release's
+    # typed config options (lib.configOptionsFile); on its own it has none and
+    # stops evaluation. Apply overlays.default to the module's pkgs too, so the
+    # gateway, CLI and runtime plugins are this release's.
+    homeManagerModules.openclaw = {
+      imports = [nix-openclaw.homeManagerModules.openclaw];
+      _module.args.openclawConfigOptionsFile = self.lib.configOptionsFile;
+    };
+    # programs.openclaw.instances.<name>.configOverlay, for the module above.
     homeManagerModules.configOverlay = import ./modules/home-manager/config-overlay.nix {inherit self;};
     # Gateways as system services with their own users, state and hardening, for
     # servers (modules/nixos/openclaw.nix).
@@ -149,7 +185,8 @@
         pkgs.openclawNix.runtimePluginIds);
     });
 
-    checks = forAllSystems (system: let
+    # Our checks, then nix-openclaw's on this release (nixOpenclawChecks).
+    checks = lib.mapAttrs (system: checks: checks // nixOpenclawChecks (pkgsFor system)) (forAllSystems (system: let
       pkgs = pkgsFor system;
       p = self.packages.${system};
     in {
@@ -739,8 +776,7 @@
         home = nix-openclaw.inputs.home-manager.lib.homeManagerConfiguration {
           inherit pkgs;
           modules = [
-            nix-openclaw.homeManagerModules.openclaw
-            {_module.args.openclawConfigOptionsFile = self.lib.configOptionsFile;}
+            self.homeManagerModules.openclaw
             self.homeManagerModules.configOverlay
             {
               home = {
@@ -840,7 +876,7 @@
         alejandra --check --exclude ${self}/pins/openclaw-config-options.nix ${self}
         touch $out
       '';
-    });
+    }));
 
     formatter = forAllSystems (system: (pkgsFor system).alejandra);
   };

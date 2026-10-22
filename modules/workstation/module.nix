@@ -1158,11 +1158,9 @@ in {
         nix-openclaw.overlays.default
         (self.lib.mkPackageSetOverlay {inherit (cfg.packageSet) sharedBuild customize gatewayArgs excludeToolNames;})
       ];
-      home-manager.sharedModules = [
-        nix-openclaw.homeManagerModules.openclaw
-        # Every instance's config is typed by the release's own schema.
-        {_module.args.openclawConfigOptionsFile = self.lib.configOptionsFile;}
-      ];
+      # nix-openclaw's module; every instance's config is typed by the
+      # release's own schema.
+      home-manager.sharedModules = [self.homeManagerModules.openclaw];
       # The overlays above must reach Home Manager, and the user's packages
       # /etc/profiles/per-user/<user>/bin, which the units' PATH includes.
       home-manager.useGlobalPkgs = true;
