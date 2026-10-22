@@ -386,8 +386,9 @@ CI runs it on every pull request.
 
 nix-openclaw renders an instance's config and runs the gateway in Nix mode, where every
 config write throws: the Control UI cannot save models, sign-in, heartbeats or thinking
-levels. `homeManagerModules.configOverlay` (with nix-openclaw's Home Manager module)
-keeps Nix authoritative and lets the Control UI save:
+levels. `homeManagerModules.configOverlay` (with `homeManagerModules.openclaw`,
+nix-openclaw's Home Manager module typed with this release's options) keeps Nix
+authoritative and lets the Control UI save:
 
 ```nix
 programs.openclaw.instances.prod.configOverlay = {
@@ -525,7 +526,11 @@ What is supported:
 
 `ci` evaluates every output, then builds the gateway, the hotfix layer, the CLI and the
 plugins and runs the checks; on the free 4-core runner a release builds in about 11
-minutes. With the repository variable `CACHIX_CACHE` and the secret
+minutes. Its `eval` job also runs nix-openclaw's own checks on the release
+(`checks.nix-openclaw-*`, from its `lib.mkChecks`): its Home Manager module evaluated
+with `pins/openclaw-config-options.nix` over this package set, its lock checker on
+`pins/runtime-plugin-locks` (compatibility ranges, report consistency, and the plugins
+a host needs kept supported), and its script tests. None compiles OpenClaw. With the repository variable `CACHIX_CACHE` and the secret
 `CACHIX_AUTH_TOKEN` set, it pushes the source build and its pnpm dependency set to that
 Cachix cache, from release pull requests too, so a release is cached before it is
 merged. A consumer that adds the cache as a substituter and sets `sharedBuild`
@@ -617,7 +622,9 @@ release:
 | `gateway` | `nix/gateway-recipe/scripts/gateway-build.sh`, `gateway-prebuild.sh` | copied into the build and edited (`packages/gateway`) |
 | `runtime-plugins`, `pkgs.openclawRuntimePlugins` | `nix/lib/openclaw-runtime-plugin.nix`, `nix/scripts` | the plugin builder, called with this flake's lock set, and the lock generator |
 | `overlays.default` | `overlays.default` | applied first, for the CLI tool bundle |
+| `homeManagerModules.openclaw` | `homeManagerModules.openclaw` | imported, with this release's typed options as its module argument |
 | `homeManagerModules.configOverlay` | `homeManagerModules.openclaw` | extends its `programs.openclaw.instances` options |
+| `checks.nix-openclaw-*` | `lib.mkChecks` (`nix/checks`, `nix/scripts`) | its module, lock and script checks, called with this flake's pins |
 
 These are build recipes and configuration modules. None of nix-openclaw's code runs
 inside the gateway, and none is served over a network. `NOTICE` lists the components
