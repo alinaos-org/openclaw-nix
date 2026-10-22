@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.8";
   expectedIntegrity = "";
   packageName = "@openclaw/cloudflare-ai-gateway-provider";
-  version = "2026.10.5";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/cloudflare-ai-gateway-provider/-/cloudflare-ai-gateway-provider-2026.10.5.tgz";
-  npmIntegrity = "sha512-ON9T1d96x7N8m/4A9Kr+wRIdXJCDPblY4eduLnmS/pj5ynSWKB4HCEXYD8+bOMDMO2Mv650CsPGsSF5GmNCwog==";
-  npmShasum = "a50a3f5c4afe6c762b7ee96d1115f94400eecd4b";
-  nixHash = "sha256-cFWqArh3e0BdYmCcQp4r4GHfdPx/3AiRKmEjHbLeIhw=";
+  version = "2026.10.6";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/cloudflare-ai-gateway-provider/-/cloudflare-ai-gateway-provider-2026.10.6.tgz";
+  npmIntegrity = "sha512-wDFoIPJfHLKEWHpDw4u7rY6n5Ax/6TIIzG2tl6Va99zNyM5x1OI4bzgoBrbBvf2BxGNUgNj3ZylNpXSRuCIvcQ==";
+  npmShasum = "a954ebe0f4dcd53c46242e99b66bf91eb57d9d86";
+  nixHash = "sha256-cwWamLe4TaHXXSmzJSBLwC2f+8hzH5q+eccbvamErdE=";
   dependencyMode = "none";
   manifestId = "cloudflare-ai-gateway";
-  openclawCompat = ">=2026.10.5";
-  peerOpenClaw = ">=2026.10.5";
+  openclawCompat = ">=2026.10.6";
+  peerOpenClaw = ">=2026.10.6";
   runtimeExtensions = [
     "./dist/index.js"
   ];

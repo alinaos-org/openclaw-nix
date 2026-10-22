@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.5.26";
   expectedIntegrity = "";
   packageName = "@openclaw/discord";
-  version = "2026.10.5";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/discord/-/discord-2026.10.5.tgz";
-  npmIntegrity = "sha512-Gy2FmMF7cnCyhodvYQHVtOPoPm7daZ1djSS7ymLHsJ5nWIO9GFsW8Y/mlnZAMSGWlgmWedERkVbVDMlli9vgOw==";
-  npmShasum = "09e5766841bbd0aff37ba56cd9752bd7995fd775";
-  nixHash = "sha256-quJyx9U4Wy0D/irhPuOT1CAY8FS2X0qyW9cy3onJv3Q=";
+  version = "2026.10.6";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/discord/-/discord-2026.10.6.tgz";
+  npmIntegrity = "sha512-SBvSV5sVgG9OTRy8BRtWufHdq55/3lJvB7bM1bNsYZH+/fHczUV6vLb190XPJVnOZjLMAxJrPxKHml+95nAD7Q==";
+  npmShasum = "11859587265af67dc6a48ad171762e75cfdf8cfc";
+  nixHash = "sha256-eApUxQTk94jBgyQk5X/8+3aAfEv8jsYdKfJmMSUdUDQ=";
   dependencyMode = "bundled";
   manifestId = "discord";
-  openclawCompat = ">=2026.10.5";
-  peerOpenClaw = ">=2026.10.5";
+  openclawCompat = ">=2026.10.6";
+  peerOpenClaw = ">=2026.10.6";
   runtimeExtensions = [
     "./dist/index.js"
   ];

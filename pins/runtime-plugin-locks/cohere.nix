@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.8";
   expectedIntegrity = "";
   packageName = "@openclaw/cohere-provider";
-  version = "2026.10.5";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/cohere-provider/-/cohere-provider-2026.10.5.tgz";
-  npmIntegrity = "sha512-BoeGwJ4t/cMLcmKRAeTZNOi7S2TZi/absi5e665jIPIxLgkcRFbqM+OgjH98MjSU7A1Fz2Lg8/gCPWhFwH7D5Q==";
-  npmShasum = "b1e8a874d9195124807fa1c1804b1e73c250b479";
-  nixHash = "sha256-KEHoiMYotANiS3qKgqYprbSpv4OSwYirJ8mZW73IAKg=";
+  version = "2026.10.6";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/cohere-provider/-/cohere-provider-2026.10.6.tgz";
+  npmIntegrity = "sha512-Y/PGqpxu9MT59NEfO3Bxt4WgMpD8Uhdowe1YCWRrr93RRI5zjGn1ES0S2dxVsQhtPyruBXS7JixQy8qjer6AEQ==";
+  npmShasum = "e18f80d27c6a0ee4953181c2a8c5630a484fb0eb";
+  nixHash = "sha256-ylip1rQL0I2p8bLs1JvkKQa3XKplGYziwGPPRhj1wYk=";
   dependencyMode = "none";
   manifestId = "cohere";
-  openclawCompat = ">=2026.10.5";
-  peerOpenClaw = ">=2026.10.5";
+  openclawCompat = ">=2026.10.6";
+  peerOpenClaw = ">=2026.10.6";
   runtimeExtensions = [
     "./dist/index.js"
   ];
