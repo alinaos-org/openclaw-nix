@@ -89,6 +89,8 @@ in
         # presented to an authorization server the SDK cannot bind it to.
         ${node} ${./patch-mcp-oauth-issuer-binding.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-mcp-oauth-issuer-binding.mjs} "${root}"
+        # Every @modelcontextprotocol/sdk copy has that binding (1.31.0 or later).
+        ${node} ${./test-mcp-sdk-floor.mjs} "${root}"
       '';
       passthru =
         (gateway.passthru or {})
@@ -120,6 +122,7 @@ in
             pluginRuntimeOwnerGeneration = ./test-plugin-runtime-owner-generation.mjs;
             missingPluginAutoInstall = ./test-missing-plugin-auto-install.mjs;
             mcpOAuthIssuerBinding = ./test-mcp-oauth-issuer-binding.mjs;
+            mcpSdkFloor = ./test-mcp-sdk-floor.mjs;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;

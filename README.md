@@ -493,6 +493,10 @@ deployment, and every patch is a security-review item. Each one:
   condition for removing it;
 - is reported upstream, and removed once upstream's fix ships in a pinned release.
 
+An entry with no patch is a check on the final tree, such as the
+`@modelcontextprotocol/sdk` version floor: it has a test, which a plugin graft reruns
+(`passthru.hotfixTests`), and no marker.
+
 `checks.hotfix-register` fails evaluation when a patch or test file is unregistered,
 an entry lacks a test reason, an upstream status or a removal condition, or the
 package's advertised markers (`passthru.hotfixes`) differ from the register. The

@@ -249,4 +249,26 @@
     upstreamStatus = "not reported";
     removeWhen = "An openclaw/openclaw release whose MCP OAuth provider itself treats client information and tokens without an issuer as absent.";
   };
+
+  # Not a patch: a check on the final tree, rerun after a plugin graft.
+  mcpSdkFloor = {
+    patch = null;
+    marker = null;
+    since = "2026.10.5";
+    fixes = ''
+      MCP OAuth (CVE-2026-104850, GHSA-6qxp-vccf-f47h): the build fails if any copy of
+      @modelcontextprotocol/sdk in the final tree is older than 1.31.0, the line that
+      binds saved OAuth client information and tokens to their authorization server and
+      that mcpOAuthIssuerBinding relies on. A copy is any node_modules/@modelcontextprotocol/sdk
+      package: the pnpm store, plugin node_modules under dist/extensions and
+      dist-runtime/extensions, and grafted plugins, following module links out of the
+      tree. 2026.10.5 ships 1.32.0 (2026.9.x shipped 1.30.0, without the binding).
+      Bundled copies carry no version; the ones OpenClaw's provider calls are checked
+      by test-mcp-oauth-issuer-binding.mjs.
+    '';
+    test = ./test-mcp-sdk-floor.mjs;
+    upstream = null;
+    upstreamStatus = "not applicable: a floor on a dependency, not an upstream bug";
+    removeWhen = "OpenClaw's lockfile itself requires @modelcontextprotocol/sdk >= 1.31.0 for every package that depends on it; until then raise the floor for a later SDK advisory rather than drop it.";
+  };
 }
