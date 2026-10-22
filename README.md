@@ -458,9 +458,12 @@ then copies `skill` to wherever its agents load skills. See
 and pnpm hashes), `scripts/generate-plugin-locks.sh <version>` locks every catalog
 plugin at it (nix-openclaw's generator, at the pinned nix-openclaw, against the release's
 source) and `scripts/pin-runtime-plugins.py <version>` re-pins the few outside the
-catalogs. The `release-watch` workflow runs all three daily and opens a pull request
-when OpenClaw publishes a new stable release; CI builds and tests it there, every plugin
-included (`.#runtime-plugins`). It needs "Allow GitHub Actions to create and approve
+catalogs. The `release-watch` workflow checks hourly and, when OpenClaw publishes a
+newer stable release (by version: backports of older lines and correction releases such
+as `2026.7.1-2` included, `scripts/newest-stable.jq`), runs all three and opens a pull
+request; CI builds and tests it there, every plugin included (`.#runtime-plugins`). If a
+step fails, it still pushes the branch and opens a draft pull request named after the
+step, and the run fails. It needs "Allow GitHub Actions to create and approve
 pull requests" enabled for the organization and the repository. The `plugin-locks`
 workflow regenerates the lock set on any branch. Plugins are built by nix-openclaw's
 builder (`nix/lib/openclaw-runtime-plugin.nix`), called with this flake's lock set and
