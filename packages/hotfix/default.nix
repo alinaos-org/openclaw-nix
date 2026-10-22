@@ -83,6 +83,12 @@ in
         # OPENCLAW_NIX_ALLOW_RUNTIME_PLUGIN_INSTALL=1 restores upstream's installs.
         ${node} ${./patch-missing-plugin-auto-install.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-missing-plugin-auto-install.mjs} "${root}"
+
+        # MCP OAuth: a saved client or token set without the authorization
+        # server's issuer stamp reads as absent (CVE-2026-104850), so it is never
+        # presented to an authorization server the SDK cannot bind it to.
+        ${node} ${./patch-mcp-oauth-issuer-binding.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-mcp-oauth-issuer-binding.mjs} "${root}"
       '';
       passthru =
         (gateway.passthru or {})
@@ -99,6 +105,7 @@ in
             agentDbPreparationRetry = "openclaw-nix-agent-db-preparation-retry-v1";
             pluginRuntimeOwnerGeneration = "openclaw-nix-plugin-runtime-owner-generation-v1";
             missingPluginAutoInstall = "openclaw-nix-missing-plugin-auto-install-v1";
+            mcpOAuthIssuerBinding = "openclaw-nix-mcp-oauth-issuer-binding-v1";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
@@ -112,6 +119,7 @@ in
             agentDbPreparationRetry = ./test-agent-db-preparation-retry.mjs;
             pluginRuntimeOwnerGeneration = ./test-plugin-runtime-owner-generation.mjs;
             missingPluginAutoInstall = ./test-missing-plugin-auto-install.mjs;
+            mcpOAuthIssuerBinding = ./test-mcp-oauth-issuer-binding.mjs;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;
