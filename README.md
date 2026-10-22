@@ -500,9 +500,11 @@ An entry with no patch is a check on the final tree, such as the
 `checks.hotfix-register` fails evaluation when a patch or test file is unregistered,
 an entry lacks a test reason, an upstream status or a removal condition, or the
 package's advertised markers (`passthru.hotfixes`) differ from the register. The
-register is also `passthru.hotfixRegister`. As of 2026.10.4 there are eight patches,
-none reported upstream yet, and one (the Codex stale-registration edit inside
-`patch-mcp-close-rejection.mjs`) without a test.
+register is also `passthru.hotfixRegister`. As of 2026.10.5 (`hotfix.4`) there are
+twelve patches and one check without a patch (the MCP SDK floor). Two are with upstream
+(the agent-database retry, fixed on OpenClaw's main, and the plugin runtime owner, an
+open pull request), and one (the Codex stale-registration edit inside
+`patch-mcp-close-rejection.mjs`) has no test.
 
 Changes reach `main` only through pull requests whose `eval` and `build` checks pass on
 a branch up to date with `main`, with a code owner's review (`.github/CODEOWNERS`).
