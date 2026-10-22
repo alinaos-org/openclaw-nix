@@ -2,9 +2,11 @@
 
 ## The release pull request
 
-The `release-watch` workflow runs daily (06:17 UTC); dispatch it by hand to pick up a
-release the same day (2026.10.4). When OpenClaw publishes a stable release newer than
-`release.nix`'s `current`, it runs:
+The `release-watch` workflow checks hourly (at :17; GitHub often starts scheduled runs
+late). When OpenClaw publishes a stable release newer than `release.nix`'s `current`,
+compared by version rather than GitHub's "latest" flag (`scripts/newest-stable.jq`:
+backports such as 2026.9.33 never count, correction releases such as 2026.7.1-2 do), it
+runs:
 
 - `scripts/new-release.py <v>`: tag to the commit it peels to, which must equal the
   release notes' "release SHA"; the source hash; the pnpm bootstrap version; the pnpm
@@ -17,14 +19,24 @@ release the same day (2026.10.4). When OpenClaw publishes a stable release newer
   (`pins/runtime-plugins.json`), at the same release. Exit 2 means a plugin's
   dependencies changed: check its lock shape (`overlay.nix`, `manualLocks`).
 
-It pushes `release-<v>`, opens a pull request and dispatches CI on it. To do it by hand,
+It pushes `release-<v>`, opens a pull request and dispatches CI on it. When a step
+fails, it pushes what the steps before it pinned, opens a draft pull request titled
+"pinning failed at <step>" and fails the run (2026.10.5's pnpm step failed on a source
+patch and left nothing to see for 15 hours). Finish the pin on that branch, then mark it
+ready.
+
+A correction release (`v2026.7.1-2`) keeps its base version in `package.json`, and
+OpenClaw publishes its plugins at that version: the lock generator takes the plugin
+version from the release's `package.json`, the overlay's `packageVersion` is that
+version, and `checkSingleRelease` accepts it for runtime plugins only. To do it by hand,
 run the same three scripts in a clone (the lock generation takes hours on a slow link;
 the `plugin-locks` workflow runs it on a branch instead).
 
 Opening the pull request needs "Allow GitHub Actions to create and approve pull requests"
 (Settings, Actions, General: the organization first, then the repository). Without it the
 workflow fails after pushing the branch, and the CI dispatch after that never runs; open
-the pull request by hand and CI starts on it (2026.10.3). While a release pull request
+the pull request by hand and CI starts on it (2026.10.3); the next run opens a draft
+pull request for a pushed branch that has none. While a release pull request
 stays open, each run rebases its branch onto a moved `main` and reruns CI, as long as
 the branch holds only the watcher's own commit; anything else it leaves for a person.
 

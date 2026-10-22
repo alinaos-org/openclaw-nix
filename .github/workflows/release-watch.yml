@@ -1,18 +1,28 @@
 name: release-watch
 
-# Daily: when openclaw/openclaw has a newer stable release than release.nix,
+# Hourly: when openclaw/openclaw has a newer stable release than release.nix,
 # pin it (release table, every runtime plugin at the release, pnpm dependency
 # hash) and open a pull request. CI then builds and tests the candidate, every
 # plugin included, on the pull request.
+#
+# A pinning step that fails still pushes the branch and opens a draft pull
+# request named after the step, and the run fails: 2026.10.5's pnpm step failed
+# on 2026-10-19 (a gateway source patch no longer applied) before anything was
+# pushed, and nothing showed it for 15 hours.
 on:
   schedule:
-    - cron: "17 6 * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
 
 permissions:
   actions: write
   contents: write
   pull-requests: write
+
+# One run at a time: a slow pin must not race the next hour's run.
+concurrency:
+  group: release-watch
+  cancel-in-progress: false
 
 jobs:
   watch:
@@ -22,62 +32,110 @@ jobs:
         with:
           # The rebase below needs main's history, not a shallow clone.
           fetch-depth: 0
-      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
-        with:
-          # The Nix version consumers build with, so derivations and the cache match.
-          install_url: https://releases.nixos.org/nix/nix-2.34.8/install
-      - name: Compare with the latest stable release
+      # Without Nix, so the hourly run that finds nothing to do takes seconds.
+      - name: Compare with the newest stable release
         id: latest
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          latest=$(gh api repos/openclaw/openclaw/releases/latest --jq '.tag_name | ltrimstr("v")')
-          current=$(nix eval --raw -f release.nix current)
-          echo "latest=$latest current=$current"
+          current=$(sed -n 's/^ *current = "\([^"]*\)";.*/\1/p' release.nix)
+          [ -n "$current" ] || { echo "no current release in release.nix" >&2; exit 1; }
+          newest=$(gh api 'repos/openclaw/openclaw/releases?per_page=100' \
+            | jq -c --arg current "$current" -f scripts/newest-stable.jq)
+          echo "current=$current newest=$newest"
+          [ -n "$newest" ] || { echo "no stable OpenClaw release in the listing" >&2; exit 1; }
+          [ "$(jq -r .newer <<<"$newest")" = true ] || exit 0
+          latest=$(jq -r .version <<<"$newest")
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
-          if [ "$latest" != "$current" ]; then
-            if gh pr list --state open --head "release-$latest" --json number --jq '.[0].number' | grep -q .; then
-              echo "open=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "new=true" >> "$GITHUB_OUTPUT"
-            fi
+          if gh pr list --state open --head "release-$latest" --json number --jq '.[0].number' | grep -q .; then
+            echo "open=true" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --heads origin "release-$latest" >/dev/null; then
+            # Pushed, but its pull request was never opened (2026.10.3: Actions
+            # could not create pull requests yet), so every later push failed.
+            echo "orphan=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
           fi
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        if: steps.latest.outputs.new == 'true'
+        with:
+          # The Nix version consumers build with, so derivations and the cache match.
+          install_url: https://releases.nixos.org/nix/nix-2.34.8/install
       - name: Pin the release
+        id: pin
         if: steps.latest.outputs.new == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
           v=${{ steps.latest.outputs.latest }}
-          python3 scripts/new-release.py "$v" --skip-pnpm
+          # Each step in order; the first that fails is named in the pull request.
+          step() {
+            local name=$1; shift
+            echo "::group::$name"
+            if ! "$@"; then
+              echo "::endgroup::"
+              echo "::error::$name failed"
+              echo "failed=$name" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::endgroup::"
+          }
+          locks() { scripts/generate-plugin-locks.sh "$v" | tee -a "$GITHUB_STEP_SUMMARY"; }
+          options() { scripts/generate-config-options.sh "$v" | tee -a "$GITHUB_STEP_SUMMARY"; }
+          plugins() {
+            local rc=0
+            python3 scripts/pin-runtime-plugins.py "$v" || rc=$?
+            [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || return "$rc"
+            echo "PLUGIN_DEPS_CHANGED=$([ "$rc" -eq 2 ] && echo yes || echo no)" >> "$GITHUB_ENV"
+          }
+          step "the release table entry" python3 scripts/new-release.py "$v" --skip-pnpm
           # The CLI tools at their latest releases, qualified with this release.
-          nix flake update nix-openclaw-tools
+          step "the CLI tools update" nix flake update nix-openclaw-tools
           # Every plugin OpenClaw's catalogs list, at this release.
-          scripts/generate-plugin-locks.sh "$v" | tee -a "$GITHUB_STEP_SUMMARY"
+          step "the runtime plugin locks" locks
           # The typed config options from this release's schema.
-          scripts/generate-config-options.sh "$v" | tee -a "$GITHUB_STEP_SUMMARY"
+          step "the typed config options" options
           # Then the few pinned by hand outside the catalogs.
-          rc=0; python3 scripts/pin-runtime-plugins.py "$v" || rc=$?
-          [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || exit "$rc"
-          echo "PLUGIN_DEPS_CHANGED=$([ "$rc" -eq 2 ] && echo yes || echo no)" >> "$GITHUB_ENV"
-          python3 scripts/new-release.py "$v" --pnpm-only
+          step "the hand-pinned plugins" plugins
+          step "the pnpm dependency hash" python3 scripts/new-release.py "$v" --pnpm-only
       - name: Open the pull request
         if: steps.latest.outputs.new == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          FAILED: ${{ steps.pin.outputs.failed }}
         run: |
           v=${{ steps.latest.outputs.latest }}
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "release-$v"
           git add -A release.nix releases.nix pins flake.lock
-          git commit -m "openclaw: $v"
+          git commit --allow-empty -m "openclaw: $v"
           git push origin "release-$v"
           note=""
           [ "$PLUGIN_DEPS_CHANGED" = yes ] && note=$'\n\nA runtime plugin changed its dependencies: check that it still builds.'
-          gh pr create --title "openclaw: $v" --body "Pins OpenClaw $v (release table, every runtime plugin at the release, pnpm dependency hash). CI builds the gateway and runs the patch tests.$note"
+          if [ -n "$FAILED" ]; then
+            run="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            gh pr create --draft --title "openclaw: $v (pinning failed at $FAILED)" \
+              --body "release-watch could not finish pinning OpenClaw $v: $FAILED failed ($run). This branch has the steps before it. Fix it here (re-port or drop a patch, rerun the step), then mark the pull request ready.$note"
+          else
+            gh pr create --title "openclaw: $v" --body "Pins OpenClaw $v (release table, every runtime plugin at the release, pnpm dependency hash). CI builds the gateway and runs the patch tests.$note"
+          fi
           # Pull requests opened with GITHUB_TOKEN start no workflows; a
           # dispatch does, so run CI on the release branch explicitly.
+          gh workflow run ci.yml --ref "release-$v"
+          if [ -n "$FAILED" ]; then
+            echo "::error::OpenClaw $v: $FAILED failed; draft pull request opened"
+            exit 1
+          fi
+      - name: Open the pull request of a pushed release branch
+        if: steps.latest.outputs.orphan == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${{ steps.latest.outputs.latest }}
+          gh pr create --draft --head "release-$v" --title "openclaw: $v" \
+            --body "release-$v was pushed without a pull request. Check that it pins the whole release, then mark it ready."
           gh workflow run ci.yml --ref "release-$v"
       # A release pull request still open when main moves would merge an old
       # base (2026.10.3's branch predated a main commit and was rebased by
