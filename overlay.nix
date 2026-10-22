@@ -33,11 +33,17 @@
   # Every runtime plugin OpenClaw's catalogs list, locked at the release
   # (scripts/generate-plugin-locks.sh, run by release-watch for each release).
   releaseLocksDir = ./pins/runtime-plugin-locks;
-  releaseLocksFor = (builtins.fromJSON (builtins.readFile ./pins/runtime-plugin-locks/report.json)).openclawVersion;
+  releaseLocksReport = builtins.fromJSON (builtins.readFile ./pins/runtime-plugin-locks/report.json);
+  releaseLocksFor = releaseLocksReport.openclawVersion;
   releaseLocks =
     if releaseLocksFor != release.current
     then throw "openclaw-nix: pins/runtime-plugin-locks is for ${releaseLocksFor}, release.nix is ${release.current}; run scripts/generate-plugin-locks.sh ${release.current}"
     else import releaseLocksDir;
+  # The version in the release's package.json, which OpenClaw publishes its
+  # official plugins at and `openclaw --version` prints: the release itself, or
+  # for a correction release (2026.7.1-2) its base. The lock generator checked it
+  # against the release source.
+  packageVersion = releaseLocksReport.runtimePluginVersion;
   # Plugins outside those catalogs, pinned to the release by scripts/pin-runtime-plugins.py.
   pins = builtins.fromJSON (builtins.readFile ./pins/runtime-plugins.json);
 
@@ -127,6 +133,9 @@
   # OpenClaw's own packages carry the release in their names, after any layer
   # suffixes (openclaw-gateway-custom-fenced-<release>). Plugins with an
   # independent version scheme (third-party npm plugins) are not matched.
+  # Where a version ends in a store name: 2026.10.5 matches -2026.10.5-nix.3 but
+  # not -2026.10.51 or the correction release -2026.10.5-1.
+  versionEnd = "([^0-9.-]|-[^0-9]|$)";
   coreNamePattern = "^/nix/store/[a-z0-9]{32}-openclaw(-gateway(-[a-z]+)*|-runtime-plugin-(${lib.concatStringsSep "|" (runtimePluginIds ++ ["acpx" "codex"])}))?-(20[0-9]{2}\\.[0-9]+\\.[0-9]+)";
 in {
   openclaw-gateway = gateway;
@@ -159,7 +168,7 @@ in {
     };
 
   openclawNix = {
-    inherit release pins gateway compiledGateway mkRuntimePlugin buildRuntimePlugin runtimePluginIds;
+    inherit release packageVersion pins gateway compiledGateway mkRuntimePlugin buildRuntimePlugin runtimePluginIds;
     # The release's lock set ({id = lock;}) and the directory it was generated in.
     runtimePluginLocks = releaseLocks;
     runtimePluginLocksDir = releaseLocksDir;
@@ -191,7 +200,8 @@ in {
         nativeBuildInputs = [final.gnugrep final.gawk];
       } ''
         stale=$(grep -E '${coreNamePattern}' "$closure/store-paths" \
-          | grep -vE -- '-${lib.escapeRegex release.current}([^0-9.]|$)' || true)
+          | grep -vE -- '-openclaw-runtime-plugin-.*-${lib.escapeRegex packageVersion}${versionEnd}' \
+          | grep -vE -- '-${lib.escapeRegex release.current}${versionEnd}' || true)
         if [ -n "$stale" ]; then
           echo "OpenClaw packages from a release other than ${release.current}:" >&2
           printf '  %s\n' $stale >&2

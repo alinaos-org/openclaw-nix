@@ -1,0 +1,9 @@
+[
+  {"tag_name": "v2026.10.10-beta.3", "draft": false, "prerelease": true, "published_at": "2026-10-21T07:00:49Z"},
+  {"tag_name": "v2026.10.5", "draft": false, "prerelease": false, "published_at": "2026-10-18T21:47:25Z"},
+  {"tag_name": "v2026.10.4", "draft": false, "prerelease": false, "published_at": "2026-10-16T00:36:19Z"},
+  {"tag_name": "v2026.9.33", "draft": false, "prerelease": false, "published_at": "2026-10-19T10:39:22Z"},
+  {"tag_name": "v2026.10.11", "draft": true, "prerelease": false, "published_at": null},
+  {"tag_name": "linux-stable", "draft": false, "prerelease": false, "published_at": "2026-09-19T05:00:44Z"},
+  {"tag_name": "v2026.7.1-2", "draft": false, "prerelease": false, "published_at": "2026-07-04T10:00:00Z"}
+]
