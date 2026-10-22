@@ -110,6 +110,7 @@
     if builtins.hasAttr id cfg.bundledRuntimePluginPackages
     then cfg.bundledRuntimePluginPackages.${id}
     else buildGraftPlugin runtimePluginLocks.${id};
+  copyLayer = import ../../packages/copy-layer.nix {inherit lib;};
   graftGateway = gateway: excludedGraftIds: let
     upstreamBundledRuntimePlugins = gateway.passthru.upstreamBundledRuntimePlugins or [];
     effectiveGraftIds = lib.subtractLists (upstreamBundledRuntimePlugins ++ excludedGraftIds) graftIds;
@@ -135,6 +136,10 @@
           cp -a ${graftPluginFor id} "$runtime_graft_root"
           chmod -R u+w "$runtime_graft_root"
         fi
+        # The plugin's `openclaw` peer (built against pkgs.openclaw-gateway, an
+        # earlier layer) is this tree now, or Node resolves its SDK imports
+        # into that layer's copy of the module graph and keeps it in the closure.
+        ${copyLayer.adoptOpenClawLinks ''"$graft_root" "$runtime_graft_root"''}
         # Mirror the manifest into the manifest-only index dir the install
         # script builds from dist/extensions (it ran before this graft).
         mkdir -p "$out/lib/openclaw/extensions/${id}"
@@ -152,10 +157,13 @@
     # A copy layer (customize, hotfix) is already a copy: graft into it.
     # Anything else (the compiled gateway) gets its own copy rather than a
     # rebuild.
+    # Either way the grafted tree leads to no earlier tree, the plugins' peer
+    # included.
     else if gateway ? passthru.copyLayerOf
     then
       gateway.overrideAttrs (prev: {
         installPhase = prev.installPhase + "\n" + graft;
+        disallowedRequisites = lib.unique ((prev.disallowedRequisites or []) ++ copyLayer.pathsOf (copyLayer.treesOf pkgs.openclaw-gateway));
       })
     else
       pkgs.stdenvNoCC.mkDerivation {
@@ -163,13 +171,9 @@
         inherit (gateway) version;
         dontUnpack = true;
         phases = ["installPhase"];
-        installPhase =
-          ''
-            cp -a ${gateway}/. "$out"
-            chmod -R u+w "$out"
-          ''
-          + graft;
-        passthru = gateway.passthru or {};
+        disallowedRequisites = lib.unique (copyLayer.pathsOf (copyLayer.treesOf gateway ++ copyLayer.treesOf pkgs.openclaw-gateway));
+        installPhase = copyLayer.copyTree gateway + graft;
+        passthru = (gateway.passthru or {}) // {copyLayerOf = gateway;};
         meta = gateway.meta or {};
       };
   gatewayFor = inst:

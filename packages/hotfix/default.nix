@@ -1,6 +1,7 @@
 # Post-build fixes for bugs upstream has not fixed yet, applied to a copy of the
 # built gateway tree. A real copy (not symlinks) keeps worker-relative imports
-# and bundled-plugin trust boundaries intact.
+# and bundled-plugin trust boundaries intact; the copy is self-contained
+# (../copy-layer.nix).
 #
 # Each patch-*.mjs checks the exact code it replaces, found exactly once, and a
 # matching test-*.mjs exercises the result; a release that moves or fixes that
@@ -19,6 +20,7 @@
   upstreamVersion = lib.head (lib.splitString "-" gateway.passthru.upstreamVersion);
   node = "${nodejs_24}/bin/node";
   root = "$out/lib/openclaw";
+  copyLayer = import ../copy-layer.nix {inherit lib;};
 in
   assert lib.assertMsg (lib.versionAtLeast upstreamVersion "2026.10.1")
   "openclaw-nix hotfixes are qualified from 2026.10.1 (got ${upstreamVersion})";
@@ -27,9 +29,10 @@ in
       version = "${gateway.version}-${revision}";
       dontUnpack = true;
       phases = ["installPhase"];
+      # The finished tree leads to no tree it was copied from.
+      disallowedRequisites = copyLayer.pathsOf (copyLayer.treesOf gateway);
       installPhase = ''
-        cp -a ${gateway}/. "$out"
-        chmod -R u+w "$out"
+        ${copyLayer.copyTree gateway}
 
         # MCP: observe close() rejections so a failed transport close cannot
         # surface as an unhandled rejection and stop the gateway.

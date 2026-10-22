@@ -257,6 +257,49 @@
           touch "$root/.customize-check"
         '';
       };
+      # A layer over a finished tree fails its build if the result still leads
+      # to a tree it came from (packages/copy-layer.nix). Evaluation fails if a
+      # layer, stacked as a host stacks them, stops naming those trees: the
+      # build check would then pass vacuously.
+      copy-layers = let
+        customized = self.checks.${system}.customize;
+        hotfixedCustom = pkgs.openclawNix.hotfix customized;
+        fenced = gateway:
+          pkgs.openclawNix.stateFence {
+            inherit gateway;
+            stateDir = "/srv/openclaw-prod";
+          };
+        problems = lib.concatLists (lib.mapAttrsToList (name: {
+          layer,
+          earlier,
+        }:
+          lib.optional (lib.sort lib.lessThan layer.disallowedRequisites != lib.sort lib.lessThan (map toString earlier))
+          "${name} does not refuse ${toString (map (t: t.name) earlier)}") {
+          customize = {
+            layer = customized;
+            earlier = [p.gateway];
+          };
+          hotfix = {
+            layer = p.gateway-hotfixed;
+            earlier = [p.gateway];
+          };
+          hotfix-over-customize = {
+            layer = hotfixedCustom;
+            earlier = [customized p.gateway];
+          };
+          fence-over-hotfix-over-customize = {
+            layer = fenced hotfixedCustom;
+            earlier = [customized p.gateway];
+          };
+          fence-over-source-build = {
+            layer = fenced p.gateway;
+            earlier = [];
+          };
+        });
+      in
+        if problems == []
+        then pkgs.runCommand "openclaw-copy-layers" {} "touch $out"
+        else throw "copy layers: ${lib.concatStringsSep "; " problems}";
       # The skill assembled with a fixture host profile: frontmatter, script syntax,
       # and every relative link and anchor in its documents.
       upgrade-skill = let

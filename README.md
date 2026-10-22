@@ -93,6 +93,12 @@ pkgs.openclawNix.stateFence {                         # a fenced entrypoint
 pkgs.openclawNix.checkSingleRelease { roots = [config.system.build.toplevel]; }
 ```
 
+Each layer over a finished tree (customize, hotfix, the workstation module's plugin
+graft) is a self-contained copy (`packages/copy-layer.nix`): links and text that pointed
+into the tree it copied point into the copy, and its build fails if the result still
+leads to an earlier tree. A fenced gateway links its own tree and no other, so its
+closure holds one tree however many layers made it.
+
 ## Workstations: several gateways for one desktop user
 
 `nixosModules.workstation` runs gateways as systemd **user** units of one desktop user,
