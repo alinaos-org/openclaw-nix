@@ -12,7 +12,7 @@
   stdenvNoCC,
   gateway,
   # Bump when the patch set changes for the same gateway.
-  revision ? "hotfix.5",
+  revision ? "hotfix.6",
 }: let
   # A correction release (2026.7.1-2) is its base release's code, so the patches'
   # release gates read the base.
@@ -84,6 +84,12 @@ in
         ${node} ${./patch-plugin-runtime-owner-generation.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-plugin-runtime-owner-generation.mjs} "${root}"
 
+        # Claude CLI runs: build the loopback MCP server entry without alwaysLoad for
+        # the agents in OPENCLAW_CLAUDE_DEFERRED_LOOPBACK_AGENTS, so Claude Code defers
+        # their OpenClaw tools behind ToolSearch.
+        ${node} ${./patch-claude-deferred-loopback-tools.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-claude-deferred-loopback-tools.mjs} "${root}"
+
         # Configured plugins: never download a configured plugin that Nix does not
         # provide (doctor --fix, update, model selection); report it instead.
         # OPENCLAW_NIX_ALLOW_RUNTIME_PLUGIN_INSTALL=1 restores upstream's installs.
@@ -115,6 +121,7 @@ in
             pluginRuntimeOwnerGeneration = "openclaw-nix-plugin-runtime-owner-generation-v1";
             missingPluginAutoInstall = "openclaw-nix-missing-plugin-auto-install-v1";
             mcpOAuthIssuerBinding = "openclaw-nix-mcp-oauth-issuer-binding-v1";
+            claudeDeferredLoopbackTools = "openclaw-nix-claude-deferred-loopback-tools-v1";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
@@ -131,6 +138,7 @@ in
             missingPluginAutoInstall = ./test-missing-plugin-auto-install.mjs;
             mcpOAuthIssuerBinding = ./test-mcp-oauth-issuer-binding.mjs;
             mcpSdkFloor = ./test-mcp-sdk-floor.mjs;
+            claudeDeferredLoopbackTools = ./test-claude-deferred-loopback-tools.mjs;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;

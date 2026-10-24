@@ -299,4 +299,26 @@
     upstreamStatus = "not applicable: a floor on a dependency, not an upstream bug";
     removeWhen = "OpenClaw's lockfile itself requires @modelcontextprotocol/sdk >= 1.31.0 for every package that depends on it; until then raise the floor for a later SDK advisory rather than drop it.";
   };
+
+  claudeDeferredLoopbackTools = {
+    patch = ./patch-claude-deferred-loopback-tools.mjs;
+    marker = "openclaw-nix-claude-deferred-loopback-tools-v1";
+    since = "2026.10.6";
+    fixes = ''
+      Claude CLI runs: the loopback MCP server that carries OpenClaw's tools is marked
+      `alwaysLoad: true`, so Claude Code sends every tool's full schema on every turn
+      instead of deferring it behind ToolSearch, as it does for other MCP servers. On
+      nova that is 27-39 tools and 30-55K characters of schema per turn; a one-word
+      canary on a Merlin lane wrote 78,534 prompt-cache tokens. For the agents listed in
+      OPENCLAW_CLAUDE_DEFERRED_LOOPBACK_AGENTS the entry is built without `alwaysLoad`,
+      so Claude Code's default tool search defers those tools; OpenClaw's Claude prompt
+      already tells the model to load a deferred tool with ToolSearch first. Unset, the
+      variable changes nothing. A trial switch, not a bug fix: it is here because the
+      prepare step is the only place the entry is built.
+    '';
+    test = ./test-claude-deferred-loopback-tools.mjs;
+    upstream = null;
+    upstreamStatus = "not reported: upstream's choice, not a bug";
+    removeWhen = "Upstream makes the loopback server's alwaysLoad configurable (or drops it), or the trial ends without adoption.";
+  };
 }
