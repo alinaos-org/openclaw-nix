@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.8";
   expectedIntegrity = "";
   packageName = "@openclaw/qwen-provider";
-  version = "2026.10.6";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/qwen-provider/-/qwen-provider-2026.10.6.tgz";
-  npmIntegrity = "sha512-v5lmOkIDJ45gad6unGgP3mZZ6325a4lpN0iNDRmOzm2qsIYsRx0RqiB4sLkEAeya+1k7xNo3+af/l2Af9pR1qA==";
-  npmShasum = "ab66a884b711bac52b14035a09df862193437f9d";
-  nixHash = "sha256-nCvvC5VEYJ8ixcTzeYxaa22q4pB3a212b5JD5yDetOA=";
+  version = "2026.10.7";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/qwen-provider/-/qwen-provider-2026.10.7.tgz";
+  npmIntegrity = "sha512-GqOOkB40KYVYlRcoliEYkM8am7AGNE+55TzfWGxezSCSWTNfu14QUS9AWNysudZNS2O+PkcVo3oy9yI25mMtKQ==";
+  npmShasum = "6a0484d66e0273d6de3bb2b094677787bef926d8";
+  nixHash = "sha256-LMUtszCyMdXPG80GvTEPscPz24+HIGSPHcWNp6uLXSM=";
   dependencyMode = "none";
   manifestId = "qwen";
-  openclawCompat = ">=2026.10.6";
-  peerOpenClaw = ">=2026.10.6";
+  openclawCompat = ">=2026.10.7";
+  peerOpenClaw = ">=2026.10.7";
   runtimeExtensions = [
     "./dist/index.js"
   ];
