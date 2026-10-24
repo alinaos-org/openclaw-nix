@@ -12,7 +12,7 @@
   stdenvNoCC,
   gateway,
   # Bump when the patch set changes for the same gateway.
-  revision ? "hotfix.6",
+  revision ? "hotfix.7",
 }: let
   # A correction release (2026.7.1-2) is its base release's code, so the patches'
   # release gates read the base.
@@ -84,9 +84,10 @@ in
         ${node} ${./patch-plugin-runtime-owner-generation.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-plugin-runtime-owner-generation.mjs} "${root}"
 
-        # Claude CLI runs: build the loopback MCP server entry without alwaysLoad for
-        # the agents in OPENCLAW_CLAUDE_DEFERRED_LOOPBACK_AGENTS, so Claude Code defers
-        # their OpenClaw tools behind ToolSearch.
+        # Claude CLI runs: for the agents in OPENCLAW_CLAUDE_DEFERRED_LOOPBACK_AGENTS,
+        # build the loopback MCP server entry without alwaysLoad and (from 2026.10.7)
+        # keep Claude Code's ToolSearch in the run's native tools, so Claude Code
+        # defers their OpenClaw tools behind it.
         ${node} ${./patch-claude-deferred-loopback-tools.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-claude-deferred-loopback-tools.mjs} "${root}"
 
@@ -121,7 +122,7 @@ in
             pluginRuntimeOwnerGeneration = "openclaw-nix-plugin-runtime-owner-generation-v1";
             missingPluginAutoInstall = "openclaw-nix-missing-plugin-auto-install-v1";
             mcpOAuthIssuerBinding = "openclaw-nix-mcp-oauth-issuer-binding-v1";
-            claudeDeferredLoopbackTools = "openclaw-nix-claude-deferred-loopback-tools-v1";
+            claudeDeferredLoopbackTools = "openclaw-nix-claude-deferred-loopback-tools-v2";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
