@@ -44,6 +44,16 @@ the branch holds only the watcher's own commit; anything else it leaves for a pe
 to date with it. The code-owner ruleset is disabled until there is a second
 maintainer, so arm auto-merge with a rebase and the pull request lands when CI is
 green. GitHub refuses to arm one that is already mergeable; merge that one directly.
+
+A release pull request whose only commit is the watcher's stays `BLOCKED` with auto-merge
+armed and every dispatched check green (2026.10.7). Its `pull_request` CI run waits for
+approval (`action_required`), and the checks of the dispatched run never attach to the
+pull request, so the required checks look missing. The ruleset also asks a person to
+approve changes nobody is attributed for. Approve the run
+(`gh api -X POST repos/<owner>/<repo>/actions/runs/<id>/approve`), which reruns CI on the
+`pull_request` event (about 30 minutes), and approve the pull request after reviewing it.
+Earlier releases hid both because a person had pushed a commit to the branch.
+
 Merging tags `<release>-r1` (the `tag-release` workflow). A later openclaw-nix fix on the same release is tagged
 `-r2` and up by dispatching that workflow. Hosts that pin tags move to the new tag
 instead of running `nix flake update`.
