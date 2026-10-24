@@ -500,10 +500,11 @@ An entry with no patch is a check on the final tree, such as the
 `checks.hotfix-register` fails evaluation when a patch or test file is unregistered,
 an entry lacks a test reason, an upstream status or a removal condition, or the
 package's advertised markers (`passthru.hotfixes`) differ from the register. The
-register is also `passthru.hotfixRegister`. As of 2026.10.6 (`hotfix.6`) there are
+register is also `passthru.hotfixRegister`. As of 2026.10.7 (`hotfix.7`) there are
 fourteen patches and one check without a patch (the MCP SDK floor). One of them is a
-per-agent switch rather than a fix (the Claude loopback tools' deferral, off unless
-`OPENCLAW_CLAUDE_DEFERRED_LOOPBACK_AGENTS` lists the agent). Three are with
+per-agent switch rather than a fix (the Claude loopback tools' deferral and, from
+2026.10.7, the ToolSearch it needs, off unless `OPENCLAW_CLAUDE_DEFERRED_LOOPBACK_AGENTS`
+lists the agent). Three are with
 upstream (the agent-database retry and the read-only corpus revision, both fixed on
 OpenClaw's main, and the plugin runtime owner, an open pull request), and one (the Codex stale-registration edit inside
 `patch-mcp-close-rejection.mjs`) has no test.

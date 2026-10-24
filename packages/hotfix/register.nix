@@ -302,7 +302,7 @@
 
   claudeDeferredLoopbackTools = {
     patch = ./patch-claude-deferred-loopback-tools.mjs;
-    marker = "openclaw-nix-claude-deferred-loopback-tools-v1";
+    marker = "openclaw-nix-claude-deferred-loopback-tools-v2";
     since = "2026.10.6";
     fixes = ''
       Claude CLI runs: the loopback MCP server that carries OpenClaw's tools is marked
@@ -312,13 +312,19 @@
       canary on a Merlin lane wrote 78,534 prompt-cache tokens. For the agents listed in
       OPENCLAW_CLAUDE_DEFERRED_LOOPBACK_AGENTS the entry is built without `alwaysLoad`,
       so Claude Code's default tool search defers those tools; OpenClaw's Claude prompt
-      already tells the model to load a deferred tool with ToolSearch first. Unset, the
-      variable changes nothing. A trial switch, not a bug fix: it is here because the
-      prepare step is the only place the entry is built.
+      already tells the model to load a deferred tool with ToolSearch first. From
+      2026.10.7 ordinary Claude turns are mediated and start Claude with `--tools ""`,
+      which removes ToolSearch, and Claude Code defers nothing without it (it also puts
+      every configured MCP server's tools on this server); for the same agents a run
+      with no native tools gets ToolSearch as its one native tool, in the run's own
+      list so OpenClaw's permission hook allows it, and that ToolSearch skips the exec
+      approval plan (a read-only or allowlist session would deny every search).
+      Unset, the variable changes nothing. A trial switch, not a bug fix: it is here because the prepare step is
+      the only place the entry and the run's tool list are built.
     '';
     test = ./test-claude-deferred-loopback-tools.mjs;
     upstream = null;
     upstreamStatus = "not reported: upstream's choice, not a bug";
-    removeWhen = "Upstream makes the loopback server's alwaysLoad configurable (or drops it), or the trial ends without adoption.";
+    removeWhen = "Upstream makes the loopback server's alwaysLoad and the mediated runs' ToolSearch configurable (or defers by default), or the trial ends without adoption.";
   };
 }
