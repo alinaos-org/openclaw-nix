@@ -20,6 +20,9 @@
   # The gateway's own Node, which the patched tree runs on.
   node = "${gateway.passthru.node}/bin/node";
   root = "$out/lib/openclaw";
+  # This test invokes its sibling patcher; retain their directory in the store
+  # for both the initial build and downstream plugin-graft rechecks.
+  agentScopedCompactionTest = "${./.}/${baseNameOf ./test-agent-scoped-compaction-model.mjs}";
   copyLayer = import ../copy-layer.nix {inherit lib;};
 in
   assert lib.assertMsg (lib.versionAtLeast upstreamVersion "2026.10.1")
@@ -110,7 +113,7 @@ in
         # agents.defaults override, and carry agentId into the two retry/call sites
         # that used to drop it when rebuilding their own params object.
         ${node} ${./patch-agent-scoped-compaction-model.mjs} "${root}" "${upstreamVersion}"
-        ${node} ${./test-agent-scoped-compaction-model.mjs} "${root}"
+        ${node} ${agentScopedCompactionTest} "${root}"
       '';
       passthru =
         (gateway.passthru or {})
@@ -148,7 +151,7 @@ in
             mcpOAuthIssuerBinding = ./test-mcp-oauth-issuer-binding.mjs;
             mcpSdkFloor = ./test-mcp-sdk-floor.mjs;
             claudeDeferredLoopbackTools = ./test-claude-deferred-loopback-tools.mjs;
-            agentScopedCompactionModel = ./test-agent-scoped-compaction-model.mjs;
+            agentScopedCompactionModel = agentScopedCompactionTest;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;
