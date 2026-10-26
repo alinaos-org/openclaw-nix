@@ -12,7 +12,7 @@
   stdenvNoCC,
   gateway,
   # Bump when the patch set changes for the same gateway.
-  revision ? "hotfix.7",
+  revision ? "hotfix.8",
 }: let
   # A correction release (2026.7.1-2) is its base release's code, so the patches'
   # release gates read the base.
@@ -104,6 +104,13 @@ in
         ${node} ${./test-mcp-oauth-issuer-binding.mjs} "${root}"
         # Every @modelcontextprotocol/sdk copy has that binding (1.31.0 or later).
         ${node} ${./test-mcp-sdk-floor.mjs} "${root}"
+
+        # Compaction and the pre-compaction memory flush: resolve
+        # agents.entries.<id>.compaction[.memoryFlush].model ahead of the shared
+        # agents.defaults override, and carry agentId into the two retry/call sites
+        # that used to drop it when rebuilding their own params object.
+        ${node} ${./patch-agent-scoped-compaction-model.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-agent-scoped-compaction-model.mjs}
       '';
       passthru =
         (gateway.passthru or {})
@@ -123,6 +130,7 @@ in
             missingPluginAutoInstall = "openclaw-nix-missing-plugin-auto-install-v1";
             mcpOAuthIssuerBinding = "openclaw-nix-mcp-oauth-issuer-binding-v1";
             claudeDeferredLoopbackTools = "openclaw-nix-claude-deferred-loopback-tools-v2";
+            agentScopedCompactionModel = "openclaw-nix-agent-scoped-compaction-model-v1";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
@@ -140,6 +148,7 @@ in
             mcpOAuthIssuerBinding = ./test-mcp-oauth-issuer-binding.mjs;
             mcpSdkFloor = ./test-mcp-sdk-floor.mjs;
             claudeDeferredLoopbackTools = ./test-claude-deferred-loopback-tools.mjs;
+            agentScopedCompactionModel = ./test-agent-scoped-compaction-model.mjs;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;
