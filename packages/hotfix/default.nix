@@ -110,7 +110,7 @@ in
         # agents.defaults override, and carry agentId into the two retry/call sites
         # that used to drop it when rebuilding their own params object.
         ${node} ${./patch-agent-scoped-compaction-model.mjs} "${root}" "${upstreamVersion}"
-        ${node} ${./test-agent-scoped-compaction-model.mjs}
+        ${node} ${./test-agent-scoped-compaction-model.mjs} "${root}"
       '';
       passthru =
         (gateway.passthru or {})
