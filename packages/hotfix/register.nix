@@ -278,6 +278,38 @@
     removeWhen = "An openclaw/openclaw release whose MCP OAuth provider itself treats client information and tokens without an issuer as absent.";
   };
 
+  agentScopedCompactionModel = {
+    patch = ./patch-agent-scoped-compaction-model.mjs;
+    marker = "openclaw-nix-agent-scoped-compaction-model-v1";
+    since = "2026.10.7";
+    fixes = ''
+      Compaction and the pre-compaction memory flush read only
+      agents.defaults.compaction[.memoryFlush].model; AgentEntryBaseSchema has no
+      per-agent compaction field at all, so an agent whose primary model is denylisted
+      to one provider (an Abliteration-only agent that must never reach
+      Anthropic/OpenAI/Google) still summarizes and flushes memory through the shared
+      default model. Two call sites also dropped the caller's agentId when they
+      rebuilt a fresh params object for a retry: the embedded-agent-runner's
+      model-fallback retry path (resolveEmbeddedCompactionTarget's second call site,
+      compact-Cn8Yr-Sj.mjs and its two worker-pool duplicates) and the memory flush's
+      own model resolution (prepareMemoryFlushAttempt, memory-flush-prepare-Dd4LjrXk.mjs
+      and its worker-pool duplicate), so even a config-level override would not have
+      reached them. Adds agents.entries.<id>.compaction.model and
+      agents.entries.<id>.compaction.memoryFlush.model to AgentEntryBaseSchema (the same
+      shape the existing defaults-level fields use) and resolves them ahead of the
+      shared default in resolveEmbeddedCompactionTarget and resolveMemoryFlushTiming,
+      in every chunk carrying a copy of either function; threads agentId into the two
+      retry/call sites that dropped it. A locked model selection is unaffected:
+      resolveEmbeddedCompactionTarget already skips every override, default or
+      per-agent, once modelSelectionLocked is set. Other agents' shared defaults are
+      read exactly as before when no per-agent override is configured.
+    '';
+    test = ./test-agent-scoped-compaction-model.mjs;
+    upstream = null;
+    upstreamStatus = "not reported";
+    removeWhen = "Upstream carries a native per-agent compaction/memory-flush model override through every resolution and retry path.";
+  };
+
   # Not a patch: a check on the final tree, rerun after a plugin graft.
   mcpSdkFloor = {
     patch = null;
