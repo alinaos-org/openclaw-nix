@@ -293,16 +293,32 @@
       model-fallback retry path (resolveEmbeddedCompactionTarget's second call site,
       compact-Cn8Yr-Sj.mjs and its two worker-pool duplicates) and the memory flush's
       own model resolution (prepareMemoryFlushAttempt, memory-flush-prepare-Dd4LjrXk.mjs
-      and its worker-pool duplicate), so even a config-level override would not have
-      reached them. Adds agents.entries.<id>.compaction.model and
-      agents.entries.<id>.compaction.memoryFlush.model to AgentEntryBaseSchema (the same
-      shape the existing defaults-level fields use) and resolves them ahead of the
-      shared default in resolveEmbeddedCompactionTarget and resolveMemoryFlushTiming,
-      in every chunk carrying a copy of either function; threads agentId into the two
-      retry/call sites that dropped it. A locked model selection is unaffected:
+      and its two worker-pool duplicates, sqlite-store.worker.mjs and
+      worker-chunk-BOOgs202.mjs), so even a config-level override would not have
+      reached them, and the one that did (sqlite-store.worker.mjs) used the run's bare
+      possibly-undefined agentId instead of the resolveDefaultAgentId(cfg) fallback the
+      rest of that same function already applies. resolveMemoryFlushPlanForRun's own
+      final model line also let a tools-arm plugin plan's own model, or any file-arm
+      plan at all, override every tier unconditionally, so the per-agent override and
+      even the shared default could never reach a flush the file arm or a model-naming
+      plugin owned.
+
+      Adds agents.entries.<id>.compaction.model and
+      agents.entries.<id>.compaction.memoryFlush.model (model only; the schema admits
+      no per-agent .enabled) to AgentEntryBaseSchema -- both the shared chunk and the
+      one config-doctor bundle that inlines its own full copy instead of importing it
+      (feishu's) -- and resolves them ahead of the shared default in
+      resolveEmbeddedCompactionTarget and resolveMemoryFlushTiming, and ahead of every
+      tier (shared default and the resolution's own plan) in
+      resolveMemoryFlushPlanForRun's final model line, in every chunk carrying a copy
+      of any of the three; threads agentId, defaulted the same way the rest of each
+      function already defaults it, into every retry/call site that dropped it,
+      including the sqlite-store.worker.mjs and worker-chunk-BOOgs202.mjs copies of
+      prepareMemoryFlushAttempt. A locked model selection is unaffected:
       resolveEmbeddedCompactionTarget already skips every override, default or
-      per-agent, once modelSelectionLocked is set. Other agents' shared defaults are
-      read exactly as before when no per-agent override is configured.
+      per-agent, once modelSelectionLocked is set. Other agents' shared defaults, and
+      every plugin-owned or file-arm model when no per-agent override is configured,
+      are read exactly as before.
     '';
     test = ./test-agent-scoped-compaction-model.mjs;
     upstream = null;
