@@ -1,28 +1,32 @@
 // Two tiers. Part 1 builds bounded fixtures that reproduce every anchor the patch targets
 // (verified byte-for-byte against the installed 2026.10.7-nix.4-hotfix.7 store before this
-// test was written), runs the real patch script against them, then imports the patched
+// test was written, and unchanged in 2026.10.8), runs the real patch script against them, then imports the patched
 // fixtures and drives the real patched functions with synthetic config: no OpenClaw boot, no
 // model/API calls. This proves the patch's text substitutions apply and, for the readable
 // chunk and its "Ot"-named worker-pool duplicate (sqlite-store.worker.mjs), that the resulting
 // logic behaves, including the three single-purpose worker chunks and the two previously-
-// unpatched copies (sqlite-store.worker.mjs's inlined schema, worker-chunk-BOOgs202.mjs's
+// unpatched copies (sqlite-store.worker.mjs's inlined schema, a worker-chunk's
 // prepareMemoryFlushAttempt) as a structural check: the patch's anchor is present exactly
-// once and the marker lands after patching.
+// once and the marker lands after patching. The fixtures carry chunk hashes no release ever
+// shipped, because the patch finds its targets by content, never by filename; further runs
+// prove it fails loudly on a second application, on a target that disappeared, on an extra
+// copy of a target and on a target in an unexpected chunk.
 //
 // Part 2 drives the actual packaged, already-patched gateway tree at `root` (the argument
 // every other hotfix test in this package already takes): a real AgentEntryBaseSchema parse
 // (native schema, not a hand-copied shape) and the real resolveMemoryFlushPlanForRun from
-// memory-flush-plan-C2Zwg3cn.mjs, imported directly, driven through every precedence
+// the memory-flush-plan-*.mjs chunk, imported directly, driven through every precedence
 // scenario -- the tools-arm plan with and without its own model, the file-arm plan, with and
 // without a per-agent override, and with no memory plugin registered at all -- with a fake
 // memory provider registered through the real plugin-registration-context scope
 // (withPluginRegistrationContext), the same lightweight scope OpenClaw itself uses to bind a
 // plugin's own registration calls; it carries no scheduler, HTTP route or session side
 // effects, so it is safe to drive directly outside a running gateway. The worker-pool
-// duplicates (sqlite-store.worker.mjs, worker-chunk-CcAJ0oHc.mjs) cannot be imported this way
+// duplicates (sqlite-store.worker.mjs, a worker/worker-chunk-*.mjs) cannot be imported this way
 // standalone -- both assume a live worker_threads/bundler-managed init graph the plain ESM
 // loader never runs -- so Part 2 checks their patched anchors structurally against the real
-// file text instead.
+// file text instead. Every real chunk is located by what it contains (and every import by its
+// export clause), not by its hashed name.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -45,6 +49,19 @@ function write(relPath, content) {
   fs.writeFileSync(path.join(fixtureDist, relPath), content);
 }
 
+// Hashes no release has shipped: the patch must find every target by content alone.
+const F = {
+  schema: "zod-schema.core-Fx7Schm1.mjs",
+  target: "context-engine-maintenance-Fx7Trgt1.mjs",
+  retry: "compact-Fx7Rtry1.mjs",
+  plan: "memory-flush-plan-Fx7Plan1.mjs",
+  prepare: "memory-flush-prepare-Fx7Prep1.mjs",
+  workerTarget: "worker/worker-chunk-Fx7Trgt2.mjs",
+  workerRetry: "worker/worker-chunk-Fx7Rtry2.mjs",
+  workerPlan: "worker/worker-chunk-Fx7Plan2.mjs",
+  workerPrepare: "worker/worker-chunk-Fx7Prep2.mjs",
+};
+
 // --- Schema fixture: the exact two-line anchor the patch inserts into AgentEntryBaseSchema ---
 const schemaFixtureBody =
   "const AgentEntryBaseSchema = strictObject({\n" +
@@ -52,7 +69,7 @@ const schemaFixtureBody =
   "\tparams: record(string(), unknown()).optional(),\n" +
   "\truntime: AgentRuntimeSchema\n" +
   "});\n";
-write("zod-schema.core-CTGi3UvT.mjs", schemaFixtureBody);
+write(F.schema, schemaFixtureBody);
 // The feishu config-doctor bundle carries its own full copy of the same schema instead of
 // importing the shared chunk (every other config-doctor bundle imports it); never executed
 // here, only checked structurally after patching.
@@ -60,7 +77,7 @@ write("config-doctor/feishu.js", schemaFixtureBody);
 
 // --- Readable compaction-target chunk (verbatim resolveEmbeddedCompactionTarget / resolveCompactionTargetRuntime) ---
 write(
-  "context-engine-maintenance-DNdgNa58.mjs",
+  F.target,
   [
     "function resolveEmbeddedCompactionTarget(params) {",
     "\tconst provider = params.provider?.trim() || params.defaultProvider;",
@@ -114,11 +131,11 @@ write(
   ].join("\n"),
 );
 
-// --- Readable fallback/retry call site (compact-Cn8Yr-Sj.mjs's "compactPrepared") ---
+// --- Readable fallback/retry call site (compact-*.mjs's "compactPrepared") ---
 write(
-  "compact-Cn8Yr-Sj.mjs",
+  F.retry,
   [
-    'import { resolveEmbeddedCompactionTarget } from "./context-engine-maintenance-DNdgNa58.mjs";',
+    `import { resolveEmbeddedCompactionTarget } from "./${F.target}";`,
     'const DEFAULT_PROVIDER = "openai";',
     'const DEFAULT_MODEL = "gpt-6-astra";',
     "async function compactPreparedRetry(params) {",
@@ -143,7 +160,7 @@ write(
 // two new final-model anchors land on the same anchors the real file carries, and the per-agent
 // override's precedence over both arms is behaviorally provable here too, not only in Part 2. ---
 write(
-  "memory-flush-plan-C2Zwg3cn.mjs",
+  F.plan,
   [
     "const DEFAULT_MEMORY_FLUSH_SOFT_TOKENS = 4000;",
     "const DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES = 2097152;",
@@ -204,14 +221,14 @@ write(
   ].join("\n"),
 );
 
-// --- Readable memory-flush model consumption call site (memory-flush-prepare-Dd4LjrXk.mjs).
+// --- Readable memory-flush model consumption call site (memory-flush-prepare-*.mjs).
 // A local resolveDefaultAgentId stub stands in for the real agent-scope-config resolver
 // already imported there; the point under test is only that the real call site now falls
 // back to it exactly as the rest of the function already does two lines below. ---
 write(
-  "memory-flush-prepare-Dd4LjrXk.mjs",
+  F.prepare,
   [
-    'import { resolveMemoryFlushPlanForRun } from "./memory-flush-plan-C2Zwg3cn.mjs";',
+    `import { resolveMemoryFlushPlanForRun } from "./${F.plan}";`,
     'function resolveDefaultAgentId(cfg) { return cfg?.agents?.defaultAgentId; }',
     "async function prepareMemoryFlushAttempt(params) {",
     "\tconst resolution = resolveMemoryFlushPlanForRun({",
@@ -269,26 +286,66 @@ write(
 // readable and sqlite-store.worker.mjs fixtures above already prove the transformed logic
 // behaves. Never imported. ---
 write(
-  "worker/worker-chunk-CewA2kek.mjs",
+  F.workerTarget,
   "function resolveEmbeddedCompactionTarget(e){let t=e.provider,i=e.modelSelectionLocked?void 0:e.config?.agents?.defaults?.compaction?.model?.trim(),assembleTarget=()=>{};return i}\n",
 );
 write(
-  "worker/worker-chunk-CBzfKKNd.mjs",
+  F.workerRetry,
   "const G=`openai`,W=`gpt-6-astra`;\nfunction Qt(x){return x}\nasync function compactPrepared(s){return Qt({config:s.config,provider:s.provider,modelId:s.model,authProfileId:s.authProfileId,modelSelectionLocked:s.modelSelectionLocked,defaultProvider:G,defaultModel:W})}\n",
 );
 write(
-  "worker/worker-chunk-CcAJ0oHc.mjs",
+  F.workerPlan,
   "function resolveMemoryFlushTiming(e){let n=e.cfg?.agents?.defaults?.compaction?.memoryFlush;if(n?.enabled===!1)return null;let r=0,i=0,a=0;let c=n?.model?.trim()||void 0;return{softThresholdTokens:r,forceFlushTranscriptBytes:i,reserveTokensFloor:a,...c?{model:c}:{}}}function isToolsMemoryFlushPlan(e){return e.persistenceToolNames!==void 0}function resolveMemoryFlushPlan(e){return null}function resolveMemoryFlushPlanForRun(e){let t=resolveMemoryFlushTiming(e);if(!t)return null;let n=resolveMemoryFlushPlan(e);if(n&&isToolsMemoryFlushPlan(n.plan)&&!n.selectedSlotOwner)return null;if(!n)return null;if(isToolsMemoryFlushPlan(n.plan)){}return{...n,plan:{...n.plan,softThresholdTokens:n.plan.softThresholdTokens??t.softThresholdTokens,forceFlushTranscriptBytes:n.plan.forceFlushTranscriptBytes??t.forceFlushTranscriptBytes,reserveTokensFloor:n.plan.reserveTokensFloor??t.reserveTokensFloor,model:isToolsMemoryFlushPlan(n.plan)?n.plan.model??t.model:n.plan.model}}}function memoryFlushResultIsSilent(e){return false}\n",
 );
 // Third worker-pool duplicate of prepareMemoryFlushAttempt; `a` stands in for the chunk's own
 // resolveDefaultAgentId import alias. Never imported.
 write(
-  "worker/worker-chunk-BOOgs202.mjs",
-  "function a(cfg){return cfg?.agents?.defaultAgentId}\nfunction k(x){return x}\nasync function prepareMemoryFlushAttempt(e){let t=k({cfg:e.cfg,nowMs:Date.now(),contextWindowTokens:e.contextWindowTokens});if(!t)return null;return t}\n",
+  F.workerPrepare,
+  "function a(cfg){return cfg?.agents?.defaultAgentId}\nfunction k(x){return x}\nasync function prepareMemoryFlushAttempt(e){let t=k({cfg:e.cfg,nowMs:Date.now(),contextWindowTokens:e.contextWindowTokens});if(!t)return null;let{sessionKey:r,sessionEntry:i,followupRun:o}=e;let s=o.run.agentId??a(e.cfg),c=0;return t}\n",
 );
+
+// --- Failure modes, each on a fresh copy of the unpatched fixtures: the patch must refuse a
+// target that disappeared, an extra copy of a target, and a target in an unexpected chunk. ---
+const runPatch = (target) => execFileSync(process.execPath, [patchScript, target, "2026.10.7"], { stdio: "pipe", encoding: "utf8" });
+const expectPatchFailure = (label, mutate, pattern) => {
+  const copy = fs.mkdtempSync(path.join(os.tmpdir(), "oc-compaction-hotfix-neg-"));
+  fs.cpSync(fixtureRoot, copy, { recursive: true });
+  mutate(path.join(copy, "dist"));
+  let stderr = "";
+  assert.throws(() => {
+    try {
+      runPatch(copy);
+    } catch (error) {
+      stderr = String(error.stderr);
+      throw error;
+    }
+  }, `${label}: the patch applied anyway`);
+  assert.match(stderr, pattern, `${label}: the patch failed for another reason:\n${stderr}`);
+  assert.equal(fs.existsSync(path.join(copy, ".agent-scoped-compaction-model-hotfix.json")), false, `${label}: a refused run wrote a receipt`);
+  fs.rmSync(copy, { recursive: true, force: true });
+  console.log(`ok - ${label}: patch refused`);
+};
+expectPatchFailure("target disappeared", (d) => fs.rmSync(path.join(d, F.target)), /compaction-target-readable: expected 1 anchor\(s\) in context-engine-maintenance-\*\.mjs, found 0; found in nowhere/);
+expectPatchFailure("extra worker copy", (d) => fs.copyFileSync(path.join(d, F.workerPlan), path.join(d, "worker/worker-chunk-Fx7Dupe9.mjs")), /memory-flush-timing-worker-chunk: expected 1 anchor\(s\) in worker\/worker-chunk-\*\.mjs, found 2/);
+expectPatchFailure("unexpected chunk", (d) => {
+  fs.mkdirSync(path.join(d, "agents"));
+  fs.renameSync(path.join(d, F.plan), path.join(d, "agents/memory-flush-plan-Fx7Plan1.mjs"));
+}, /memory-flush-timing-readable: anchor found in unexpected file agents\/memory-flush-plan-Fx7Plan1\.mjs/);
+expectPatchFailure("re-minified alias", (d) => {
+  const file = path.join(d, F.workerPrepare);
+  fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("??a(e.cfg)", "??b(e.cfg)"));
+}, /memory-flush-prepare-call-worker-chunk: worker\/worker-chunk-Fx7Prep2\.mjs no longer carries/);
 
 // --- Run the real patch script against the fixtures ---
 execFileSync(process.execPath, [patchScript, fixtureRoot, "2026.10.7"], { stdio: "inherit" });
+
+// A second application refuses up front instead of stacking a second copy of every edit.
+{
+  const before = fs.readFileSync(path.join(fixtureDist, F.plan), "utf8");
+  assert.throws(() => runPatch(fixtureRoot), (error) => /hotfix already applied/.test(String(error.stderr)), "a second run applied again");
+  assert.equal(fs.readFileSync(path.join(fixtureDist, F.plan), "utf8"), before, "a refused second run changed a file");
+  console.log("ok - a second application refuses and leaves the tree unchanged");
+}
 
 const receipt = JSON.parse(fs.readFileSync(path.join(fixtureRoot, ".agent-scoped-compaction-model-hotfix.json"), "utf8"));
 assert.equal(receipt.id, MARKER);
@@ -300,7 +357,7 @@ const importFixture = (relPath) => import(pathToFileURL(path.join(fixtureDist, r
 
 // --- Schema: the per-agent compaction field landed inside AgentEntryBaseSchema, in both the
 // shared chunk and the feishu config-doctor bundle's own copy ---
-for (const schemaFile of ["zod-schema.core-CTGi3UvT.mjs", "config-doctor/feishu.js"]) {
+for (const schemaFile of [F.schema, "config-doctor/feishu.js"]) {
   const schemaSource = fs.readFileSync(path.join(fixtureDist, schemaFile), "utf8");
   assert.ok(schemaSource.includes(`compaction: strictObject({`), `${schemaFile}: compaction field missing`);
   assert.ok(schemaSource.includes(`memoryFlush: strictObject({ model: string().optional() }).optional()`), `${schemaFile}: memoryFlush field missing`);
@@ -446,15 +503,15 @@ async function runAgentDefaultFallbackScenario(label, { prepareMemoryFlushAttemp
   console.log(`ok - ${label}: prepareMemoryFlushAttempt resolves a missing agentId with resolveDefaultAgentId(cfg)`);
 }
 
-const readableTarget = await importFixture("context-engine-maintenance-DNdgNa58.mjs");
-const readableRetry = await importFixture("compact-Cn8Yr-Sj.mjs");
+const readableTarget = await importFixture(F.target);
+const readableRetry = await importFixture(F.retry);
 await runCompactionTargetScenarios("readable chunk", {
   resolveEmbeddedCompactionTarget: readableTarget.resolveEmbeddedCompactionTarget,
   compactPreparedRetry: readableRetry.compactPreparedRetry,
 });
 
-const readableMemoryFlushPlan = await importFixture("memory-flush-plan-C2Zwg3cn.mjs");
-const readableMemoryFlushPrepare = await importFixture("memory-flush-prepare-Dd4LjrXk.mjs");
+const readableMemoryFlushPlan = await importFixture(F.plan);
+const readableMemoryFlushPrepare = await importFixture(F.prepare);
 await runMemoryFlushScenarios("readable chunk", readableMemoryFlushPlan);
 await runAgentDefaultFallbackScenario("readable chunk", { ...readableMemoryFlushPrepare, __setFakeFlushPlanResolver: readableMemoryFlushPlan.__setFakeFlushPlanResolver });
 
@@ -471,13 +528,13 @@ await runAgentDefaultFallbackScenario("sqlite-store.worker.mjs (Ot-named)", sqli
 // unpatched copies: the marker landed, so the patch's minified anchors still matched real
 // output and the transformation applied. ---
 const structuralExpectations = {
-  "worker/worker-chunk-CewA2kek.mjs": ["agents?.entries?.["], // the per-agent compaction-target lookup itself
-  "worker/worker-chunk-CBzfKKNd.mjs": ["agentId:s.agentId"], // threads agentId into the retry call so the lookup above can see it
-  "worker/worker-chunk-CcAJ0oHc.mjs": [
+  [F.workerTarget]: ["agents?.entries?.["], // the per-agent compaction-target lookup itself
+  [F.workerRetry]: ["agentId:s.agentId"], // threads agentId into the retry call so the lookup above can see it
+  [F.workerPlan]: [
     "agents?.entries?.[", // the per-agent memory-flush lookup itself
     "agentOverrideModel??(isToolsMemoryFlushPlan(n.plan)?n.plan.model??t.model:n.plan.model)", // the final per-arm precedence fix
   ],
-  "worker/worker-chunk-BOOgs202.mjs": ["agentId:e.followupRun.run.agentId??a(e.cfg)"], // the third prepareMemoryFlushAttempt duplicate now threads agentId with the same default
+  [F.workerPrepare]: ["agentId:e.followupRun.run.agentId??a(e.cfg)"], // the third prepareMemoryFlushAttempt duplicate now threads agentId with the same default
 };
 for (const [file, expectations] of Object.entries(structuralExpectations)) {
   const source = fs.readFileSync(path.join(fixtureDist, file), "utf8");
@@ -499,11 +556,32 @@ const realDist = path.join(root, "dist");
 const realReceipt = JSON.parse(fs.readFileSync(path.join(root, ".agent-scoped-compaction-model-hotfix.json"), "utf8"));
 assert.equal(realReceipt.id, MARKER);
 assert.equal(realReceipt.changes.length, 24, `expected 24 anchor replacements in the real tree, got ${realReceipt.changes.length}`);
+assert.equal(new Set(realReceipt.changes.map((c) => c.file)).size, 11, "expected 11 distinct files patched in the real tree");
+
+// Real chunks by content: the one file in `dir` whose name matches `name` and whose text
+// carries `needle`, and a module's export alias read from its own export clause.
+const realFile = (dir, name, needle) => {
+  const found = fs
+    .readdirSync(path.join(realDist, dir), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && name.test(entry.name))
+    .map((entry) => path.join(realDist, dir, entry.name))
+    .filter((file) => fs.readFileSync(file, "utf8").includes(needle));
+  assert.equal(found.length, 1, `expected one ${dir}/${name} chunk carrying ${needle.slice(0, 80)}, got ${found.map((f) => path.relative(realDist, f)).join(", ") || "none"}`);
+  return found[0];
+};
+const importExport = async (file, local) => {
+  const clauses = [...fs.readFileSync(file, "utf8").matchAll(/export\s*\{([^}]*)\}/g)].flatMap((m) => m[1].split(","));
+  const spec = clauses.map((c) => c.trim().split(/\s+as\s+/)).find(([name]) => name === local);
+  assert.ok(spec, `${path.relative(realDist, file)} does not export ${local}`);
+  return (await import(pathToFileURL(file).href))[spec[1] ?? spec[0]];
+};
+const realSource = (dir, name, needle) => fs.readFileSync(realFile(dir, name, needle), "utf8");
 
 // --- Native schema: the real AgentEntryBaseSchema (not a hand-copied shape) accepts the new
 // per-agent fields and still rejects everything the schema was never asked to carry. ---
 {
-  const { z: AgentEntryBaseSchema } = await import(pathToFileURL(path.join(realDist, "zod-schema.core-CTGi3UvT.mjs")).href);
+  const schemaFile = realFile(".", /^zod-schema\.core-.*\.mjs$/, "const AgentEntryBaseSchema = strictObject({");
+  const AgentEntryBaseSchema = await importExport(schemaFile, "AgentEntryBaseSchema");
   const parsed = AgentEntryBaseSchema.parse({
     id: "onyx",
     compaction: { model: "abliteration/abliterated-model-large-flash", memoryFlush: { model: "abliteration/abliterated-model-large-flash" } },
@@ -523,8 +601,8 @@ assert.equal(realReceipt.changes.length, 24, `expected 24 anchor replacements in
 // registered through the real plugin-registration-context scope (no scheduler, HTTP route or
 // session side effects -- see the header comment). ---
 {
-  const { E: withPluginRegistrationContext } = await import(pathToFileURL(path.join(realDist, "runtime-CCZWjmme.mjs")).href);
-  const { r: resolveMemoryFlushPlanForRun } = await import(pathToFileURL(path.join(realDist, "memory-flush-plan-C2Zwg3cn.mjs")).href);
+  const withPluginRegistrationContext = await importExport(realFile(".", /^runtime-.*\.mjs$/, "function withPluginRegistrationContext("), "withPluginRegistrationContext");
+  const resolveMemoryFlushPlanForRun = await importExport(realFile(".", /^memory-flush-plan-.*\.mjs$/, "function resolveMemoryFlushPlanForRun(params)"), "resolveMemoryFlushPlanForRun");
 
   const config = abliterationConfig();
   const run = (capability, agentId, cfg = config) => {
@@ -557,28 +635,38 @@ assert.equal(realReceipt.changes.length, 24, `expected 24 anchor replacements in
   console.log("ok - real resolveMemoryFlushPlanForRun: file/tools arms, plugin model/no model, onyx override, default fallback, no plugin, default fence");
 }
 
-// --- The worker-pool duplicates (sqlite-store.worker.mjs, worker-chunk-CcAJ0oHc.mjs) assume a
-// live worker_threads/bundler init graph the plain ESM loader never runs standalone, so these
-// are checked structurally against the real patched file text instead. ---
+// --- The worker-pool duplicates (sqlite-store.worker.mjs and the worker/worker-chunk-*.mjs
+// copies) assume a live worker_threads/bundler init graph the plain ESM loader never runs
+// standalone, so these are checked structurally against the real patched file text instead:
+// each patched form must sit in exactly one chunk of its kind. ---
 {
   const sqliteWorkerSource = fs.readFileSync(path.join(realDist, "worker/sqlite-store.worker.mjs"), "utf8");
-  assert.ok(sqliteWorkerSource.includes("compaction:strictObject({model:string$3().optional(),memoryFlush:strictObject({model:string$3().optional()}).optional()}).optional()"), "real sqlite-store.worker.mjs: inlined schema missing the per-agent compaction field");
-  assert.ok(sqliteWorkerSource.includes("model:agentOverrideModel??(isToolsMemoryFlushPlan(Zt.plan)?Zt.plan.model??Kt.model:Zt.plan.model)"), "real sqlite-store.worker.mjs: final per-arm model precedence fix missing");
-  assert.ok(sqliteWorkerSource.includes("agentId:Ot.followupRun.run.agentId??resolveDefaultAgentId(Ot.cfg)"), "real sqlite-store.worker.mjs: prepareMemoryFlushAttempt does not default agentId with resolveDefaultAgentId(cfg)");
+  for (const [needle, what] of [
+    ["compaction:strictObject({model:string$3().optional(),memoryFlush:strictObject({model:string$3().optional()}).optional()}).optional()", "inlined schema missing the per-agent compaction field"],
+    ["_n=Ot.modelSelectionLocked?void 0:(Ot.agentId?Ot.config?.agents?.entries?.[Ot.agentId]?.compaction?.model?.trim():void 0)??", "compaction target does not read the per-agent override"],
+    ["resolveEmbeddedCompactionTarget({config:pr.config,agentId:pr.agentId,", "compaction retry does not carry agentId"],
+    ["let Pn=qn?.model?.trim()||Kt?.model?.trim()||void 0;", "memory-flush timing does not read the per-agent override"],
+    ["model:agentOverrideModel??(isToolsMemoryFlushPlan(Zt.plan)?Zt.plan.model??Kt.model:Zt.plan.model)", "final per-arm model precedence fix missing"],
+    [`resolveMemoryFlushPlanForRun({cfg:Ot.cfg,agentId:Ot.followupRun.run.agentId??resolveDefaultAgentId(Ot.cfg),/*${MARKER}*/`, "prepareMemoryFlushAttempt does not default agentId with resolveDefaultAgentId(cfg)"],
+  ]) {
+    assert.equal(sqliteWorkerSource.split(needle).length - 1, 1, `real sqlite-store.worker.mjs: ${what}`);
+  }
 
-  const workerChunkSource = fs.readFileSync(path.join(realDist, "worker/worker-chunk-CcAJ0oHc.mjs"), "utf8");
-  assert.ok(workerChunkSource.includes("model:agentOverrideModel??(isToolsMemoryFlushPlan(n.plan)?n.plan.model??t.model:n.plan.model)"), "real worker-chunk-CcAJ0oHc.mjs: final per-arm model precedence fix missing");
-
-  const boogsSource = fs.readFileSync(path.join(realDist, "worker/worker-chunk-BOOgs202.mjs"), "utf8");
-  assert.ok(boogsSource.includes("agentId:e.followupRun.run.agentId??a(e.cfg)"), "real worker-chunk-BOOgs202.mjs: prepareMemoryFlushAttempt does not thread agentId with the same default");
+  const workerChunk = /^worker-chunk-.*\.mjs$/;
+  realFile("worker", workerChunk, "i=e.modelSelectionLocked?void 0:(e.agentId?e.config?.agents?.entries?.[e.agentId]?.compaction?.model?.trim():void 0)??");
+  realFile("worker", workerChunk, "Qt({config:s.config,agentId:s.agentId,");
+  const workerPlanSource = realSource("worker", workerChunk, "model:agentOverrideModel??(isToolsMemoryFlushPlan(n.plan)?n.plan.model??t.model:n.plan.model)");
+  assert.ok(workerPlanSource.includes("let c=qo?.model?.trim()||n?.model?.trim()||void 0;"), "real worker-chunk memory-flush timing does not read the per-agent override");
+  realFile("worker", workerChunk, "agentId:e.followupRun.run.agentId??a(e.cfg)");
 
   const feishuSource = fs.readFileSync(path.join(realDist, "config-doctor/feishu.js"), "utf8");
   assert.ok(feishuSource.includes("compaction: strictObject({") && feishuSource.includes(MARKER), "real config-doctor/feishu.js: inlined schema missing the per-agent compaction field");
 
-  const readableSource = fs.readFileSync(path.join(realDist, "memory-flush-prepare-Dd4LjrXk.mjs"), "utf8");
-  assert.ok(readableSource.includes("agentId: params.followupRun.run.agentId ?? resolveDefaultAgentId(params.cfg)"), "real memory-flush-prepare-Dd4LjrXk.mjs: prepareMemoryFlushAttempt does not default agentId with resolveDefaultAgentId(cfg)");
+  realFile(".", /^context-engine-maintenance-.*\.mjs$/, "params.agentId ? params.config?.agents?.entries?.[params.agentId]?.compaction?.model?.trim() : void 0");
+  realFile(".", /^compact-.*\.mjs$/, `agentId: params.agentId, /* ${MARKER} */`);
+  realFile(".", /^memory-flush-prepare-.*\.mjs$/, "agentId: params.followupRun.run.agentId ?? resolveDefaultAgentId(params.cfg)");
 
-  console.log("ok - structural checks on the real worker-pool duplicates and the two previously-unpatched copies (sqlite-store.worker.mjs schema, worker-chunk-BOOgs202.mjs)");
+  console.log("ok - structural checks on the real readable chunks, the worker-pool duplicates and the two previously-unpatched copies (sqlite-store.worker.mjs schema, the worker-chunk prepareMemoryFlushAttempt)");
 }
 
 console.log(`Agent-scoped compaction/memory-flush model override: Part 1 + Part 2 passed (${realReceipt.changes.length} anchors across ${new Set(realReceipt.changes.map((c) => c.file)).size} files in the real tree)`);
