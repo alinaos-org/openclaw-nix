@@ -129,7 +129,8 @@ host. Work them alongside the patch layers.
   this on 2026.9.6.
 - **Separately versioned layers.** The agent runtimes bundled in the gateway
   (`node_modules/.pnpm/@openai+codex@*`, `@anthropic-ai+claude-agent-sdk@*`) and the
-  host's own CLIs and desktop apps move on their own versions, and `openclaw plugins
+  host's own CLIs move on their own versions (OpenClaw's desktop app does not: it is
+  `pkgs.openclaw-desktop`, built for the release), and `openclaw plugins
   list` shows none of them. A clean plugin sweep says nothing about these; the host
   profile lists the ones it has.
 

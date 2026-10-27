@@ -171,6 +171,7 @@
       gateway = pkgs.openclaw-gateway;
       gateway-hotfixed = pkgs.openclawNix.hotfix pkgs.openclaw-gateway;
       openclaw = pkgs.openclaw;
+      desktop = pkgs.openclaw-desktop;
       upgrade-skill = mkUpgradeSkill {inherit pkgs;};
       # A laptop flake from the starter template (packages/init).
       init = pkgs.callPackage ./packages/init {template = ./templates/workstation;};
@@ -192,7 +193,7 @@
     in {
       # Every exported package belongs to the current release.
       single-release = pkgs.openclawNix.checkSingleRelease {
-        roots = [p.gateway-hotfixed p.openclaw p.runtime-plugins];
+        roots = [p.gateway-hotfixed p.openclaw p.desktop p.runtime-plugins];
       };
       # packages/hotfix/register.nix covers every patch and test file, each entry has a
       # test (or the reason there is none), an upstream status and a removal

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Add an OpenClaw stable release: releases.nix entry + release.nix `current`.
 
-    new-release.py <version> [--repo <checkout>] [--skip-pnpm | --pnpm-only]
+    new-release.py <version> [--repo <checkout>] [--skip-pnpm | --pnpm-only | --desktop-only]
 
 Steps, each verified:
   1. Resolve tag v<version> on openclaw/openclaw and peel it to a commit; the
      release notes' "release SHA" line must name the same commit.
   2. Source hash: NAR hash of the GitHub archive (what fetchFromGitHub checks),
      and the pnpm version upstream pins in package.json.
-  3. Add the releases.nix entry (pnpmDepsHash starts as a fake hash).
+  3. Add the releases.nix entry (pnpmDepsHash starts as a fake hash), with the
+     hash of the release's amd64 desktop .deb (packages/desktop); a release
+     without one is refused.
   4. Set release.nix `current`, keeping the previous release in `accepted`.
   5. pnpm deps hash: build the gateway's pnpmDeps and take the hash Nix reports
      (inside a memory-capped systemd scope when one is available).
@@ -40,6 +42,7 @@ def main():
     ap.add_argument("--repo", default=".")
     ap.add_argument("--skip-pnpm", action="store_true")
     ap.add_argument("--pnpm-only", action="store_true", help="only replace the fake pnpmDepsHash")
+    ap.add_argument("--desktop-only", action="store_true", help="only set desktopDebHash on an existing entry")
     a = ap.parse_args()
     v = a.version
     root = pathlib.Path(a.repo).resolve()
@@ -47,6 +50,8 @@ def main():
     rel = root / "release.nix"
     if a.pnpm_only:
         return pnpm_hash(root, table)
+    if a.desktop_only:
+        return desktop_only(table, v)
     table_text, rel_text = table.read_text(), rel.read_text()
     cur = re.search(r'current = "([^"]+)";', rel_text).group(1)
     if cur == v:
@@ -91,6 +96,7 @@ def main():
     entry, n = re.subn(r'(pnpmDepsHash\.x86_64-linux = ")[^"]+(";)', rf"\g<1>{FAKE}\g<2>", entry)
     if n != 1:
         sys.exit("could not find the pnpmDepsHash field in the copied entry")
+    entry = with_desktop_hash(entry, desktop_hash(v))
     table.write_text(table_text.replace(m.group(1), entry + "\n" + m.group(1), 1))
 
     # 4. release.nix: new current; the previous release stays accepted.
@@ -105,6 +111,37 @@ def main():
         print("pnpmDepsHash left as the fake hash (--skip-pnpm); finish with --pnpm-only")
         return
     pnpm_hash(root, table)
+
+
+def desktop_hash(v):
+    """SRI hash of the release's amd64 desktop .deb, as fetchurl checks it."""
+    name = f"OpenClaw-{v}-amd64.deb"
+    assets = json.loads(gh(f"repos/{REPO}/releases/tags/v{v}", "[.assets[].name]"))
+    if name not in assets:
+        sys.exit(f"v{v} has no {name}; the desktop app cannot follow this release")
+    b32 = run("nix-prefetch-url", "--type", "sha256",
+              f"https://github.com/{REPO}/releases/download/v{v}/{name}").splitlines()[-1]
+    sri = run("nix", "hash", "convert", "--hash-algo", "sha256", "--to", "sri", b32)
+    print(f"desktopDebHash {sri}")
+    return sri
+
+
+def with_desktop_hash(entry, sri):
+    field = f'    desktopDebHash.x86_64-linux = "{sri}";\n'
+    entry, n = re.subn(r'    desktopDebHash\.x86_64-linux = "[^"]+";\n', field, entry)
+    if n == 0:
+        entry, n = re.subn(r'(    pnpmDepsHash\.x86_64-linux = "[^"]+";\n)', lambda m: m.group(1) + field, entry)
+    if n != 1:
+        sys.exit("could not place desktopDebHash in the releases.nix entry")
+    return entry
+
+
+def desktop_only(table, v):
+    text = table.read_text()
+    m = re.search(r'\n(  "' + re.escape(v) + r'" = \{\n.*?\n  \};\n)', text, re.S)
+    if not m:
+        sys.exit(f"no releases.nix entry for {v}")
+    table.write_text(text.replace(m.group(1), with_desktop_hash(m.group(1), desktop_hash(v)), 1))
 
 
 def pnpm_hash(root, table):
