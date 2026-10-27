@@ -13,26 +13,26 @@
   minHostVersion = ">=2026.4.10";
   expectedIntegrity = "";
   packageName = "@openclaw/twitch";
-  version = "2026.10.7";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/twitch/-/twitch-2026.10.7.tgz";
-  npmIntegrity = "sha512-0r2ptLLi/S1isCG9LcuzVjuDK3Z38mK7oJEqPeMjDNcQlhAvSkqLCTJoszAcgPhEoZ2t7jv1BbhBdM9Vr59jSA==";
-  npmShasum = "f93b2bfbe415c1aebc953fe3208450fb92fddd0b";
-  nixHash = "sha256-zJHqbddtnjGyD8hFNz8qGljws6XApAfjErsaEyhDFXk=";
+  version = "2026.10.8";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/twitch/-/twitch-2026.10.8.tgz";
+  npmIntegrity = "sha512-edh2O/6jpL+MAokvAsOVZrTkSbfi+BBcZhRTs0CJjejeRqAkGspSCvoq0+XrNA7hsQqV3buc7zsxLVxIiR97Sg==";
+  npmShasum = "0727d5faa45d73edb9029ee0b48029a462bf94f4";
+  nixHash = "sha256-jZN4fyxepYbyqYwvxVn2rdPXdxX48zB7oWjL2bUASl8=";
   dependencyMode = "package-lock";
-  npmDepsHash = "sha256-NfDdSUjyLMIL4YYtkeioA7qTm9W7Qt0aSZfmYBVopeY=";
+  npmDepsHash = "sha256-iv79oWdPJZ5LBG9hME+ahoXo1eaZdCWGrfP8UU+VU5s=";
   npmPackageLockFile = "twitch.package-lock.json";
-  npmPackageLockSha256 = "bb43277f75ad382fb98d79f68d05ddf35699d4707f77d705d76316f358c23470";
+  npmPackageLockSha256 = "3ff909df9aba8197bf66179214904b48ae5a12051839ff1494af97c415425b2e";
   npmPackageLockEvidence = {
-    assetName = "openclaw-2026.10.7-dependency-evidence.zip";
-    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.10.7/openclaw-2026.10.7-dependency-evidence.zip";
-    assetNixHash = "sha256-/GCMw4/bpNzkDzKiC+r+OxcPJK9Q3VrwmbpeHzj3EPc=";
+    assetName = "openclaw-2026.10.8-dependency-evidence.zip";
+    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.10.8/openclaw-2026.10.8-dependency-evidence.zip";
+    assetNixHash = "sha256-7llsDgSMvqYwQ7gs8fWkp5ENWV0eTTr63em0lgbU73Q=";
     source = "release";
-    sourceSha = "157d8c2bc3ea2fa183afdc11088e69690bf8e64e";
-    generatedAt = "2026-10-24T02:50:53.145Z";
+    sourceSha = "dc2523e5a5c7a309517fd7fa834add938231d526";
+    generatedAt = "2026-10-27T05:28:01.662Z";
   };
   manifestId = "twitch";
-  openclawCompat = ">=2026.10.7";
-  peerOpenClaw = ">=2026.10.7";
+  openclawCompat = ">=2026.10.8";
+  peerOpenClaw = ">=2026.10.8";
   runtimeExtensions = [
     "./dist/index.js"
   ];

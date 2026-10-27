@@ -13,26 +13,26 @@
   minHostVersion = ">=2026.4.25";
   expectedIntegrity = "";
   packageName = "@openclaw/acpx";
-  version = "2026.10.7";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/acpx/-/acpx-2026.10.7.tgz";
-  npmIntegrity = "sha512-9daGTnoVCzx+yFRUU3Kvdh8iHPwci86tTfu5e6zhwNeBuVeEAQYsrih81jt26m5FOS/DNv222/28w48lKek10A==";
-  npmShasum = "a981a9985cd1c178387f4ba2614cec80507b211f";
-  nixHash = "sha256-3BX0MfFkomwIRvEq7MooYeJUi0UMJwk6LnS6cCljYHw=";
+  version = "2026.10.8";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/acpx/-/acpx-2026.10.8.tgz";
+  npmIntegrity = "sha512-FQyCbd0tFskMd35Kz2dBoue9dsuya11bQ0xS0aar/prUvmJQNA6iNyCfjKGKiy2HCizhb6U5rXIR0yRtlCvENA==";
+  npmShasum = "049fab8c08caef4600089796eaf9b30cdfc077ed";
+  nixHash = "sha256-mQlPjNSLQBmM6rW402sg4jZCI92bQxyoufHFsp8FV/Q=";
   dependencyMode = "package-lock";
-  npmDepsHash = "sha256-qZskveckBDvLzZI45vnHk99tztwGsi1miePT5L3aAFg=";
+  npmDepsHash = "sha256-lDlULFtpXXGqstO1wXEEXjle3gix+Wkm4I8tt8oMPP4=";
   npmPackageLockFile = "acpx.package-lock.json";
-  npmPackageLockSha256 = "0fd59e9442b7e43affba86de63bfe02c62f8f4ef7ef8712875e6a037505e2b14";
+  npmPackageLockSha256 = "2ebefb5235cb35f26896d3a0627d3c7475a173402bb3b7a1d55c967e58a24be1";
   npmPackageLockEvidence = {
-    assetName = "openclaw-2026.10.7-dependency-evidence.zip";
-    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.10.7/openclaw-2026.10.7-dependency-evidence.zip";
-    assetNixHash = "sha256-/GCMw4/bpNzkDzKiC+r+OxcPJK9Q3VrwmbpeHzj3EPc=";
+    assetName = "openclaw-2026.10.8-dependency-evidence.zip";
+    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.10.8/openclaw-2026.10.8-dependency-evidence.zip";
+    assetNixHash = "sha256-7llsDgSMvqYwQ7gs8fWkp5ENWV0eTTr63em0lgbU73Q=";
     source = "release";
-    sourceSha = "157d8c2bc3ea2fa183afdc11088e69690bf8e64e";
-    generatedAt = "2026-10-24T02:50:53.145Z";
+    sourceSha = "dc2523e5a5c7a309517fd7fa834add938231d526";
+    generatedAt = "2026-10-27T05:28:01.662Z";
   };
   manifestId = "acpx";
-  openclawCompat = ">=2026.10.7";
-  peerOpenClaw = ">=2026.10.7";
+  openclawCompat = ">=2026.10.8";
+  peerOpenClaw = ">=2026.10.8";
   runtimeExtensions = [
     "./dist/index.js"
   ];

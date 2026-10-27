@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.7.2";
   expectedIntegrity = "";
   packageName = "@openclaw/fish-audio-speech";
-  version = "2026.10.7";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/fish-audio-speech/-/fish-audio-speech-2026.10.7.tgz";
-  npmIntegrity = "sha512-1vo6hn6BgBn0SsJhxvHvfWel3qIQc/TFdLsFnquYSSTq7E6/LMnZQbZQZgwNJl7XIKsYsljR8J6CAd31nVk7AA==";
-  npmShasum = "a2c89d5909e71813258ab59d4f6690a73334e8d6";
-  nixHash = "sha256-ZPy+yMaczYzRA0Kv7GaF0FyZebANUUxWz6eJqOCimX0=";
+  version = "2026.10.8";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/fish-audio-speech/-/fish-audio-speech-2026.10.8.tgz";
+  npmIntegrity = "sha512-uCk/+I64emyro5z6i7l4/CsI5vMZSfi9Tqen6etipB3tIhe/Z1cvv0MXb3+1FB+r43oltJLBvjG4ETa2t9ve7A==";
+  npmShasum = "500fdf1cbafa770da0aa5086b3d3950d7548c5da";
+  nixHash = "sha256-F6aKOnHoMSsrc2N1m5Xc8ljzAcWtJbGuOrF+lVwdg4E=";
   dependencyMode = "none";
   manifestId = "fish-audio-speech";
-  openclawCompat = ">=2026.10.7";
-  peerOpenClaw = ">=2026.10.7";
+  openclawCompat = ">=2026.10.8";
+  peerOpenClaw = ">=2026.10.8";
   runtimeExtensions = [
     "./dist/index.js"
   ];
