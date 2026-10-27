@@ -291,10 +291,10 @@
       default model. Two call sites also dropped the caller's agentId when they
       rebuilt a fresh params object for a retry: the embedded-agent-runner's
       model-fallback retry path (resolveEmbeddedCompactionTarget's second call site,
-      compact-Cn8Yr-Sj.mjs and its two worker-pool duplicates) and the memory flush's
-      own model resolution (prepareMemoryFlushAttempt, memory-flush-prepare-Dd4LjrXk.mjs
-      and its two worker-pool duplicates, sqlite-store.worker.mjs and
-      worker-chunk-BOOgs202.mjs), so even a config-level override would not have
+      compact-*.mjs and its two worker-pool duplicates) and the memory flush's own
+      model resolution (prepareMemoryFlushAttempt, memory-flush-prepare-*.mjs and its
+      two worker-pool duplicates, sqlite-store.worker.mjs and a
+      worker/worker-chunk-*.mjs), so even a config-level override would not have
       reached them, and the one that did (sqlite-store.worker.mjs) used the run's bare
       possibly-undefined agentId instead of the resolveDefaultAgentId(cfg) fallback the
       rest of that same function already applies. resolveMemoryFlushPlanForRun's own
@@ -313,8 +313,10 @@
       resolveMemoryFlushPlanForRun's final model line, in every chunk carrying a copy
       of any of the three; threads agentId, defaulted the same way the rest of each
       function already defaults it, into every retry/call site that dropped it,
-      including the sqlite-store.worker.mjs and worker-chunk-BOOgs202.mjs copies of
-      prepareMemoryFlushAttempt. A locked model selection is unaffected:
+      including the sqlite-store.worker.mjs and worker-chunk copies of
+      prepareMemoryFlushAttempt. Every target is located by content, not by chunk
+      filename, and must sit in exactly the expected chunks (2026.10.8 re-hashed all
+      eleven with their code unchanged). A locked model selection is unaffected:
       resolveEmbeddedCompactionTarget already skips every override, default or
       per-agent, once modelSelectionLocked is set. Other agents' shared defaults, and
       every plugin-owned or file-arm model when no per-agent override is configured,
