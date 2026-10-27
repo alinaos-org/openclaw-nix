@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.7.2";
   expectedIntegrity = "";
   packageName = "@openclaw/imessage";
-  version = "2026.10.7";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/imessage/-/imessage-2026.10.7.tgz";
-  npmIntegrity = "sha512-L4AmcuikmB9UBtIuoSpHFViPe41BOD6SrbDa02a+iCf69f+lP+mA7v+nkstiWUCww7RCjh9xOlxKZsSGg3S2+g==";
-  npmShasum = "ac2b5487b51fbbc67352147deb6d2d4a0c5fb147";
-  nixHash = "sha256-cSZYHyAbdjBedMF5zrr6FwYDpwskf7jBycgOGg6EWxk=";
+  version = "2026.10.8";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/imessage/-/imessage-2026.10.8.tgz";
+  npmIntegrity = "sha512-Mcw+NM2Jdv9QB/SEhJxNWXp9adbw29zETgRZKpwsE8uL9aycJTnjxrrl9xi6qArdNjsOYUD3iDiEJIg5TdbqIA==";
+  npmShasum = "e96dc6571a2c7fa17c127a93b8b236a32ed8deaf";
+  nixHash = "sha256-oFbJMPBFhNWnJNr2LYP4uY3H1kayZBx80R50JLHWqQI=";
   dependencyMode = "bundled";
   manifestId = "imessage";
-  openclawCompat = ">=2026.10.7";
-  peerOpenClaw = ">=2026.10.7";
+  openclawCompat = ">=2026.10.8";
+  peerOpenClaw = ">=2026.10.8";
   runtimeExtensions = [
     "./dist/index.js"
   ];

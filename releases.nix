@@ -4,6 +4,16 @@
 # because the dependency store is fetched for the host platform only;
 # desktopDebHash is the release's amd64 desktop .deb (packages/desktop).
 {
+  "2026.10.8" = {
+    rev = "dc2523e5a5c7a309517fd7fa834add938231d526";
+    sourceHash = "sha256-YdvJPrXEumzZRI+0/9b73yBnXNP3zD4UvML9vw1ezL4=";
+    pnpmDepsHash.x86_64-linux = "sha256-rCj9b7iwyr82vWuFJFs8KhEt22FlAynooMlTSYLDoyU=";
+    desktopDebHash.x86_64-linux = "sha256-5pehxaswLO8EBFg0AMsfqQDgWHKBWZ8IXhE/pM6OhgE=";
+    buildTimestamp = "2026-10-27T04:14:13Z";
+    pnpmBootstrapVersion = "12.15.0";
+    tsdownHeapMb = "6144";
+  };
+
   "2026.10.7" = {
     rev = "157d8c2bc3ea2fa183afdc11088e69690bf8e64e";
     sourceHash = "sha256-J/jIhSX0fRmUw0cv/2i2YXUOBw4yimIndp9LO6ueq2U=";
