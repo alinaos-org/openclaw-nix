@@ -129,6 +129,15 @@ Auditing a point release: GitHub's compare view stops at 300 files, so diff the 
 at the old and new openclaw-nix commit, then grep each patch's anchor symbol in the
 changed files.
 
+When the hotfix layer fails in CI, the base package is already in the cache: CI pushes the
+source build and its pnpm dependency set right after building them, before the hotfix
+step (since 2026.10.8). A host fetches it in about two minutes
+(`nix-store -r <.#gateway outPath>` with the cache as a substituter) instead of compiling
+it, which peaks around 15 GB. Write patches to find their targets by content, not by
+hashed chunk name: glob the candidate pattern (`compact-*.mjs`, `worker/worker-chunk-*.mjs`)
+and require each anchor's exact count across the matches (2026.10.8 renamed every chunk
+the per-agent compaction patch named; its anchors themselves were unchanged).
+
 When the hotfix layer fails, the base package is already built. `scripts/scratch-patch-chain.sh`
 evaluates the layer's own `installPhase` and runs it on a scratch copy of that base
 (about a minute), reporting every failing patch at once where each Nix rebuild stops at
