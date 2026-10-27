@@ -1,12 +1,14 @@
 # Pinned OpenClaw releases. Each entry is the exact commit peeled from the
 # release tag (it must equal the release notes' "release SHA"), never a branch
 # or tag. scripts/new-release.py writes new entries; pnpmDepsHash is per system
-# because the dependency store is fetched for the host platform only.
+# because the dependency store is fetched for the host platform only;
+# desktopDebHash is the release's amd64 desktop .deb (packages/desktop).
 {
   "2026.10.7" = {
     rev = "157d8c2bc3ea2fa183afdc11088e69690bf8e64e";
     sourceHash = "sha256-J/jIhSX0fRmUw0cv/2i2YXUOBw4yimIndp9LO6ueq2U=";
     pnpmDepsHash.x86_64-linux = "sha256-rCj9b7iwyr82vWuFJFs8KhEt22FlAynooMlTSYLDoyU=";
+    desktopDebHash.x86_64-linux = "sha256-IqOd6hUs1l3ilb2r1Wz2Tb4tOaT0CWXu0L4+mi/TxvA=";
     buildTimestamp = "2026-10-24T02:13:54Z";
     pnpmBootstrapVersion = "12.15.0";
     tsdownHeapMb = "6144";

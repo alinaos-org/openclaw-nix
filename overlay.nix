@@ -4,6 +4,7 @@
 #                           plus the consumer's customize layer if any
 #   openclaw                the CLI bundle, wrapping that gateway
 #   openclawRuntimePlugins  every pinned npm plugin, linked to that gateway
+#   openclaw-desktop        the release's Linux desktop app (packages/desktop)
 #   openclawNix             release data and builders: customize, hotfix,
 #                           stateFence, mkRuntimePlugin, checkSingleRelease
 #
@@ -141,7 +142,7 @@
   # Where a version ends in a store name: 2026.10.5 matches -2026.10.5-nix.3 but
   # not -2026.10.51 or the correction release -2026.10.5-1.
   versionEnd = "([^0-9.-]|-[^0-9]|$)";
-  coreNamePattern = "^/nix/store/[a-z0-9]{32}-openclaw(-gateway(-[a-z]+)*|-runtime-plugin-(${lib.concatStringsSep "|" (runtimePluginIds ++ ["acpx" "codex"])}))?-(20[0-9]{2}\\.[0-9]+\\.[0-9]+)";
+  coreNamePattern = "^/nix/store/[a-z0-9]{32}-openclaw(-gateway(-[a-z]+)*|-desktop|-runtime-plugin-(${lib.concatStringsSep "|" (runtimePluginIds ++ ["acpx" "codex"])}))?-(20[0-9]{2}\\.[0-9]+\\.[0-9]+)";
 in {
   openclaw-gateway = gateway;
 
@@ -149,6 +150,9 @@ in {
     openclaw-gateway = gateway;
     inherit (gateway) version;
   };
+
+  # The release's desktop app; `.override {cli = ...;}` points it at another openclaw.
+  openclaw-desktop = final.callPackage ./packages/desktop {};
 
   # Native Control UI plugins that ship with openclaw-nix. The plugin's own tests
   # run in the build (a manifest/registration mismatch drops a plugin at load),

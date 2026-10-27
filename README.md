@@ -38,7 +38,8 @@ CLI tool bundle and runtime-plugin builder, and adds:
     nixosConfigurations.host = nixpkgs.lib.nixosSystem {
       modules = [
         {nixpkgs.overlays = [openclaw-nix.overlays.default];}
-        # pkgs.openclaw-gateway, pkgs.openclaw, pkgs.openclawRuntimePlugins.<id>
+        # pkgs.openclaw-gateway, pkgs.openclaw, pkgs.openclawRuntimePlugins.<id>,
+        # pkgs.openclaw-desktop
       ];
     };
   };
@@ -460,8 +461,8 @@ then copies `skill` to wherever its agents load skills. See
 
 ## Releases
 
-`scripts/new-release.py <version>` adds a release (tag, release-SHA cross-check, source
-and pnpm hashes), `scripts/generate-plugin-locks.sh <version>` locks every catalog
+`scripts/new-release.py <version>` adds a release (tag, release-SHA cross-check, source,
+pnpm and desktop `.deb` hashes; it refuses a release without an amd64 desktop build), `scripts/generate-plugin-locks.sh <version>` locks every catalog
 plugin at it (nix-openclaw's generator, at the pinned nix-openclaw, against the release's
 source) and `scripts/pin-runtime-plugins.py <version>` re-pins the few outside the
 catalogs. The `release-watch` workflow checks hourly and, when OpenClaw publishes a
@@ -475,6 +476,11 @@ workflow regenerates the lock set on any branch. Plugins are built by nix-opencl
 builder (`nix/lib/openclaw-runtime-plugin.nix`), called with this flake's lock set and
 with only nix-openclaw's `nix/scripts` as its scripts, so a nix-openclaw change elsewhere
 never rebuilds a plugin.
+
+The desktop app (`packages.desktop`, `pkgs.openclaw-desktop`) is the `.deb` upstream
+attaches to the release, patched for NixOS, so it is always the gateway's version: a host
+that bumps this flake moves both. `.override {cli = ...;}` sets the `openclaw` it runs for
+local commands. `--desktop-only <version>` adds the hash to an existing entry.
 
 When a hotfix patch fails on a new release, upstream either fixed the bug (drop the
 patch and its test) or moved the code (re-port its anchors). The same goes for this
