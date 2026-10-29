@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.4.25";
   expectedIntegrity = "";
   packageName = "@openclaw/diagnostics-otel";
-  version = "2026.10.8";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/diagnostics-otel/-/diagnostics-otel-2026.10.8.tgz";
-  npmIntegrity = "sha512-KowqoKrIWNYL1Djs+mLu93MErKf1zKwEZQ2+5OkDnmqXhEP9c6CBmridvIgy0NsHIToYqzqQ04+ToDqhQ+S55Q==";
-  npmShasum = "e4dd84f91fbe1fb571b368eb71bcdfddaa78374d";
-  nixHash = "sha256-iSU4Yb7AruY0A7lESW5SZp08eTf2T21BFXXKzjB4/Gs=";
+  version = "2026.10.9";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/diagnostics-otel/-/diagnostics-otel-2026.10.9.tgz";
+  npmIntegrity = "sha512-OwDFpx13A51J/TxaNnapAeDaKYm9n6lj11mHDWwcQ2mllcwj3gHiRrZXnHL2HV1ucH0PujC0Cq3KMhYhflo6IA==";
+  npmShasum = "e8fcbadfcbfc7937800e9f3bd53bd8383f34437d";
+  nixHash = "sha256-dh7rOWtFHIdakDGhnAwUVw+NBjUp/wpGmkdIyPxqM04=";
   dependencyMode = "bundled";
   manifestId = "diagnostics-otel";
-  openclawCompat = ">=2026.10.8";
-  peerOpenClaw = ">=2026.10.8";
+  openclawCompat = ">=2026.10.9";
+  peerOpenClaw = ">=2026.10.9";
   runtimeExtensions = [
     "./dist/index.js"
   ];
