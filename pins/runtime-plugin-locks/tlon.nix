@@ -13,26 +13,26 @@
   minHostVersion = ">=2026.4.10";
   expectedIntegrity = "";
   packageName = "@openclaw/tlon";
-  version = "2026.10.8";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/tlon/-/tlon-2026.10.8.tgz";
-  npmIntegrity = "sha512-mcba8IVIowbG7dPQCImomtsvhugQRlQTMtFtxiY/GycqRup4u1LT4BvnCodRgSioUMNHZ4BtmcDfaTu1tF1cww==";
-  npmShasum = "e9cccd02b88fac655b1a591d6c700624c521fffb";
-  nixHash = "sha256-Jfp/xLa/pz0janqwYY6zAe1Bn8MzueklVtjgbMJgLyk=";
+  version = "2026.10.9";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/tlon/-/tlon-2026.10.9.tgz";
+  npmIntegrity = "sha512-8bQRJh8NAVWcAQvMpNwedwy4UU+A3HSthpgxvvpDjPNY3a7xQj4hVUFdZyItauyXljG95IbzgjfHxzvtlvqhZg==";
+  npmShasum = "95feac203b89d1c350675eade51956a20f761470";
+  nixHash = "sha256-l3WhRfhSvISK4aaQ7i95ACa85NxpOFIIeco9jE9eYFc=";
   dependencyMode = "package-lock";
-  npmDepsHash = "sha256-zny28bgDYMcNJeEhapxzx2SWXfPb1FXTCAwAWR9XynQ=";
+  npmDepsHash = "sha256-DxtsAZh7f3I/P989tjbYMMgyHGgn+1Pe02ui9J3HkaA=";
   npmPackageLockFile = "tlon.package-lock.json";
-  npmPackageLockSha256 = "264b0abc757655bb647a2ffa6c2eb2953fb92b613536d5843058546d4aad5cbe";
+  npmPackageLockSha256 = "8751096ff351bf5586799cd137d1adaae869444077c1931a40bd7f61d2a156bc";
   npmPackageLockEvidence = {
-    assetName = "openclaw-2026.10.8-dependency-evidence.zip";
-    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.10.8/openclaw-2026.10.8-dependency-evidence.zip";
-    assetNixHash = "sha256-7llsDgSMvqYwQ7gs8fWkp5ENWV0eTTr63em0lgbU73Q=";
+    assetName = "openclaw-2026.10.9-dependency-evidence.zip";
+    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.10.9/openclaw-2026.10.9-dependency-evidence.zip";
+    assetNixHash = "sha256-Gj4z5wBtP0Yex/mGPSFIscjjJTIOX60FkSVHuwO/9jc=";
     source = "release";
-    sourceSha = "dc2523e5a5c7a309517fd7fa834add938231d526";
-    generatedAt = "2026-10-27T05:28:01.662Z";
+    sourceSha = "8b18b5578f66eab1501cba4cef2310d88bfb9a41";
+    generatedAt = "2026-10-29T11:21:09.571Z";
   };
   manifestId = "tlon";
-  openclawCompat = ">=2026.10.8";
-  peerOpenClaw = ">=2026.10.8";
+  openclawCompat = ">=2026.10.9";
+  peerOpenClaw = ">=2026.10.9";
   runtimeExtensions = [
     "./dist/index.js"
   ];
