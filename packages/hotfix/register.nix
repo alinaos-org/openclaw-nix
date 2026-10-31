@@ -377,4 +377,27 @@
     upstreamStatus = "not reported: upstream's choice, not a bug";
     removeWhen = "Upstream makes the loopback server's alwaysLoad and the mediated runs' ToolSearch configurable (or defers by default), or the trial ends without adoption.";
   };
+
+  spawnTargetOwnedMcp = {
+    patch = ./patch-spawn-target-owned-mcp.mjs;
+    marker = "openclaw-nix-spawn-target-owned-mcp-v1";
+    since = "2026.10.8";
+    fixes = ''
+      sessions_spawn: a child inherits the requester's explicit deny list and, under a
+      restrictive profile such as "coding", the concrete names of the requester's own
+      tools, which never include MCP tools. A host that keeps an MCP server to one agent
+      (codex.agents plus a `<server>__*` deny on every other agent) therefore gave a
+      child of that agent none of it: on nova a DISSECT spawned by main had none of its
+      88 REA tools, while sessions_send to DISSECT's own session had all of them. For a
+      cross-agent spawn by the owner (not sender-restricted), servers the config scopes
+      to the target and not to the requester follow the target agent: their
+      `<server>__*` deny is not inherited and they join an inherited allowlist. The
+      target agent's own tool policy still applies; everything else is inherited as
+      before. Hidden children and visible sessions both.
+    '';
+    test = ./test-spawn-target-owned-mcp.mjs;
+    upstream = null;
+    upstreamStatus = "not reported: upstream keeps a child within its requester by design";
+    removeWhen = "Upstream lets a cross-agent child keep the target agent's own scoped MCP servers, or nova stops scoping MCP servers to single agents.";
+  };
 }

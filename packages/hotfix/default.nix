@@ -12,7 +12,7 @@
   stdenvNoCC,
   gateway,
   # Bump when the patch set changes for the same gateway.
-  revision ? "hotfix.8",
+  revision ? "hotfix.9",
 }: let
   # A correction release (2026.7.1-2) is its base release's code, so the patches'
   # release gates read the base.
@@ -114,6 +114,12 @@ in
         # that used to drop it when rebuilding their own params object.
         ${node} ${./patch-agent-scoped-compaction-model.mjs} "${root}" "${upstreamVersion}"
         ${node} ${agentScopedCompactionTest} "${root}"
+
+        # sessions_spawn: an owner's cross-agent child gets the MCP servers the config
+        # scopes to the target agent (codex.agents) and not to the requester, instead of
+        # losing them to the requester's inherited deny and allowlist.
+        ${node} ${./patch-spawn-target-owned-mcp.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-spawn-target-owned-mcp.mjs} "${root}"
       '';
       passthru =
         (gateway.passthru or {})
@@ -134,6 +140,7 @@ in
             mcpOAuthIssuerBinding = "openclaw-nix-mcp-oauth-issuer-binding-v1";
             claudeDeferredLoopbackTools = "openclaw-nix-claude-deferred-loopback-tools-v2";
             agentScopedCompactionModel = "openclaw-nix-agent-scoped-compaction-model-v1";
+            spawnTargetOwnedMcp = "openclaw-nix-spawn-target-owned-mcp-v1";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
@@ -152,6 +159,7 @@ in
             mcpSdkFloor = ./test-mcp-sdk-floor.mjs;
             claudeDeferredLoopbackTools = ./test-claude-deferred-loopback-tools.mjs;
             agentScopedCompactionModel = agentScopedCompactionTest;
+            spawnTargetOwnedMcp = ./test-spawn-target-owned-mcp.mjs;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;
