@@ -12,7 +12,7 @@
   stdenvNoCC,
   gateway,
   # Bump when the patch set changes for the same gateway.
-  revision ? "hotfix.9",
+  revision ? "hotfix.10",
 }: let
   # A correction release (2026.7.1-2) is its base release's code, so the patches'
   # release gates read the base.
@@ -120,6 +120,12 @@ in
         # losing them to the requester's inherited deny and allowlist.
         ${node} ${./patch-spawn-target-owned-mcp.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-spawn-target-owned-mcp.mjs} "${root}"
+
+        # Claude CLI transcripts: look for them in $CLAUDE_CONFIG_DIR/projects when the
+        # gateway runs Claude with its own config dir, not only in ~/.claude/projects, so
+        # a session's transcript is found and a changed live process resumes from it.
+        ${node} ${./patch-claude-cli-config-dir.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-claude-cli-config-dir.mjs} "${root}"
       '';
       passthru =
         (gateway.passthru or {})
@@ -141,6 +147,7 @@ in
             claudeDeferredLoopbackTools = "openclaw-nix-claude-deferred-loopback-tools-v2";
             agentScopedCompactionModel = "openclaw-nix-agent-scoped-compaction-model-v1";
             spawnTargetOwnedMcp = "openclaw-nix-spawn-target-owned-mcp-v1";
+            claudeCliConfigDir = "openclaw-nix-claude-cli-config-dir-v1";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
@@ -160,6 +167,7 @@ in
             claudeDeferredLoopbackTools = ./test-claude-deferred-loopback-tools.mjs;
             agentScopedCompactionModel = agentScopedCompactionTest;
             spawnTargetOwnedMcp = ./test-spawn-target-owned-mcp.mjs;
+            claudeCliConfigDir = ./test-claude-cli-config-dir.mjs;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;
