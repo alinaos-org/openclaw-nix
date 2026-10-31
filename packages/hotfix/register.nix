@@ -400,4 +400,26 @@
     upstreamStatus = "not reported: upstream keeps a child within its requester by design";
     removeWhen = "Upstream lets a cross-agent child keep the target agent's own scoped MCP servers, or nova stops scoping MCP servers to single agents.";
   };
+
+  claudeCliConfigDir = {
+    patch = ./patch-claude-cli-config-dir.mjs;
+    marker = "openclaw-nix-claude-cli-config-dir-v1";
+    since = "2026.10.8";
+    fixes = ''
+      Claude CLI sessions: OpenClaw looked for Claude Code's session transcripts only in
+      $HOME/.claude/projects, but Claude Code writes them to $CLAUDE_CONFIG_DIR/projects
+      when that is set. On a gateway that runs Claude with its own config dir (nova's prod
+      and merlin since 2026-10-24) every transcript check missed: with the live Claude
+      process running, a turn whose process fingerprint had changed failed with
+      "Managed CLI live session is no longer reusable. | cli_live_session_changed" (shown
+      as "Your AI session expired"; 11 times on prod 10-25..10-31), and without it the
+      session reset (missing-transcript) and Claude lost the conversation. The project-dir
+      and projects-root resolvers, in the main bundle and the worker bundles, follow
+      CLAUDE_CONFIG_DIR; an explicit homeDir keeps upstream's layout.
+    '';
+    test = ./test-claude-cli-config-dir.mjs;
+    upstream = null;
+    upstreamStatus = "not reported";
+    removeWhen = "Upstream resolves Claude CLI transcripts through CLAUDE_CONFIG_DIR, or nova stops giving its gateways their own Claude config dir.";
+  };
 }
