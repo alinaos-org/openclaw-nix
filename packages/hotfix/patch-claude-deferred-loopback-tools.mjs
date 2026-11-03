@@ -100,8 +100,10 @@ assert(at(policyAgent) < at(callBefore), "policyAgentId is no longer declared be
 if (toolSearch) {
   assert(at(region) < at(executionMode) && at(executionMode) < at(policyAgent), "executionMode moved");
   assert(at(executionMode) < at(backend) && at(backend) < at(searchBefore), "backendResolved moved");
-  assert(at(policyAgent) < at(gatewayTools) && at(gatewayTools) < at(bootstrapAccess), "canUseGatewayTools moved");
-  assert(at(bootstrapAccess) < at(searchBefore), "bootstrap routing no longer precedes the session event policy");
+  // canUseGatewayTools came after bootstrap routing until 2026.10.9 and comes just
+  // before it from 2026.10.10; either way both are set before the edit reads them.
+  assert(at(policyAgent) < at(gatewayTools) && at(gatewayTools) < at(searchBefore), "canUseGatewayTools moved");
+  assert(at(policyAgent) < at(bootstrapAccess) && at(bootstrapAccess) < at(searchBefore), "bootstrap routing no longer precedes the session event policy");
   assert.equal(text.slice(at(searchBefore) + searchBefore.length).trimStart().indexOf(grant), 0, "the MCP grant no longer directly follows the session event policy");
   assert(at(searchBefore) < at(callBefore), "the loopback server config is built before the native tool list is final");
   // No function boundary between the inputs and the edit.
