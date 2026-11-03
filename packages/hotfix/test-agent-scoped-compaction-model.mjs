@@ -654,10 +654,13 @@ const realSource = (dir, name, needle) => fs.readFileSync(realFile(dir, name, ne
 
   const workerChunk = /^worker-chunk-.*\.mjs$/;
   realFile("worker", workerChunk, "i=e.modelSelectionLocked?void 0:(e.agentId?e.config?.agents?.entries?.[e.agentId]?.compaction?.model?.trim():void 0)??");
-  realFile("worker", workerChunk, "Qt({config:s.config,agentId:s.agentId,");
+  // The worker chunks' minified aliases follow the release (the patch's `minified` table).
+  const [major, minor, patch] = String(realReceipt.upstreamVersion).split(".").map(Number);
+  const v1010 = major > 2026 || (major === 2026 && (minor > 10 || (minor === 10 && patch >= 10)));
+  realFile("worker", workerChunk, `${v1010 ? "Zt" : "Qt"}({config:s.config,agentId:s.agentId,`);
   const workerPlanSource = realSource("worker", workerChunk, "model:agentOverrideModel??(isToolsMemoryFlushPlan(n.plan)?n.plan.model??t.model:n.plan.model)");
   assert.ok(workerPlanSource.includes("let c=qo?.model?.trim()||n?.model?.trim()||void 0;"), "real worker-chunk memory-flush timing does not read the per-agent override");
-  realFile("worker", workerChunk, "agentId:e.followupRun.run.agentId??a(e.cfg)");
+  realFile("worker", workerChunk, `agentId:e.followupRun.run.agentId??${v1010 ? "o" : "a"}(e.cfg)`);
 
   const feishuSource = fs.readFileSync(path.join(realDist, "config-doctor/feishu.js"), "utf8");
   assert.ok(feishuSource.includes("compaction: strictObject({") && feishuSource.includes(MARKER), "real config-doctor/feishu.js: inlined schema missing the per-agent compaction field");
