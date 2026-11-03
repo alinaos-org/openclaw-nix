@@ -65,23 +65,6 @@ in
         ${node} ${./patch-codex-cyber-access-program.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-codex-cyber-access-program.mjs} "${root}"
 
-        # Native Control UI: serve and reload bundled plugins' browser builds
-        # although Nix store optimisation hard-links their files and manifests.
-        ${node} ${./patch-control-ui-store-hardlinks.mjs} "${root}" "${upstreamVersion}"
-        ${node} ${./test-control-ui-store-hardlinks.mjs} "${root}"
-
-        # Agent databases: retry a deferred agent's preparation that a runtime
-        # config or secrets republish superseded, instead of leaving the agent
-        # degraded until a restart, and name which republish it was.
-        ${node} ${./patch-agent-db-preparation-retry.mjs} "${root}" "${upstreamVersion}"
-        ${node} ${./test-agent-db-preparation-retry.mjs} "${root}"
-
-        # Agent databases: memory's transcript corpus (dreaming, backfill) reads each
-        # entry's content revision read-only in the history Workers, instead of a
-        # writable open whose lease outlives every stop.
-        ${node} ${./patch-corpus-revision-read-only.mjs} "${root}" "${upstreamVersion}"
-        ${node} ${./test-corpus-revision-read-only.mjs} "${root}"
-
         # Plugin-owned runs: carry the authenticated initiating plugin into the
         # run's prepared generation without widening generation-scoped hooks.
         ${node} ${./patch-plugin-runtime-owner-generation.mjs} "${root}" "${upstreamVersion}"
@@ -137,10 +120,7 @@ in
             cloudWorkerGatewayUrl = "openclaw-nix-cloud-worker-gateway-url-v1";
             skillTreeStoreHardlinks = "openclaw-nix-skill-tree-store-hardlinks-v1";
             skillDeliveryDescription = "openclaw-nix-skill-delivery-description-v1";
-            controlUiStoreHardlinks = "openclaw-nix-control-ui-store-hardlinks-v2";
             codexCyberAccessProgram = "openclaw-nix-codex-cyber-access-program-v1";
-            agentDbPreparationRetry = "openclaw-nix-agent-db-preparation-retry-v1";
-            corpusRevisionReadOnly = "openclaw-nix-corpus-revision-read-only-v1";
             pluginRuntimeOwnerGeneration = "openclaw-nix-plugin-runtime-owner-generation-v1";
             missingPluginAutoInstall = "openclaw-nix-missing-plugin-auto-install-v1";
             mcpOAuthIssuerBinding = "openclaw-nix-mcp-oauth-issuer-binding-v1";
@@ -156,10 +136,7 @@ in
             cloudWorkerGatewayUrl = ./test-cloud-worker-gateway-url.mjs;
             skillTreeStoreHardlinks = ./test-skill-tree-store-hardlinks.mjs;
             skillDeliveryDescription = ./test-skill-delivery-description.mjs;
-            controlUiStoreHardlinks = ./test-control-ui-store-hardlinks.mjs;
             codexCyberAccessProgram = ./test-codex-cyber-access-program.mjs;
-            agentDbPreparationRetry = ./test-agent-db-preparation-retry.mjs;
-            corpusRevisionReadOnly = ./test-corpus-revision-read-only.mjs;
             pluginRuntimeOwnerGeneration = ./test-plugin-runtime-owner-generation.mjs;
             missingPluginAutoInstall = ./test-missing-plugin-auto-install.mjs;
             mcpOAuthIssuerBinding = ./test-mcp-oauth-issuer-binding.mjs;
