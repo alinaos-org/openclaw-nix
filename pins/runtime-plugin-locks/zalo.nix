@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.9.8";
   expectedIntegrity = "";
   packageName = "@openclaw/zalo";
-  version = "2026.10.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/zalo/-/zalo-2026.10.9.tgz";
-  npmIntegrity = "sha512-Wk53721dD0X0yS+x9s+1n94OoiR3EWwsZtUYyY8faCwIRr0fZI96ErVx88yL8dUM91d58UCueoX8IxMNELH6zQ==";
-  npmShasum = "3f5a2dd85a8595e1a91e71350c1cf3f31a246d31";
-  nixHash = "sha256-DjRghq0qreZD4oLOk8o4O6FAkj46t6B6LQpAxzsfnRw=";
+  version = "2026.10.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/zalo/-/zalo-2026.10.10.tgz";
+  npmIntegrity = "sha512-qf3U02Eix5cEPbnNEeLsMJaiuzn4Ym2zgzxlmBEBsZ3jd256jwIYQkBpY6LIh5gyQpStGvlKHNMBjdsw5gHlVg==";
+  npmShasum = "1c7cb526d354c78e7df77beb34ba4def9c22baeb";
+  nixHash = "sha256-PBvZlVQx1usH5+O/IHo9QTl7Ev5RmQ+FJ4h8GBeREuo=";
   dependencyMode = "bundled";
   manifestId = "zalo";
-  openclawCompat = ">=2026.10.9";
-  peerOpenClaw = ">=2026.10.9";
+  openclawCompat = ">=2026.10.10";
+  peerOpenClaw = ">=2026.10.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];

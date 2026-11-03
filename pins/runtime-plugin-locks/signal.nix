@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.9";
   expectedIntegrity = "";
   packageName = "@openclaw/signal";
-  version = "2026.10.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/signal/-/signal-2026.10.9.tgz";
-  npmIntegrity = "sha512-NefKKs2mmAVdJDtm4ADOsrN0zmNEwEoO4sfYv8aE+ghMf+ksvI1/nKxYs8mYdKDjLzmtyCVydGR0Nd/Z7lvpFA==";
-  npmShasum = "90d713756af62367c2130e10f87eff2d19ca83bd";
-  nixHash = "sha256-A3BKxjHhWGGLDRAOjMKT4omDEpUtySNOgetJ0sJhl4c=";
+  version = "2026.10.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/signal/-/signal-2026.10.10.tgz";
+  npmIntegrity = "sha512-U9rGyt/WbdM/oHkJ/orgIZ/fT+M2z4TdZshNyoyj6BC2piA2M0BfYQSa6X6WmH57waQRD3lOm8X1TVHPhl2wsQ==";
+  npmShasum = "78d0b1c9840fbc7e2c0398e234924b4923538381";
+  nixHash = "sha256-bDh4Ntx0IgOVmifAdHTTRH0VXb5ikNU6Tpy59630fFA=";
   dependencyMode = "bundled";
   manifestId = "signal";
-  openclawCompat = ">=2026.10.9";
-  peerOpenClaw = ">=2026.10.9";
+  openclawCompat = ">=2026.10.10";
+  peerOpenClaw = ">=2026.10.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];
@@ -31,7 +31,7 @@
   ];
   contracts = {};
   dependencies = {
-    "@openclaw/fs-safe" = "0.26.0";
+    "@openclaw/fs-safe" = "0.26.5";
     ws = "8.22.0";
     zod = "4.6.5";
   };
