@@ -133,15 +133,17 @@ replaceExact({
   expectedFiles: 1,
 });
 
+// ownerKey's config fingerprint is hashRuntimeConfigValue until 2026.10.9 and
+// modelRuntimeConfigFingerprint from 2026.10.10; the anchor stops before it.
 replaceExact({
   id: "owner-identity",
   before: `\t\tallowGatewaySubagentBinding: input.allowGatewaySubagentBinding === true,
 \t\truntimePluginSelections: input.runtimePluginSelections,
-\t\tconfig: input.readOnly ? hashRuntimeConfigValue(input.config) : void 0`,
+\t\tconfig: input.readOnly ? `,
   after: `\t\tallowGatewaySubagentBinding: input.allowGatewaySubagentBinding === true,
 \t\truntimePluginOwnerIds: input.runtimePluginOwnerIds,
 \t\truntimePluginSelections: input.runtimePluginSelections,
-\t\tconfig: input.readOnly ? hashRuntimeConfigValue(input.config) : void 0`,
+\t\tconfig: input.readOnly ? `,
   expectedCount: 1,
   expectedFiles: 1,
 });
@@ -176,13 +178,20 @@ replaceExact({
   expectedFiles: 1,
 });
 
+// From 2026.10.10 both catalog identities also clear runtimePluginPurpose and the
+// second spreads inventoryInput. 2026.10.10 also adds a static-catalog fast path for
+// runs that compares ownerKey with only runtimePluginSelections cleared; it is left
+// as is, so a plugin-owned run never reuses the configured owner's generation there
+// and publishes its own run owner, as on 2026.10.9.
+const catalogPurpose = atLeast(version, "2026.10.10") ? "\t\t\truntimePluginPurpose: void 0,\n" : "";
+const catalogInput = atLeast(version, "2026.10.10") ? "inventoryInput" : "input";
 replaceExact({
   id: "catalog-owner-identity",
   before: `\t\t\tloadRuntimePlugins: false,
-\t\t\truntimePluginSelections: void 0
+${catalogPurpose}\t\t\truntimePluginSelections: void 0
 \t\t}) === ownerKey({`,
   after: `\t\t\tloadRuntimePlugins: false,
-\t\t\truntimePluginOwnerIds: void 0,
+${catalogPurpose}\t\t\truntimePluginOwnerIds: void 0,
 \t\t\truntimePluginSelections: void 0
 \t\t}) === ownerKey({`,
   expectedCount: 1,
@@ -191,13 +200,13 @@ replaceExact({
 
 replaceExact({
   id: "catalog-input-identity",
-  before: `\t\t\t...input,
+  before: `\t\t\t...${catalogInput},
 \t\t\tloadRuntimePlugins: false,
-\t\t\truntimePluginSelections: void 0
+${catalogPurpose}\t\t\truntimePluginSelections: void 0
 \t\t}) ? configuredOwner : owner;`,
-  after: `\t\t\t...input,
+  after: `\t\t\t...${catalogInput},
 \t\t\tloadRuntimePlugins: false,
-\t\t\truntimePluginOwnerIds: void 0,
+${catalogPurpose}\t\t\truntimePluginOwnerIds: void 0,
 \t\t\truntimePluginSelections: void 0
 \t\t}) ? configuredOwner : owner;`,
   expectedCount: 1,
