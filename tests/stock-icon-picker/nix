@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# A stand-in for the nix calls `scripts/stock-icon-picker.sh fallback` makes, in a
+# checkout of fixtures: the picker is off when releases.nix has the line, the
+# gateway build log is $NIX_LOG, and the gateway builds only without the picker
+# (and not at all with STOCK_BUILD=fail).
+set -euo pipefail
+off() { grep -qE '^[[:space:]]*sessionIconPicker[[:space:]]*=[[:space:]]*false' releases.nix; }
+case "$*" in
+  "eval --raw -f release.nix current") sed -n 's/^ *current = "\([^"]*\)";.*/\1/p' release.nix ;;
+  "eval --json .#gateway.passthru.sessionIconPicker") if off; then echo false; else echo true; fi ;;
+  "eval --raw .#gateway.drvPath") echo /nix/store/00000000000000000000000000000000-openclaw-gateway.drv ;;
+  "log /nix/store/00000000000000000000000000000000-openclaw-gateway.drv") [ -n "${NIX_LOG:-}" ] && cat "$NIX_LOG" ;;
+  "build -L --max-jobs 1 --no-link --print-out-paths .#gateway")
+    off && [ "${STOCK_BUILD:-}" != fail ] || exit 1
+    echo /nix/store/11111111111111111111111111111111-openclaw-gateway ;;
+  "eval --raw .#gateway.pnpmDeps.outPath") echo /nix/store/22222222222222222222222222222222-pnpm-deps ;;
+  *) echo "nix stand-in: unexpected nix $*" >&2; exit 1 ;;
+esac

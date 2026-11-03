@@ -13,6 +13,12 @@ concurrency:
 jobs:
   eval:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # A release branch with the stock session icon picker: its label, pull
+      # request title and re-port issue (scripts/stock-icon-picker.sh mark).
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
@@ -35,6 +41,25 @@ jobs:
             | jq -r '.[] | ".#checks.x86_64-linux." + .' | xargs nix build -L
       - name: Formatting
         run: nix build -L .#checks.x86_64-linux.formatting
+      # The scripts that keep the session icon picker from blocking a release.
+      - name: Session icon picker fallback scripts
+        run: nix build -L .#checks.x86_64-linux.stock-icon-picker
+      # A release branch whose entry has `sessionIconPicker = false;` (set by
+      # release-watch, by the build's fallback below, or by hand) builds with
+      # OpenClaw's own picker: say so on its pull request and in the re-port
+      # issue. Only warns when it cannot (a fork's read-only token).
+      - name: Mark a release with the stock session icon picker
+        if: startsWith(github.head_ref || github.ref_name, 'release-')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          v=$(nix eval --raw -f release.nix current)
+          [ "$BRANCH" = "release-$v" ] || exit 0
+          [ "$(nix eval --json .#gateway.passthru.sessionIconPicker)" = false ] || exit 0
+          scripts/stock-icon-picker.sh mark "$v" "its releases.nix entry has \`sessionIconPicker = false;\`" ||
+            echo "::warning::could not label OpenClaw $v's stock session icon picker or open its re-port issue"
       # init generates a laptop flake as a teammate's machine would, and its whole
       # NixOS system evaluates against this checkout (both sign-in modes).
       - name: A generated laptop flake evaluates
@@ -45,6 +70,13 @@ jobs:
     # A larger runner (repository variable BUILD_RUNNER, for example a 16-core
     # one) roughly halves the source build; the default 4-core runner works.
     runs-on: ${{ vars.BUILD_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      # The stock session icon picker fallback below: its commit to the release
+      # branch, its label and re-port issue, and the CI run on its commit.
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
     # A release that also moves the gateway's Node compiles Node first: 2026.10.6
     # (Node 24.22.1) is about an hour and a half of Node and half an hour of
     # gateway on the 4-core runner, past the 150 minutes this was.
@@ -84,6 +116,7 @@ jobs:
       # patches are re-ported against this exact tree (scratch-patch-chain.sh),
       # which a host cannot cheaply compile itself (it peaks around 15 GB).
       - name: The source build and its dependency set
+        id: source
         env:
           CACHIX_CACHE: ${{ vars.CACHIX_CACHE }}
           CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -92,6 +125,26 @@ jobs:
           if [ -n "$CACHIX_CACHE" ] && [ -n "$CACHIX_AUTH_TOKEN" ]; then
             cachix push "$CACHIX_CACHE" "$(nix eval --raw .#gateway.pnpmDeps.outPath)" "$gateway"
           fi
+          # The build's own warnings (a stale ownUiTestExclusions name, an
+          # upstream Control UI test file gone), when it was built here.
+          { nix log "$gateway" 2>/dev/null || true; } | sed -n 's/^openclaw-nix: warning: /::warning::/p'
+      # A release branch whose gateway build stopped in a step the session icon
+      # picker patch changes (the Control UI build or its tests) builds without
+      # the patch instead: scripts/stock-icon-picker.sh fallback commits
+      # `sessionIconPicker = false;` to the branch, caches that build, labels the
+      # pull request, opens the re-port issue and runs CI on the new commit. This
+      # run stays failed. Only release-watch's dispatched runs on its own branches;
+      # any other failure is left as it is.
+      - name: Fall back to the stock session icon picker
+        if: failure() && steps.source.outcome == 'failure' && github.event_name == 'workflow_dispatch' && startsWith(github.ref_name, 'release-')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHIX_CACHE: ${{ vars.CACHIX_CACHE }}
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          v=${GITHUB_REF_NAME#release-}
+          scripts/stock-icon-picker.sh fallback "$v"
       - name: Gateway, hotfix layer, CLI and runtime plugins
         run: nix build -L --max-jobs 1 .#gateway-hotfixed .#openclaw .#desktop .#runtime-plugins
       - name: Single release, state fence, customize layer and upgrade skill

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# A stand-in for the gh calls scripts/stock-icon-picker.sh makes, on a JSON file
+# ($GH_STATE: labels, issues, pull requests, workflow runs).
+set -euo pipefail
+cmd="$1 $2"
+shift 2
+positional=()
+declare -A flag=()
+while [ $# -gt 0 ]; do
+  case $1 in
+    --force) shift ;;
+    --*) flag[${1#--}]=$2; shift 2 ;;
+    *) positional+=("$1"); shift ;;
+  esac
+done
+jqexpr=${flag[jq]:-.}
+state() { jq "$@" "$GH_STATE" > "$GH_STATE.new" && mv "$GH_STATE.new" "$GH_STATE"; }
+case $cmd in
+  "label create") state --arg l "${positional[0]}" '.labels = (.labels + [$l] | unique)' ;;
+  "issue list")
+    jq -r --arg l "${flag[label]}" "[.issues[] | select(.open and (.labels | index(\$l))) | {number}] | $jqexpr" "$GH_STATE" ;;
+  "issue view")
+    jq -r --argjson n "${positional[0]}" ".issues[] | select(.number == \$n) | {body, comments: [.comments[] | {body: .}]} | $jqexpr" "$GH_STATE" ;;
+  "issue comment") state --argjson n "${positional[0]}" --arg b "${flag[body]}" '(.issues[] | select(.number == $n) | .comments) += [$b]' ;;
+  "issue create")
+    body=$(cat)
+    n=$(jq '(.issues | length) + 1' "$GH_STATE")
+    state --argjson n "$n" --arg t "${flag[title]}" --arg b "$body" --arg l "${flag[label]}" \
+      '.issues += [{number: $n, open: true, title: $t, body: $b, labels: [$l], comments: []}]'
+    echo "https://github.com/example/openclaw-nix/issues/$n" ;;
+  "pr list")
+    jq -r --arg h "${flag[head]}" "[.prs[] | select(.head == \$h) | {number, title, labels: [.labels[] | {name: .}]}] | $jqexpr" "$GH_STATE" ;;
+  "pr edit") state --argjson n "${positional[0]}" --arg l "${flag[add-label]}" --arg t "${flag[title]}" \
+    '(.prs[] | select(.number == $n)) |= (.labels = (.labels + [$l] | unique) | .title = $t)' ;;
+  "pr comment") state --argjson n "${positional[0]}" --arg b "${flag[body]}" '(.prs[] | select(.number == $n) | .comments) += [$b]' ;;
+  "workflow run") state --arg r "${flag[ref]}" '.runs += [$r]' ;;
+  *) echo "gh stand-in: unexpected gh $cmd" >&2; exit 1 ;;
+esac

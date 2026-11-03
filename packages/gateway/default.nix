@@ -45,8 +45,8 @@
   releases ? import ../../releases.nix,
   release ? (import ../../release.nix).current,
   # Appended to the version: <release>-<localRevision>. Bump when this build
-  # changes for the same upstream release.
-  localRevision ? "nix.4",
+  # changes for the same upstream release (a session icon picker re-port too).
+  localRevision ? "nix.5",
   # Source patches applied in order, before pnpm: a list of paths, or of
   # { name, patch } attrsets. Applied with -p1 and zero fuzz.
   extraSourcePatches ? [],
@@ -112,8 +112,11 @@
   # Upstream Control UI tests run unmodified, each in its own vitest run, without
   # the named tests the own patches change on purpose. session-icon-menu.test.ts
   # carries those two, adapted: "No icon" is under the Icons tab, and the tab list
-  # has its own tab stop. If upstream renames one, its old assertion fails here,
-  # at the test step: rename it in this list and in session-icon-menu.test.ts.
+  # has its own tab stop. A release that renames or rewrites one, or adds a test
+  # that clicks the stock grid, fails that step: CI's build then falls back to
+  # OpenClaw's own picker on the release branch (scripts/stock-icon-picker.sh), and
+  # the re-port updates this list and session-icon-menu.test.ts. A missing file or
+  # a name the file no longer has is an `openclaw-nix: warning:` in the build log.
   ownUiTestExclusions = lib.optionalAttrs (sessionIconPicker && !lib.versionOlder upstreamVersion "2026.10.10") {
     "ui/src/components/session-menu.test.ts" = [
       "edits icon and color together"
@@ -287,10 +290,15 @@
 
   tests = ["src/plugins/hardlink-policy.test.ts"] ++ extraTests;
   # gateway-build.sh steps for ownUiTestExclusions: one vitest run per upstream
-  # file, after the own UI tests (none before 2026.10.10).
-  upstreamUiTestSteps =
-    lib.concatStrings (lib.mapAttrsToList (test: names: "-e ${lib.escapeShellArg ''/log_step "pnpm prune --prod"/i log_step "test: upstream Control UI ${baseNameOf test}" node node_modules/vitest/vitest.mjs run --config ui/vitest.config.ts ${test} -t ${lib.escapeShellArg "^(?!.*(${lib.concatStringsSep "|" names}))"}''} \\\n  ")
-      ownUiTestExclusions);
+  # file, after the own UI tests (none before 2026.10.10). A file upstream moved
+  # is skipped (vitest fails on a filter that matches no file), and an excluded
+  # name the file no longer has is reported; both are build-log warnings.
+  upstreamUiTestSteps = lib.concatStrings (lib.mapAttrsToList (test: names: let
+    warn = msg: "echo ${lib.escapeShellArg "openclaw-nix: warning: ${msg} (README, Session icons)"} >&2";
+    nameChecks = lib.concatMapStrings (n: "grep -qF -- ${lib.escapeShellArg n} ${test} || ${warn "${test} has no test named \"${n}\": ownUiTestExclusions is stale"}; ") names;
+    run = ''log_step "test: upstream Control UI ${baseNameOf test}" node node_modules/vitest/vitest.mjs run --config ui/vitest.config.ts ${test} -t ${lib.escapeShellArg "^(?!.*(${lib.concatStringsSep "|" names}))"}'';
+  in "-e ${lib.escapeShellArg ''/log_step "pnpm prune --prod"/i if test -f ${test}; then ${nameChecks}${run}; else ${warn "${test} is gone: its upstream tests did not run"}; fi''} \\\n  ")
+  ownUiTestExclusions);
 
   # The gateway-build.sh step for ownUiTests. None when the picker is off: vitest
   # with no files would run the whole UI suite.

@@ -29,16 +29,18 @@ patch and left nothing to see for 15 hours). Finish the pin on that branch, then
 ready.
 
 The session icon picker patch is the one patch that never blocks a release. When it no
-longer applies, the pull request is titled "(stock session icon picker)", labelled
-`stock-icon-picker` and stays ready: that release builds and ships with OpenClaw's own
-picker, without the patch and its UI tests. An open issue with the same label holds the
-re-port's checklist; a later release that fails too comments on it. Report such a pull
+longer applies, or it applies but CI's gateway build fails in a step it changes (the
+Control UI build or its tests; CI then commits the switch to the branch itself), the
+pull request is titled "(stock session icon picker)", labelled `stock-icon-picker` and
+stays ready: that release builds and ships with OpenClaw's own picker, without the
+patch and its UI tests. An open issue with the same label holds the re-port's
+checklist; a later release that falls back too comments on it. Report such a pull
 request as "ships with the stock session icon picker". Saved icons still show on the
 stock UI (library icons are SVG data URLs, emoji are text; both pass the gateway's
-validation unchanged), so it is no reason to hold the release. Only the dry run is
-non-blocking: a picker patch that applies but breaks the Control UI compile or its tests
-fails CI's build. Add `sessionIconPicker = false;` to the release's entry in that pull
-request (it changes no pnpm hash) and open the re-port issue by hand.
+validation unchanged), so it is no reason to hold the release. CI falls back only on
+release-watch's own branch and dispatched runs: on a branch someone has committed to,
+add `sessionIconPicker = false;` to the release's entry by hand (it changes no pnpm
+hash); CI's eval job then labels the pull request and comments on the issue.
 
 A correction release (`v2026.7.1-2`) keeps its base version in `package.json`, and
 OpenClaw publishes its plugins at that version: the lock generator takes the plugin
@@ -131,10 +133,11 @@ it, each failing the build when a release moves the code it changes:
   the patch was regenerated with `git diff` in a scratch repository of the release
   source, and the build's UI tests ran the patched tests. Since 2026.10.10 the picker
   patch's only upstream edit is a three-line hook in `session-icon-picker-solid.tsx`, and
-  a release it does not apply to builds with the stock picker
-  (`sessionIconPicker = false;`, above). Its re-port ships as a fix release: port the
-  hook, delete the line (`new-release.py <v> --icon-picker-only` reports "applies again"
-  while it is still set), close the issue, and dispatch `tag-release` for `-r<N>`. The
+  a release it does not apply to, or whose Control UI build or tests it fails, builds
+  with the stock picker (`sessionIconPicker = false;`, above). Its re-port ships as a fix
+  release: port the hook (or update `ownUiTestExclusions`), delete the line
+  (`new-release.py <v> --icon-picker-only` reports "applies again" while it is still
+  set), bump `localRevision`, close the issue, and dispatch `tag-release` for `-r<N>`. The
   pnpm dependency set is the same with and without the patch, so the re-port keeps the
   release's `pnpmDepsHash`.
 - **The consumer's customize layer** (`packages/custom`): `replaceBundledChannels` fails

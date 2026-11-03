@@ -14,7 +14,8 @@ name: release-watch
 # (2026.10.5 and 2026.10.10 rewrote what it edits), the release builds with
 # OpenClaw's own picker (`sessionIconPicker = false;` in its releases.nix entry).
 # Its pull request stays ready, labelled stock-icon-picker, and the re-port is an
-# issue with the same label.
+# issue with the same label (scripts/stock-icon-picker.sh mark). A patch that
+# applies but fails the build falls back the same way in CI (ci.yml).
 on:
   schedule:
     - cron: "17 * * * *"
@@ -91,10 +92,8 @@ jobs:
           }
           locks() { scripts/generate-plugin-locks.sh "$v" | tee -a "$GITHUB_STEP_SUMMARY"; }
           options() { scripts/generate-config-options.sh "$v" | tee -a "$GITHUB_STEP_SUMMARY"; }
-          picker() {
-            python3 scripts/new-release.py "$v" --icon-picker-only | tee -a "$GITHUB_STEP_SUMMARY" || return
-            echo "PICKER_CHECKED=yes" >> "$GITHUB_ENV"
-          }
+          # Its verdict (applies, stock or stale) is PICKER_VERDICT below.
+          picker() { python3 scripts/new-release.py "$v" --icon-picker-only --verdict-file "$GITHUB_ENV" | tee -a "$GITHUB_STEP_SUMMARY"; }
           plugins() {
             local rc=0
             python3 scripts/pin-runtime-plugins.py "$v" || rc=$?
@@ -130,48 +129,37 @@ jobs:
           git push origin "release-$v"
           note=""
           [ "$PLUGIN_DEPS_CHANGED" = yes ] && note=$'\n\nA runtime plugin changed its dependencies: check that it still builds.'
-          # The picker check's verdict as the branch evaluates it: true, false,
-          # or unknown when pinning failed before the check ran.
-          picker=unknown
-          if [ "$PICKER_CHECKED" = yes ]; then
-            picker=$(nix eval --json --accept-flake-config .#gateway.passthru.sessionIconPicker || echo unknown)
-          fi
-          # The re-port issue: comment on the open one, or open it. Prints its
-          # reference; a failure only warns, and the pull request still opens.
-          reissue() {
-            local issue url
-            issue=$(gh issue list --state open --label stock-icon-picker --json number --jq '.[0].number // empty') || return
-            if [ -n "$issue" ]; then
-              gh issue comment "$issue" --body "OpenClaw $v builds with the stock session icon picker too ($run). Re-port on its release." >/dev/null || return
-              echo "#$issue"
-              return
-            fi
-            url=$(gh issue create --label stock-icon-picker --title "Re-port the session icon picker (OpenClaw $v)" --body-file - <<BODY
-          openclaw-nix's session icon picker patch (\`packages/gateway/patches/session-icon-picker.patch\`) does not apply to OpenClaw $v; release-watch's session icon picker check shows what failed ($run). The release builds with OpenClaw's own picker (\`sessionIconPicker = false;\` in its \`releases.nix\` entry). Sessions keep their saved icons and still show them.
-
-          - [ ] Re-port the hook in a scratch repository of the release source (\`nix build .#gateway.passthru.upstreamSource\`) and regenerate the patch with \`git diff\`.
-          - [ ] Keep the previous patch as \`patches/<previous release>/session-icon-picker.patch\`, chosen with \`lib.versionOlder\` in \`packages/gateway/default.nix\`.
-          - [ ] Delete \`sessionIconPicker = false;\` and its comment from the release's entry (\`scripts/new-release.py <release> --icon-picker-only\` says when the patch applies again).
-          - [ ] The build's Control UI tests pass (CI \`build\`), \`ownUiTestExclusions\` included.
-          - [ ] After the merge, dispatch \`tag-release\` for the fix release (\`<release>-r2\` or later).
-          BODY
-            ) || return
-            echo "#${url##*/}"
-          }
+          # The picker check's verdict: applies, stock (the patch does not apply;
+          # the entry is off), stale (the entry is off, but the patch applies),
+          # or none when pinning failed before the check ran.
           labels=()
           issue=""
           suffix=${FAILED:+pinning failed at $FAILED}
-          if [ "$picker" = false ]; then
-            gh label create stock-icon-picker --color fbca04 --force \
-              --description "Builds with OpenClaw's own session icon picker; openclaw-nix's patch needs a re-port" \
-              && labels=(--label stock-icon-picker)
-            issue=$(reissue) || issue=""
-            [ -n "$issue" ] || echo "::warning::could not open or update the session icon picker re-port issue"
-            suffix="${suffix:+$suffix; }stock session icon picker"
-            note="$note"$'\n\n'"The session icon picker patch does not apply to $v, so this release builds with OpenClaw's own picker (\`sessionIconPicker = false;\` in releases.nix). Sessions keep their saved icons and still show them; openclaw-nix's emoji catalog and icon library come back with the re-port${issue:+ ($issue)}."
-          elif [ "$picker" = true ]; then
-            note="$note"$'\n\n'"The session icon picker patch applies. If it no longer compiles or its tests fail, add \`sessionIconPicker = false;\` to the release's releases.nix entry here: the release then builds with OpenClaw's own picker."
-          fi
+          case ${PICKER_VERDICT:-} in
+            stock | stale)
+              if [ "$PICKER_VERDICT" = stock ]; then
+                why="the session icon picker patch does not apply to $v (release-watch's session icon picker check shows what failed)"
+              else
+                why="its releases.nix entry has \`sessionIconPicker = false;\` although the session icon picker patch applies to $v again"
+              fi
+              # A failure only warns: CI's eval job marks the release again.
+              if issue=$(RUN_URL=$run scripts/stock-icon-picker.sh mark "$v" "$why"); then
+                labels=(--label stock-icon-picker)
+              else
+                issue=""
+                echo "::warning::could not label the release or open the session icon picker re-port issue"
+              fi
+              suffix="${suffix:+$suffix; }stock session icon picker"
+              if [ "$PICKER_VERDICT" = stock ]; then
+                note="$note"$'\n\n'"The session icon picker patch does not apply to $v, so this release builds with OpenClaw's own picker (\`sessionIconPicker = false;\` in releases.nix). Sessions keep their saved icons and still show them; openclaw-nix's emoji catalog and icon library come back with the re-port${issue:+ ($issue)}."
+              else
+                note="$note"$'\n\n'"The session icon picker patch applies to $v, but its releases.nix entry still has \`sessionIconPicker = false;\` (a line new-release.py did not recognise as its own). Delete it here: the release then builds with openclaw-nix's picker${issue:+ ($issue)}."
+              fi
+              ;;
+            applies)
+              note="$note"$'\n\n'"The session icon picker patch applies. If the gateway build then fails in a step it changes (the Control UI build or its tests), CI falls back to OpenClaw's own picker on this branch: it commits \`sessionIconPicker = false;\`, labels this pull request stock-icon-picker and opens the re-port issue."
+              ;;
+          esac
           title="openclaw: $v${suffix:+ ($suffix)}"
           if [ -n "$FAILED" ]; then
             gh pr create --draft "${labels[@]}" --title "$title" \
@@ -186,13 +174,15 @@ jobs:
             echo "::error::OpenClaw $v: $FAILED failed; draft pull request opened"
             exit 1
           fi
-          if [ "$picker" = false ]; then
-            echo "::warning::OpenClaw $v builds with the stock session icon picker; re-port: ${issue:-see the issues labelled stock-icon-picker}"
-          fi
+          case ${PICKER_VERDICT:-} in
+            stock | stale) echo "::warning::OpenClaw $v builds with the stock session icon picker; re-port: ${issue:-see the issues labelled stock-icon-picker}" ;;
+          esac
       - name: Open the pull request of a pushed release branch
         if: steps.latest.outputs.orphan == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+        # CI's eval job labels it stock-icon-picker when the branch builds with
+        # OpenClaw's own session icon picker (scripts/stock-icon-picker.sh mark).
         run: |
           v=${{ steps.latest.outputs.latest }}
           gh pr create --draft --head "release-$v" --title "openclaw: $v" \
@@ -213,7 +203,9 @@ jobs:
           if git merge-base --is-ancestor origin/main "origin/$b"; then
             echo "$b is on main"; exit 0
           fi
-          if [ "$(git rev-list --count "origin/main..origin/$b")" != 1 ] || [ "$(git log -1 --format=%ae "origin/$b")" != "$bot" ]; then
+          # The watcher's commits: its pin, and CI's stock session icon picker
+          # fallback (scripts/stock-icon-picker.sh) when there is one.
+          if git log --format=%ae "origin/main..origin/$b" | grep -qvxF "$bot"; then
             echo "$b has commits besides the watcher's; not rebasing"; exit 0
           fi
           git config user.name "github-actions[bot]"
