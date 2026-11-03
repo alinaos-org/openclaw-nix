@@ -330,8 +330,8 @@
     '';
     test = ./test-spawn-target-owned-mcp.mjs;
     upstream = null;
-    upstreamStatus = "not reported: upstream keeps a child within its requester by design";
-    removeWhen = "Upstream lets a cross-agent child keep the target agent's own scoped MCP servers, or nova stops scoping MCP servers to single agents.";
+    upstreamStatus = "not reported: upstream keeps a child within its requester by design. 2026.10.10 adds an operator grant, agents.entries.<id>.subagents.delegateToolsTo, that waives the requester's own tools.deny for named native targets, but only for deny-only requesters on a Gateway-native surface (an inherited allowlist refuses the spawn), and it waives the whole local deny, not only the target's MCP servers";
+    removeWhen = "Upstream lets a cross-agent child keep the target agent's own scoped MCP servers (or the host moves to delegateToolsTo and its restrictions fit), or nova stops scoping MCP servers to single agents.";
   };
 
   claudeCliConfigDir = {

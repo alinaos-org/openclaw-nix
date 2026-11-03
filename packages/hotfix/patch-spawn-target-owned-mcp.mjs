@@ -47,18 +47,27 @@ const helper = [
 const hiddenBefore = "childDepth, maxSpawnDepth, childIdem } = requestResolution.resolved;\n";
 const hiddenAfter = `${hiddenBefore}\tctx = openclawNixTargetOwnedMcpToolPolicy(ctx, cfg, requesterAgentId, targetAgentId); ${MARKER}\n`;
 // Visible sessions: the same rule for the policy sent with the session create.
+// From 2026.10.10 the policy also carries upstream's delegated tool policy (the
+// operator's subagents.delegateToolsTo grant), which is kept as it is.
+const delegated = atLeast(version, "2026.10.10");
 const visibleBefore = [
   "\t\t\tinheritedToolPolicy: {",
   "\t\t\t\tversion: 1,",
   "\t\t\t\tallow: [...params.options?.inheritedToolAllowlist ?? []],",
-  "\t\t\t\tdeny: [...params.options?.inheritedToolDenylist ?? []]",
+  ...delegated ? [
+    "\t\t\t\tdeny: [...params.options?.inheritedToolDenylist ?? []],",
+    "\t\t\t\t...delegatedToolPolicy ? { delegatedToolPolicy } : {}",
+  ] : ["\t\t\t\tdeny: [...params.options?.inheritedToolDenylist ?? []]"],
   "\t\t\t},",
 ].join("\n");
 const visibleAfter = [
   `\t\t\tinheritedToolPolicy: ((policy) => ({ ${MARKER}`,
   "\t\t\t\tversion: 1,",
   "\t\t\t\tallow: [...policy?.inheritedToolAllowlist ?? []],",
-  "\t\t\t\tdeny: [...policy?.inheritedToolDenylist ?? []]",
+  ...delegated ? [
+    "\t\t\t\tdeny: [...policy?.inheritedToolDenylist ?? []],",
+    "\t\t\t\t...delegatedToolPolicy ? { delegatedToolPolicy } : {}",
+  ] : ["\t\t\t\tdeny: [...policy?.inheritedToolDenylist ?? []]"],
   "\t\t\t}))(openclawNixTargetOwnedMcpToolPolicy(params.options, cfg, requesterAgentId, targetAgentId)),",
 ].join("\n");
 const count = (text, needle) => text.split(needle).length - 1;
