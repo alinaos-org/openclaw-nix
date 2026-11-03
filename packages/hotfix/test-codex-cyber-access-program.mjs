@@ -28,10 +28,12 @@ const harnessFile = file(/^harness\.js$/);
 const failoverFile = file(/^cyber-failover-.*\.mjs$/);
 for (const name of [turnStartFile, harnessFile, failoverFile]) execFileSync(process.execPath, ["--check", name]);
 const exportAlias = (text, name) => new RegExp(`\\b${name} as (\\w+)`).exec(/export \{([^}]*)\}/.exec(text)?.[1] ?? "")?.[1];
-const withEnv = (value, run) => {
+// From 2026.10.10 the builder is async (it awaits the model selection before reading the
+// variable), so the variable stays set until the build settles.
+const withEnv = async (value, run) => {
   const saved = process.env[ENV];
   if (value === undefined) delete process.env[ENV]; else process.env[ENV] = value;
-  try { return run(); } finally { if (saved === undefined) delete process.env[ENV]; else process.env[ENV] = saved; }
+  try { return await run(); } finally { if (saved === undefined) delete process.env[ENV]; else process.env[ENV] = saved; }
 };
 
 // 1. turn/start, through upstream's packaged builder.
@@ -43,16 +45,16 @@ const turn = (env, extraParams = {}, extraOptions = {}) => withEnv(env, () => bu
   { agentId: "reverser", prompt: "hi", images: [], config: {}, hostCapabilities: { activeComputerContext: () => "test" }, ...extraParams },
   { threadId: "t1", cwd: "/tmp", model: "gpt-6-sol", modelProvider: "openai", appServer: { start: { homeScope: "agent" }, approvalPolicy: "never", sandbox: "read-only" }, ...extraOptions },
 ));
-assert.equal(turn("reverser").model, "gpt-6-sol", "model selection changed");
-assert.equal(turn("reverser").cyberAccessProgram, "daybreakBlue", "listed agent not sent Daybreak");
-assert.equal(turn(" coder , Reverser ").cyberAccessProgram, "daybreakBlue", "list not trimmed / case-folded");
+assert.equal((await turn("reverser")).model, "gpt-6-sol", "model selection changed");
+assert.equal((await turn("reverser")).cyberAccessProgram, "daybreakBlue", "listed agent not sent Daybreak");
+assert.equal((await turn(" coder , Reverser ")).cyberAccessProgram, "daybreakBlue", "list not trimmed / case-folded");
 for (const env of [undefined, "", "coder", "reverser-2", ","]) {
-  assert(!("cyberAccessProgram" in turn(env)), `cyberAccessProgram sent with ${ENV}=${JSON.stringify(env)}`);
+  assert(!("cyberAccessProgram" in await turn(env)), `cyberAccessProgram sent with ${ENV}=${JSON.stringify(env)}`);
 }
-assert(!("cyberAccessProgram" in turn("reverser", { agentId: undefined })), "sent without an agent id");
-assert.equal(turn(undefined, { openclawNixCodexCyberAccessProgram: "daybreakBlue" }).cyberAccessProgram, "daybreakBlue", "failover retry not sent Daybreak");
-assert(!("cyberAccessProgram" in turn(undefined, { openclawNixCodexCyberAccessProgram: "daybreakRed" })), "retry accepted a program other than daybreakBlue");
-const native = turn("reverser", {}, { preserveNativeTurnSettings: true });
+assert(!("cyberAccessProgram" in await turn("reverser", { agentId: undefined })), "sent without an agent id");
+assert.equal((await turn(undefined, { openclawNixCodexCyberAccessProgram: "daybreakBlue" })).cyberAccessProgram, "daybreakBlue", "failover retry not sent Daybreak");
+assert(!("cyberAccessProgram" in await turn(undefined, { openclawNixCodexCyberAccessProgram: "daybreakRed" })), "retry accepted a program other than daybreakBlue");
+const native = await turn("reverser", {}, { preserveNativeTurnSettings: true });
 assert(!("model" in native) && !("cyberAccessProgram" in native), "native-settings turn changed");
 
 // 2. Failover default and the "already Daybreak" decision, through upstream's chunk.

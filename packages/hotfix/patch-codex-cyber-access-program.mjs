@@ -58,8 +58,10 @@ const patchOne = (files, needle, anchors, edit) => {
 };
 
 // 1. turn/start: request Daybreak Blue for listed agents and the failover retry.
-const buildHeader = "function buildTurnStartParams(params, options) {";
-const modelSelection = "const modelSelection = options.preserveNativeTurnSettings ? void 0 : resolveCodexAppServerRequestModelSelection({";
+// From 2026.10.10 the builder is async and awaits the model selection.
+const asyncBuilder = atLeast(version, "2026.10.10");
+const buildHeader = `${asyncBuilder ? "async " : ""}function buildTurnStartParams(params, options) {`;
+const modelSelection = `const modelSelection = options.preserveNativeTurnSettings ? void 0 : ${asyncBuilder ? "await " : ""}resolveCodexAppServerRequestModelSelection({`;
 const tail = "\t\t...params.requireWorkspaceOnly === true ? { environments: [] } : options.environmentSelection ? { environments: options.environmentSelection } : {}\n\t};\n}";
 // The builder's chunk is named by what the bundler groups with it (thread-lifecycle
 // through 10.4, dynamic-tools in 10.5): find it by its header among the .setup chunks.
@@ -67,8 +69,20 @@ const turnStart = patchOne(ownFiles(setup, /\.mjs$/), buildHeader, [buildHeader,
   .replace(buildHeader, `${helper}\n${buildHeader}`)
   .replace(tail, "\t\t...modelSelection && openclawNixCodexCyberAccessProgram(params) ? { cyberAccessProgram: openclawNixCodexCyberAccessProgram(params) } : {},\n" + tail));
 
+// The codex plugin's chunks mark their source modules with `//#region <path>` through
+// 2026.10.9 and with a plain `// <path>` comment in 2026.10.10's published plugin;
+// accept whichever form the file carries exactly once.
+const regionMarker = (files, name) => {
+  const forms = [...new Set(files.flatMap((file) => {
+    const text = fs.readFileSync(file, "utf8");
+    return [`//#region ${name}`, `// ${name}`].filter((form) => count(text, form) === 1);
+  }))];
+  assert.equal(forms.length, 1, `expected one region marker form for ${name}, got ${forms.join(", ") || "none"}`);
+  return forms[0];
+};
+
 // 2. Failover: the retry asks for Daybreak; "already Daybreak" means this turn asked too.
-const harnessRegion = "//#region extensions/codex/harness.ts";
+const harnessRegion = regionMarker(ownFiles(codex, /^harness\.js$/), "extensions/codex/harness.ts");
 const retryBefore = "const runAttemptOnModel = (model, isRetry = false) => runCodexAppServerAttempt(isRetry ? {\n\t\t\t\t...params,\n\t\t\t\tsuppressNextUserMessagePersistence: true\n\t\t\t} : params, {";
 const retryAfter = `const runAttemptOnModel = (model, isRetry = false) => runCodexAppServerAttempt(isRetry ? {\n\t\t\t\t...params,\n\t\t\t\tsuppressNextUserMessagePersistence: true,\n\t\t\t\t${RETRY_PARAM}: "daybreakBlue"\n\t\t\t} : params, {`;
 const currentBefore = "config: cyberFailover,\n\t\t\t\tcurrentModel: attemptModel,";
@@ -79,7 +93,7 @@ const harness = patchOne(ownFiles(codex, /^harness\.js$/), harnessRegion, [harne
   .replace(currentBefore, currentAfter));
 
 // 3. Failover default: the retiring alias becomes gpt-6-sol.
-const failoverRegion = "//#region extensions/codex/src/app-server/cyber-failover.ts";
+const failoverRegion = regionMarker(ownFiles(setup, /^cyber-failover-.*\.mjs$/), "extensions/codex/src/app-server/cyber-failover.ts");
 const defaultBefore = "const DEFAULT_CYBER_FAILOVER = {\n\tmode: \"auto\",\n\tmodel: \"gpt-daybreak-blue-latest\",";
 const defaultAfter = `const DEFAULT_CYBER_FAILOVER = { ${MARKER}\n\tmode: "auto",\n\tmodel: "gpt-6-sol",`;
 const failover = patchOne(ownFiles(setup, /^cyber-failover-.*\.mjs$/), failoverRegion, [failoverRegion, defaultBefore], (text) => text.replace(defaultBefore, defaultAfter));
