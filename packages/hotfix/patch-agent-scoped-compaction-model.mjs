@@ -108,11 +108,18 @@ replaceExact({
   before: `resolveEmbeddedCompactionTarget({config:pr.config,provider:pr.provider,modelId:pr.model,authProfileId:pr.authProfileId,modelSelectionLocked:pr.modelSelectionLocked,defaultProvider:DEFAULT_PROVIDER,defaultModel:DEFAULT_MODEL$1})`,
   after: `resolveEmbeddedCompactionTarget({config:pr.config,agentId:pr.agentId,/*${MARKER}*/provider:pr.provider,modelId:pr.model,authProfileId:pr.authProfileId,modelSelectionLocked:pr.modelSelectionLocked,defaultProvider:DEFAULT_PROVIDER,defaultModel:DEFAULT_MODEL$1})`,
 });
+// The worker chunks' minified import aliases change between releases. 2026.10.10 calls
+// resolveEmbeddedCompactionTarget as Zt (was Qt), DEFAULT_PROVIDER/DEFAULT_MODEL as de/ue
+// (were G/W, the same exports of the same chunk), resolveMemoryFlushPlanForRun as j (was
+// k) and resolveDefaultAgentId as o (was a); each checked against its chunk's exports.
+const minified = atLeast(version, "2026.10.10")
+  ? { target: "Zt", provider: "de", model: "ue", plan: "j", defaultAgent: "o", followup: "a" }
+  : { target: "Qt", provider: "G", model: "W", plan: "k", defaultAgent: "a", followup: "o" };
 replaceExact({
   id: "compaction-retry-worker-chunk",
   expect: { "worker/worker-chunk-*.mjs": 1 },
-  before: `Qt({config:s.config,provider:s.provider,modelId:s.model,authProfileId:s.authProfileId,modelSelectionLocked:s.modelSelectionLocked,defaultProvider:G,defaultModel:W})`,
-  after: `Qt({config:s.config,agentId:s.agentId,/*${MARKER}*/provider:s.provider,modelId:s.model,authProfileId:s.authProfileId,modelSelectionLocked:s.modelSelectionLocked,defaultProvider:G,defaultModel:W})`,
+  before: `${minified.target}({config:s.config,provider:s.provider,modelId:s.model,authProfileId:s.authProfileId,modelSelectionLocked:s.modelSelectionLocked,defaultProvider:${minified.provider},defaultModel:${minified.model}})`,
+  after: `${minified.target}({config:s.config,agentId:s.agentId,/*${MARKER}*/provider:s.provider,modelId:s.model,authProfileId:s.authProfileId,modelSelectionLocked:s.modelSelectionLocked,defaultProvider:${minified.provider},defaultModel:${minified.model}})`,
 });
 
 // --- resolveMemoryFlushTiming: per-agent override ahead of the shared default. The schema
@@ -239,9 +246,9 @@ replaceExact({
 replaceExact({
   id: "memory-flush-prepare-call-worker-chunk",
   expect: { "worker/worker-chunk-*.mjs": 1 },
-  alsoRequires: ["let{sessionKey:r,sessionEntry:i,followupRun:o}=e;", "let s=o.run.agentId??a(e.cfg),"],
-  before: `let t=k({cfg:e.cfg,nowMs:Date.now(),contextWindowTokens:e.contextWindowTokens});if(!t)return null;`,
-  after: `let t=k({cfg:e.cfg,agentId:e.followupRun.run.agentId??a(e.cfg),/*${MARKER}*/nowMs:Date.now(),contextWindowTokens:e.contextWindowTokens});if(!t)return null;`,
+  alsoRequires: [`let{sessionKey:r,sessionEntry:i,followupRun:${minified.followup}}=e;`, `let s=${minified.followup}.run.agentId??${minified.defaultAgent}(e.cfg),`],
+  before: `let t=${minified.plan}({cfg:e.cfg,nowMs:Date.now(),contextWindowTokens:e.contextWindowTokens});if(!t)return null;`,
+  after: `let t=${minified.plan}({cfg:e.cfg,agentId:e.followupRun.run.agentId??${minified.defaultAgent}(e.cfg),/*${MARKER}*/nowMs:Date.now(),contextWindowTokens:e.contextWindowTokens});if(!t)return null;`,
 });
 
 // --- Locate every anchor by content in one pass over dist/, then apply in order. ---
