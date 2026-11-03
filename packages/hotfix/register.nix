@@ -116,27 +116,6 @@
     removeWhen = "Upstream clamps or validates descriptions per skill.";
   };
 
-  controlUiStoreHardlinks = {
-    patch = ./patch-control-ui-store-hardlinks.mjs;
-    marker = "openclaw-nix-control-ui-store-hardlinks-v2";
-    since = "2026.10.2";
-    fixes = ''
-      Native Control UI: bundled plugins' browser builds (workboard, slack, discord)
-      were refused as missing because store optimisation hardlinks them. Allow hard
-      links only under /nix/store; symlinks stay refused.
-      v2 (added with 2026.10.5; the code is unchanged since 2026.10.2): an explicit
-      UI reload rereads the plugin's manifest with hard links refused, although
-      discovery allows them for bundled plugins, so reloading a bundled panel failed
-      ("Control UI assets could not be loaded"; workboard's manifest has 30 store
-      links). The reload allows hard links for the same /nix/store roots only; a
-      symlinked manifest is still refused.
-    '';
-    test = ./test-control-ui-store-hardlinks.mjs;
-    upstream = null;
-    upstreamStatus = "not reported";
-    removeWhen = "Upstream accepts hard links from an immutable store.";
-  };
-
   codexCyberAccessProgram = {
     patch = ./patch-codex-cyber-access-program.mjs;
     marker = "openclaw-nix-codex-cyber-access-program-v1";
@@ -153,52 +132,6 @@
     upstream = null;
     upstreamStatus = "not reported";
     removeWhen = "Upstream sends cyberAccessProgram itself and its failover default leaves the alias.";
-  };
-
-  agentDbPreparationRetry = {
-    patch = ./patch-agent-db-preparation-retry.mjs;
-    marker = "openclaw-nix-agent-db-preparation-retry-v1";
-    since = "2026.10.4";
-    fixes = ''
-      Agent databases: a start that defers an agent's database to background
-      inspection (after a stop that left worker leases behind, main's 1.28 GB database
-      on nova prod) prepares it after startup and refuses to publish if the runtime
-      config object or the secrets revision changes meanwhile. Upstream then leaves the
-      agent degraded until a restart ("Agent main startup preparation was superseded",
-      2026-10-18). The admission owner now retries a superseded preparation with the
-      current configuration for up to 600 s while the Gateway owns it, and each
-      supersession names its cause (config changed, secrets revision a -> b, or the
-      Gateway closing, which is not retried).
-    '';
-    test = ./test-agent-db-preparation-retry.mjs;
-    upstream = null;
-    upstreamStatus = "fixed on main by openclaw/openclaw#171054 (2026-10-13; issue #171018); 2026.10.x stable diverged before it, so 2026.10.5 lacks it. Reported as #177587, closed 2026-10-20: ships in the next stable release.";
-    removeWhen = "The release carries openclaw/openclaw#171054 (AgentDatabaseStartupSupersededError and its bounded retry); this patch's anchors then fail, and it is dropped.";
-  };
-
-  corpusRevisionReadOnly = {
-    patch = ./patch-corpus-revision-read-only.mjs;
-    marker = "openclaw-nix-corpus-revision-read-only-v1";
-    since = "2026.10.5";
-    fixes = ''
-      Agent databases: memory's transcript corpus (the dreaming job, session backfill,
-      memory forget) is read in the pooled session-history Workers, but each entry's
-      content revision opened the agent database writable there
-      (readTranscriptStatsSync). That lease stays in the Worker's handle cache until the
-      process exits, and no stop releases it. On nova prod the 04:30 dreaming run left
-      one on every agent database, so every later stop, however clean, ended
-      `active-leases`, and the next start held all 16 agents for background inspection
-      (92 s on 2026-10-22; main's boot run failed). The Worker inventory now projects
-      read-only and its revisions come from readTranscriptStatsBatchReadOnlySync, which
-      takes no lease; an unavailable transcript has no revision, as a failed read
-      already had. Other callers keep the writable read. Checked in a lab copy of prod's
-      state: `memory session-backfill` left one lease from a dead process before, none
-      after, and all 13 of herald's revisions are identical on both readers.
-    '';
-    test = ./test-corpus-revision-read-only.mjs;
-    upstream = null;
-    upstreamStatus = "fixed on main by openclaw/openclaw#168631 (2026-10-13); 2026.10.x stable diverged before it, so 2026.10.5 and 2026.10.6 lack it. Not reported.";
-    removeWhen = "The release carries openclaw/openclaw#168631 (readTranscriptContentRevisionSync's readOnly path); this patch's anchors then fail, and it is dropped.";
   };
 
   pluginRuntimeOwnerGeneration = {
