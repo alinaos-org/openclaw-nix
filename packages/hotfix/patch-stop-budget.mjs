@@ -28,8 +28,13 @@ const drainClamp = ["drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.ma
 // 9.7 derives isRestart from params.action and gives native external restarts
 // the stop budget too. Split that shared branch so only a true stop is clamped;
 // external-restart keeps upstream's full budget, like every other restart.
-const hardExitBefore = "forceExitMs: !isRestart || action === \"external-restart\" && budget.nativeStopBudget ? budget.timeoutMs : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)";
-const hardExitAfter = `forceExitMs: !isRestart ? Math.min(budget.timeoutMs, ${seconds(STOP_HARD_EXIT_MS)}) : action === \"external-restart\" && budget.nativeStopBudget ? budget.timeoutMs : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)`;
+// 2026.10.10 also gives an external restart that interrupts after its drain
+// (interruptAfterDrain) the whole budget; that restart branch stays upstream's.
+const externalRestartBudget = atLeast(version, "2026.10.10")
+  ? "(budget.nativeStopBudget || params.interruptAfterDrain)"
+  : "budget.nativeStopBudget";
+const hardExitBefore = `forceExitMs: !isRestart || action === \"external-restart\" && ${externalRestartBudget} ? budget.timeoutMs : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)`;
+const hardExitAfter = `forceExitMs: !isRestart ? Math.min(budget.timeoutMs, ${seconds(STOP_HARD_EXIT_MS)}) : action === \"external-restart\" && ${externalRestartBudget} ? budget.timeoutMs : restartDrainTimeoutMs === void 0 ? void 0 : restartTimeoutMs(restartDrainTimeoutMs)`;
 // 2026.10.6 bounds the stop drain itself: active runs get STOP_DRAIN_TIMEOUT_MS
 // (20 s), then are cancelled and cleaned up within the rest of the budget
 // (openclaw/openclaw#171308). That is below this clamp, so the drain is
