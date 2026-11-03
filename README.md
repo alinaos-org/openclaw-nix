@@ -434,9 +434,19 @@ saved by the earlier session-icons plugin still show as selected.
 
 `scripts/generate-session-emoji.mjs` generates the emoji catalog from Unicode's
 `emoji-test.txt`; run it with the gateway's Node, so it lists only emoji the gateway
-accepts as an icon, then re-create the patch. The patch carries its own tests (the
-picker's, the session menu's), which the build runs; a release that moves the picker's
-code fails `patch` there, and the patch is re-ported.
+accepts as an icon, then re-create the patch.
+
+From 2026.10.10 the patch edits one upstream file, with a three-line hook: upstream's
+picker (`ui/src/components/session-icon-picker-solid.tsx`) wraps its stock icon grid in
+the patch's `SessionIconCatalog`, which renders instead. Everything else is new files:
+the catalog (`session-icon-catalog*.ts(x)`, `session-icon-library.ts`,
+`session-icon-emoji-data.ts`), its English copy (`i18n/locales/en-session-icons.ts`;
+other locales fall back to it), its styles (`styles/session-icon-catalog.css`) and its
+tests. The build runs those tests, upstream's picker and people-search tests, and
+upstream's session menu tests unmodified except two the picker changes on purpose (their
+adapted copies are in `session-icon-menu.test.ts`; `ownUiTestExclusions` in
+`packages/gateway/default.nix`). A release that rewrites the lines around the hook fails
+`patch` there, and the patch is re-ported.
 
 The session-icons plugin (`runtimePlugins = ["session-icons"]`, the NixOS module's
 `sessionIcons.enable`) is deprecated: its Custom icons… dialog duplicates the picker. It
