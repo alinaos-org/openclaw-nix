@@ -58,6 +58,14 @@ jobs:
 
           The release-evidence job attaches SBOMs (npm tree and Nix closure), a vulnerability scan and \`store-paths.json\`, with a build-provenance attestation: \`gh attestation verify store-paths.json --repo $REPO\`.
           NOTES
+          # A release whose session icon picker patch did not apply (releases.nix
+          # `sessionIconPicker = false;`) says so; the re-port is a later -rN.
+          if [ "$(nix eval --json .#gateway.passthru.sessionIconPicker)" = false ]; then
+            cat >> notes.md <<NOTES
+
+          The Control UI has OpenClaw's own session icon picker in this release: openclaw-nix's picker patch (every emoji, the icon library) does not apply to $current yet and is being re-ported (issues labelled \`stock-icon-picker\`). Sessions keep their saved icons and still show them.
+          NOTES
+          fi
           git tag "$tag" HEAD
           git push origin "$tag"
           if [ -n "$previous" ]; then

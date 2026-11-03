@@ -43,8 +43,10 @@ generic scripts their host defaults. If there is no host profile, stop and write
    the changelog against every patch, the customize layer's anchors and the host's
    plugins ([releases](references/releases.md)), and what a
    [version sweep misses](references/lessons.md#what-a-version-sweep-misses). A patch
-   whose code moved fails CI's build and is re-ported or dropped there. Merge once CI is
-   green: the build is then in the cache.
+   whose code moved fails CI's build and is re-ported or dropped there, except the
+   session icon picker's: a `stock-icon-picker` pull request ships OpenClaw's own picker
+   and the re-port follows as a fix release. Merge once CI is green: the build is then in
+   the cache.
 2. **Decide** to take it now ([cadence](references/lessons.md#cadence)): a stable release
    with a reason, in the host's instance order, inside an approved restart window.
 3. **Candidate.** In a fresh worktree off the host's main branch, `nix flake update

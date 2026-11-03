@@ -11,7 +11,10 @@ runs:
 - `scripts/new-release.py <v>`: tag to the commit it peels to, which must equal the
   release notes' "release SHA"; the source hash; the pnpm bootstrap version; the pnpm
   dependency hash (from `.#gateway.pnpmDeps`); the `releases.nix` entry and
-  `release.nix`.
+  `release.nix`. Its session icon picker check (`--icon-picker-only`, its own step in
+  the workflow) dry-runs the picker patch on the release source with the build's
+  `patch -F0` and sets `sessionIconPicker = false;` in the entry when it no longer
+  applies (below).
 - `scripts/generate-plugin-locks.sh <v>`: every runtime plugin OpenClaw's catalogs list,
   locked at the same release, into `pins/runtime-plugin-locks` (`report.json` says which
   were skipped and why). Evaluation fails while the set is for another release.
@@ -24,6 +27,18 @@ fails, it pushes what the steps before it pinned, opens a draft pull request tit
 "pinning failed at <step>" and fails the run (2026.10.5's pnpm step failed on a source
 patch and left nothing to see for 15 hours). Finish the pin on that branch, then mark it
 ready.
+
+The session icon picker patch is the one patch that never blocks a release. When it no
+longer applies, the pull request is titled "(stock session icon picker)", labelled
+`stock-icon-picker` and stays ready: that release builds and ships with OpenClaw's own
+picker, without the patch and its UI tests. An open issue with the same label holds the
+re-port's checklist; a later release that fails too comments on it. Report such a pull
+request as "ships with the stock session icon picker". Saved icons still show on the
+stock UI (library icons are SVG data URLs, emoji are text; both pass the gateway's
+validation unchanged), so it is no reason to hold the release. Only the dry run is
+non-blocking: a picker patch that applies but breaks the Control UI compile or its tests
+fails CI's build. Add `sessionIconPicker = false;` to the release's entry in that pull
+request (it changes no pnpm hash) and open the re-port issue by hand.
 
 A correction release (`v2026.7.1-2`) keeps its base version in `package.json`, and
 OpenClaw publishes its plugins at that version: the lock generator takes the plugin
@@ -114,7 +129,14 @@ it, each failing the build when a release moves the code it changes:
   chosen with `lib.versionOlder upstreamVersion "<new release>"`; the same file name
   keeps the older release's store path. 2026.10.5 rewrote the session menu's icon tests:
   the patch was regenerated with `git diff` in a scratch repository of the release
-  source, and the build's UI tests ran the patched tests.
+  source, and the build's UI tests ran the patched tests. Since 2026.10.10 the picker
+  patch's only upstream edit is a three-line hook in `session-icon-picker-solid.tsx`, and
+  a release it does not apply to builds with the stock picker
+  (`sessionIconPicker = false;`, above). Its re-port ships as a fix release: port the
+  hook, delete the line (`new-release.py <v> --icon-picker-only` reports "applies again"
+  while it is still set), close the issue, and dispatch `tag-release` for `-r<N>`. The
+  pnpm dependency set is the same with and without the patch, so the re-port keeps the
+  release's `pnpmDepsHash`.
 - **The consumer's customize layer** (`packages/custom`): `replaceBundledChannels` fails
   when the release stops bundling a replaced channel; `extraCommands` carry their own
   anchor checks (for example a plugin SDK export patch).
