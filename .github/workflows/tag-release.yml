@@ -58,20 +58,30 @@ jobs:
 
           The release-evidence job attaches SBOMs (npm tree and Nix closure), a vulnerability scan and \`store-paths.json\`, with a build-provenance attestation: \`gh attestation verify store-paths.json --repo $REPO\`.
           NOTES
-          # A release whose session icon picker patch did not apply (releases.nix
-          # `sessionIconPicker = false;`) says so; the re-port is a later -rN.
-          if [ "$(nix eval --json .#gateway.passthru.sessionIconPicker)" = false ]; then
+          # A release with OpenClaw's own session icon picker (releases.nix
+          # `sessionIconPicker = false;`) says so in its title and notes; the fix
+          # release after it that brings the picker back says that.
+          picker=$(nix eval --json .#gateway.passthru.sessionIconPicker)
+          stock=""
+          if [ "$picker" = false ]; then
+            stock=" (stock session icon picker)"
             cat >> notes.md <<NOTES
 
-          The Control UI has OpenClaw's own session icon picker in this release: openclaw-nix's picker patch (every emoji, the icon library) does not apply to $current yet and is being re-ported (issues labelled \`stock-icon-picker\`). Sessions keep their saved icons and still show them.
+          The Control UI has OpenClaw's own session icon picker in this release: openclaw-nix's picker patch (every emoji, the icon library) is off for $current until it is re-ported (issues labelled \`stock-icon-picker\`). Sessions keep their saved icons and still show them.
+          NOTES
+          elif [ -n "$last" ] && git show "$current-r$last:releases.nix" > previous-releases.nix &&
+            [ "$(nix eval --json --file previous-releases.nix --apply "r: r.\"$current\".sessionIconPicker or true")" = false ]; then
+            cat >> notes.md <<NOTES
+
+          The session icon picker is back: $current-r$last had OpenClaw's own picker, and this release has openclaw-nix's again (every emoji, the icon library).
           NOTES
           fi
           git tag "$tag" HEAD
           git push origin "$tag"
           if [ -n "$previous" ]; then
-            gh release create "$tag" --title "$tag" --verify-tag --notes-file notes.md --generate-notes --notes-start-tag "$previous"
+            gh release create "$tag" --title "$tag$stock" --verify-tag --notes-file notes.md --generate-notes --notes-start-tag "$previous"
           else
-            gh release create "$tag" --title "$tag" --verify-tag --notes-file notes.md --generate-notes
+            gh release create "$tag" --title "$tag$stock" --verify-tag --notes-file notes.md --generate-notes
           fi
           echo "released $tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"

@@ -933,6 +933,15 @@
         touch $out
       '';
 
+      # The session icon picker's release fallback (scripts/stock-icon-picker.sh,
+      # new-release.py's `sessionIconPicker = false;` line), with gh and nix
+      # stand-ins and a local git origin.
+      stock-icon-picker = pkgs.runCommand "openclaw-stock-icon-picker" {nativeBuildInputs = [pkgs.git pkgs.jq pkgs.python3];} ''
+        export HOME=$TMPDIR
+        scripts=${./scripts} bash ${./tests/stock-icon-picker}/test.sh
+        touch $out
+      '';
+
       formatting = pkgs.runCommand "openclaw-nix-formatting" {nativeBuildInputs = [pkgs.alejandra];} ''
         alejandra --check --exclude ${self}/pins/openclaw-config-options.nix ${self}
         touch $out

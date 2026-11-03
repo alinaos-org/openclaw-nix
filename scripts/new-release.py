@@ -2,7 +2,8 @@
 """Add an OpenClaw stable release: releases.nix entry + release.nix `current`.
 
     new-release.py <version> [--repo <checkout>]
-                   [--skip-pnpm | --icon-picker-only | --pnpm-only | --desktop-only]
+                   [--skip-pnpm | --icon-picker-only [--verdict-file <file>]
+                    | --icon-picker-off <build step> | --pnpm-only | --desktop-only]
 
 Steps, each verified:
   1. Resolve tag v<version> on openclaw/openclaw and peel it to a commit; the
@@ -18,7 +19,11 @@ Steps, each verified:
      it. When it no longer applies, set `sessionIconPicker = false;` in the
      entry: the release builds with OpenClaw's own picker until the patch is
      re-ported. Every other patch still fails the build. With --skip-pnpm this
-     step is left to --icon-picker-only (release-watch runs it as its own step).
+     step is left to --icon-picker-only (release-watch runs it as its own step);
+     --verdict-file appends PICKER_VERDICT=applies|stock|stale to a file (stale:
+     the entry is off, but the patch applies again). --icon-picker-off sets the
+     line for a patch that applies but fails the named build step (CI's fallback,
+     scripts/stock-icon-picker.sh).
   6. pnpm deps hash: build the gateway's pnpmDeps and take the hash Nix reports
      (inside a memory-capped systemd scope when one is available).
 Exits non-zero on any mismatch; `git diff` shows what changed.
@@ -52,6 +57,9 @@ def main():
     ap.add_argument("--desktop-only", action="store_true", help="only set desktopDebHash on an existing entry")
     ap.add_argument("--icon-picker-only", action="store_true",
                     help="only check that the session icon picker patch applies (step 5)")
+    ap.add_argument("--verdict-file", help="with --icon-picker-only: append PICKER_VERDICT=<verdict> here")
+    ap.add_argument("--icon-picker-off", metavar="STEP",
+                    help="only set sessionIconPicker = false: the patch fails this build step")
     a = ap.parse_args()
     v = a.version
     root = pathlib.Path(a.repo).resolve()
@@ -62,7 +70,13 @@ def main():
     if a.desktop_only:
         return desktop_only(table, v)
     if a.icon_picker_only:
-        return icon_picker(root, table, v)
+        verdict = icon_picker(root, table, v)
+        if a.verdict_file:
+            with open(a.verdict_file, "a") as f:
+                f.write(f"PICKER_VERDICT={verdict}\n")
+        return
+    if a.icon_picker_off:
+        return set_picker_off(table, v, picker_off_build(a.icon_picker_off))
     table_text, rel_text = table.read_text(), rel.read_text()
     cur = re.search(r'current = "([^"]+)";', rel_text).group(1)
     if cur == v:
@@ -165,8 +179,36 @@ PICKER_OFF = (
     "    # \"Session icons\"). The re-port deletes these lines.\n"
     "    sessionIconPicker = false;\n"
 )
-# The field and the comment lines right above it.
-PICKER_OFF_RE = re.compile(r"(?:    #[^\n]*\n)*    sessionIconPicker = false;\n")
+
+
+def picker_off_build(step):
+    """The line for a patch that applies but fails a build step (CI's fallback)."""
+    if not re.fullmatch(r"[\w :.,()/+-]{1,120}", step):
+        sys.exit(f"not a build step name: {step!r}")
+    return (
+        "    # The session icon picker patch applies to this release, but the gateway\n"
+        "    # build fails with it, at this step:\n"
+        f"    #   {step}\n"
+        "    # It builds with OpenClaw's own picker until the patch is re-ported\n"
+        "    # (README, \"Session icons\"). The re-port deletes these lines.\n"
+        "    sessionIconPicker = false;\n"
+    )
+
+
+# The field however it is written (indentation, spacing, a trailing comment),
+# and the comment lines right above it.
+PICKER_OFF_RE = re.compile(r"^(?:[ \t]*#[^\n]*\n)*[ \t]*sessionIconPicker[ \t]*=[ \t]*false[ \t]*;[^\n]*\n", re.M)
+
+
+def set_picker_off(table, v, lines):
+    text = table.read_text()
+    m = re.search(r'\n(  "' + re.escape(v) + r'" = \{\n.*?\n)(  \};\n)', text, re.S)
+    if not m:
+        sys.exit(f"no releases.nix entry for {v}")
+    if PICKER_OFF_RE.search(m.group(1)):
+        sys.exit(f"releases.nix entry {v} already has sessionIconPicker = false")
+    table.write_text(text.replace(m.group(0), "\n" + m.group(1) + lines + m.group(2), 1))
+    print(f"session icon picker: sessionIconPicker = false for {v}; it builds with OpenClaw's own picker")
 
 
 def icon_picker(root, table, v):
@@ -175,6 +217,8 @@ def icon_picker(root, table, v):
     patch exits 1 when a hunk or file fails (a moved hook, a missing file, an
     upstream file where the patch creates one): the release builds with the stock
     picker. Anything else (a malformed patch, an evaluation error) stops here.
+    Returns the verdict: applies, stock (it does not apply, the entry is off) or
+    stale (the entry is off, but the patch applies again).
     """
     cur = re.search(r'current = "([^"]+)";', (root / "release.nix").read_text()).group(1)
     if cur != v:
@@ -200,22 +244,18 @@ def icon_picker(root, table, v):
         if applies:
             print(f"session icon picker: off for {v}, but {patch_path} applies again: "
                   "delete `sessionIconPicker = false;` from its releases.nix entry")
-        else:
-            print(f"session icon picker: off for {v} (the patch still does not apply)")
-        return
+            return "stale"
+        print(f"session icon picker: off for {v} (the patch still does not apply)")
+        return "stock"
     if applies:
         print("session icon picker: the patch applies")
-        return
+        return "applies"
     print(f"session icon picker: {patch_path} does not apply to {v}:")
     print("\n".join(line for line in (proc.stdout + proc.stderr).splitlines()
                     if line.strip() and not line.startswith("checking file ")
                     and not line.endswith(" is read-only; trying to patch anyway")))
-    text = table.read_text()
-    m = re.search(r'\n(  "' + re.escape(v) + r'" = \{\n.*?\n)(  \};\n)', text, re.S)
-    if not m:
-        sys.exit(f"no releases.nix entry for {v}")
-    table.write_text(text.replace(m.group(0), "\n" + m.group(1) + PICKER_OFF + m.group(2), 1))
-    print(f"session icon picker: sessionIconPicker = false for {v}; it builds with OpenClaw's own picker")
+    set_picker_off(table, v, PICKER_OFF)
+    return "stock"
 
 
 def pnpm_hash(root, table):

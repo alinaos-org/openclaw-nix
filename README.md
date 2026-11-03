@@ -445,23 +445,36 @@ other locales fall back to it), its styles (`styles/session-icon-catalog.css`) a
 tests. The build runs those tests, upstream's picker and people-search tests, and
 upstream's session menu tests unmodified except two the picker changes on purpose (their
 adapted copies are in `session-icon-menu.test.ts`; `ownUiTestExclusions` in
-`packages/gateway/default.nix`).
+`packages/gateway/default.nix`). When upstream moves that test file, or renames one of
+the two, the build log says so (`openclaw-nix: warning:`, shown as a CI annotation);
+the moved file's tests are skipped and the renamed one fails.
 
-A release that rewrites the lines around the hook no longer stops on the picker, as
-2026.10.5 and 2026.10.10 did. `release-watch` dry-runs the patch on each new release
-(`scripts/new-release.py <v> --icon-picker-only`, the build's `patch -F0`). When it no
-longer applies, the release's `releases.nix` entry gets `sessionIconPicker = false;`:
-that release builds and ships with OpenClaw's own picker, without the patch or its
-tests. Its pull request is labelled `stock-icon-picker`, titled "(stock session icon
+The picker never blocks a release, as 2026.10.5 and 2026.10.10 did. A release's
+`releases.nix` entry with `sessionIconPicker = false;` builds and ships with OpenClaw's
+own picker, without the patch or its tests, and two things set it on a release branch:
+
+- `release-watch` dry-runs the patch on each new release
+  (`scripts/new-release.py <v> --icon-picker-only`, the build's `patch -F0`) and sets
+  the line when it no longer applies.
+- When the patch applies but CI's gateway build then fails in a step it changes (the
+  Control UI build, the picker's tests, or upstream's session menu tests run against
+  it: a test renamed, rewritten or added), CI builds the release without the patch. If
+  that passes, it commits the line to the release branch, caches the build and runs CI
+  on the commit (`scripts/stock-icon-picker.sh fallback`). It does this only on
+  release-watch's own runs and branches; a failure anywhere else still fails the build.
+
+The pull request is then labelled `stock-icon-picker`, titled "(stock session icon
 picker)" and stays ready, and an issue with the same label holds the re-port's
-checklist (a later release that fails too is added to it as a comment). Sessions keep
-their saved icons, and the stock UI still shows them: library icons are SVG data URLs
-and emoji are text, which the gateway and every renderer accept without the patch. What
-waits for the re-port is choosing them in the picker (Custom… still takes a pasted
-value). The re-port ships as the next `-r<N>`: port the hook, keep the previous patch
-under `patches/<previous release>/`, delete the line, and dispatch `tag-release`. Every
-other patch still fails the build, and so does a picker patch that applies but no longer
-compiles or passes its tests; set the line by hand in that pull request.
+checklist (a later release that falls back too is added to it as a comment). CI's eval
+job does the same for any release branch with the line, one set by hand included. Its
+tag's release is titled "(stock session icon picker)". Sessions keep their saved
+icons, and the stock UI still shows them: library icons are SVG data URLs and emoji are
+text, which the gateway and every renderer accept without the patch. What waits for the
+re-port is choosing them in the picker (Custom… still takes a pasted value). The re-port
+ships as the next `-r<N>`: port the hook (or update `ownUiTestExclusions`), keep the
+previous patch under `patches/<previous release>/`, delete the line, bump
+`localRevision` (the release's gateway changes), and dispatch `tag-release`, whose notes
+then say the picker is back. Every other patch still fails the build.
 
 The session-icons plugin (`runtimePlugins = ["session-icons"]`, the NixOS module's
 `sessionIcons.enable`) is deprecated: its Custom icons… dialog duplicates the picker. It
@@ -510,8 +523,9 @@ local commands. `--desktop-only <version>` adds the hash to an existing entry.
 When a hotfix patch fails on a new release, upstream either fixed the bug (drop the
 patch and its test) or moved the code (re-port its anchors). The same goes for this
 repository's own source patches (`packages/gateway/patches`), which fail `patch -F0`,
-except the session icon picker's: a release it no longer applies to builds with
-OpenClaw's own picker until it is re-ported ([Session icons](#session-icons)).
+except the session icon picker's: a release it no longer applies to, or fails the
+Control UI build or tests of, builds with OpenClaw's own picker until it is re-ported
+([Session icons](#session-icons)).
 
 ### Hotfix layer
 
