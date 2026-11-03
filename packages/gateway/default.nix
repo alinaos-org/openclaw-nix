@@ -71,20 +71,27 @@
     {
       name = "session-icon-picker.patch";
       # 2026.10.5 rewrote the session menu's icon tests and made the grid's
-      # keydown handler private; earlier releases keep the patch they were
+      # keydown handler private; 2026.10.10 moved the picker to Solid (its own
+      # tabs, no Web Awesome tab group). Earlier releases keep the patch they were
       # qualified with (same file name, so their store paths are unchanged).
       patch =
         if lib.versionOlder upstreamVersion "2026.10.5"
         then ./patches/2026.10.4/session-icon-picker.patch
+        else if lib.versionOlder upstreamVersion "2026.10.10"
+        then ./patches/2026.10.9/session-icon-picker.patch
         else ./patches/session-icon-picker.patch;
     }
   ];
   # Control UI tests the own patches change; run with the UI's vitest config.
-  ownUiTests = [
-    "ui/src/components/session-icon-catalog.test.ts"
-    "ui/src/components/session-menu.test.ts"
-    "ui/src/components/session-people-search.test.ts"
-  ];
+  ownUiTests =
+    [
+      "ui/src/components/session-icon-catalog.test.ts"
+      "ui/src/components/session-menu.test.ts"
+      "ui/src/components/session-people-search.test.ts"
+    ]
+    # The Solid picker's own test (2026.10.10 and later).
+    ++ lib.optional (!lib.versionOlder upstreamVersion "2026.10.10")
+    "ui/src/components/session-icon-picker.test.tsx";
   sourcePatches =
     ownSourcePatches
     ++ map (p:

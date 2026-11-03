@@ -1,16 +1,510 @@
+diff --git a/ui/src/components/session-icon-catalog-solid.tsx b/ui/src/components/session-icon-catalog-solid.tsx
+new file mode 100644
+index 00000000..f45b14b3
+--- /dev/null
++++ b/ui/src/components/session-icon-catalog-solid.tsx
+@@ -0,0 +1,487 @@
++import { createMemo, createSignal, For, onCleanup, onSettled, Show } from "solid-js";
++import {
++  SESSION_ICON_GLYPH_IDS,
++  SESSION_ICON_SVG_DATA_URL_PREFIX,
++} from "../../../packages/gateway-protocol/src/session-agent-status.js";
++import { t } from "../i18n/index.ts";
++import { nativeListener } from "../lib/solid-native-listener.ts";
++import {
++  loadSessionEmoji,
++  RECENT_SESSION_ICON_LIMIT,
++  recentSessionIcons,
++  rememberSessionIcon,
++  searchSessionEmoji,
++  searchSessionIconGlyphs,
++  searchSessionIconLibrary,
++  SESSION_EMOJI_GROUP_LABELS,
++  sessionIconLibraryGroupLabel,
++  sessionIconLibraryLabel,
++  type SessionEmojiGroup,
++} from "./session-icon-catalog.ts";
++import { SESSION_ICON_EMOJI_CHOICES } from "./session-icon-choices.ts";
++import type { SessionEmojiGroupId } from "./session-icon-emoji-data.ts";
++import { SessionIconGraphic } from "./session-icon-glyph-solid.tsx";
++import {
++  isSessionIconLibraryIcon,
++  sessionIconLibrary,
++  sessionIconLibraryGroups,
++  type SessionIconLibraryIcon,
++} from "./session-icon-library.ts";
++import { Icon } from "./solid/icon.tsx";
++import { Tabs } from "./solid/tabs.tsx";
++
++export type SessionIconCatalogProps = {
++  currentIcon: string | null;
++  allowSvg: boolean;
++  clearable: boolean;
++  disabled: boolean;
++  disabledReason?: string;
++  onSelect: (event: MouseEvent, icon: string | null) => void;
++  onShowCustom: (event: MouseEvent) => void;
++};
++
++type CatalogTab = "emoji" | "icons";
++
++const CATALOG_TABS = ["emoji", "icons"] as const satisfies readonly CatalogTab[];
++
++type CatalogItem = {
++  value: string | null;
++  kind: "emoji" | "glyph" | "image";
++  label: () => string;
++  matches: (current: string | null) => boolean;
++};
++
++type CatalogSection = {
++  label: string;
++  items: readonly CatalogItem[];
++  group?: SessionEmojiGroupId;
++  custom?: boolean;
++};
++
++const SEARCH_RESULT_LIMIT = 240;
++
++let catalogInstances = 0;
++
++const isGlyph = (icon: string | null) => SESSION_ICON_GLYPH_IDS.some((id) => id === icon);
++
++/**
++ * The picker's icon choices: Emoji and Icons tabs over every emoji and the icon
++ * library, with search across both. Its choices keep the session menu's classes, so
++ * the menu's styles, focus handling and arrow-key grid navigation apply to them.
++ */
++export function SessionIconCatalog(props: SessionIconCatalogProps) {
++  const id = `session-icon-catalog-${++catalogInstances}`;
++  const [tab, setTab] = createSignal<CatalogTab | null>(null);
++  const [query, setQuery] = createSignal("");
++  const [emoji, setEmoji] = createSignal<readonly SessionEmojiGroup[] | null>(null);
++  const [loadFailed, setLoadFailed] = createSignal(false);
++  // The session menu renders this inside a closed submenu whenever it opens. Until
++  // the picker is shown, render only its first section; then every choice.
++  const initiallyShown = typeof IntersectionObserver === "undefined";
++  const [shown, setShown] = createSignal(initiallyShown);
++  const [recentRevision, setRecentRevision] = createSignal(0);
++  let body: HTMLDivElement | undefined;
++  let observer: IntersectionObserver | undefined;
++  let loading = false;
++
++  const loadEmoji = () => {
++    if (loading) {
++      return;
++    }
++    loading = true;
++    loadSessionEmoji().then(
++      (groups) => setEmoji(groups),
++      () => setLoadFailed(true),
++    );
++  };
++  onSettled(() => {
++    if (initiallyShown || !body) {
++      loadEmoji();
++      return;
++    }
++    observer = new IntersectionObserver((entries) => {
++      if (entries.some((entry) => entry.isIntersecting)) {
++        observer?.disconnect();
++        observer = undefined;
++        setShown(true);
++        loadEmoji();
++      }
++    });
++    observer.observe(body);
++  });
++  onCleanup(() => {
++    observer?.disconnect();
++    observer = undefined;
++  });
++
++  // One item per value, so each list keeps its buttons while the catalog changes.
++  const items = new Map<string, CatalogItem>();
++  const cached = (key: string, create: () => CatalogItem) => {
++    let item = items.get(key);
++    if (!item) {
++      item = create();
++      items.set(key, item);
++    }
++    return item;
++  };
++  const emojiNames = createMemo(() => {
++    const names = new Map<string, string>();
++    for (const group of emoji() ?? []) {
++      for (const entry of group.emoji) {
++        names.set(entry.emoji, entry.name);
++      }
++    }
++    return names;
++  });
++  const emojiItem = (value: string) =>
++    cached(`emoji:${value}`, () => ({
++      value,
++      kind: "emoji",
++      label: () => emojiNames().get(value) ?? value,
++      matches: (current) => current === value,
++    }));
++  const glyphItem = (value: string) =>
++    cached(`glyph:${value}`, () => ({
++      value,
++      kind: "glyph",
++      label: () => value,
++      matches: (current) => current === value,
++    }));
++  const noIconItem = () =>
++    cached("none", () => ({
++      value: null,
++      kind: "glyph",
++      label: () => t("sessionsView.noIcon"),
++      matches: (current) => current === null,
++    }));
++  const libraryItem = (icon: SessionIconLibraryIcon) =>
++    cached(`library:${icon.id}`, () => ({
++      value: icon.value,
++      kind: "image",
++      label: () => sessionIconLibraryLabel(icon),
++      matches: (current) => isSessionIconLibraryIcon(current, icon),
++    }));
++
++  const activeTab = createMemo((): CatalogTab => {
++    const selected = tab();
++    if (selected) {
++      return selected;
++    }
++    const current = props.currentIcon;
++    if (current === null) {
++      return "emoji";
++    }
++    if (isGlyph(current)) {
++      return "icons";
++    }
++    return props.allowSvg && current.startsWith(SESSION_ICON_SVG_DATA_URL_PREFIX)
++      ? "icons"
++      : "emoji";
++  });
++
++  const recentSection = createMemo((): CatalogSection => {
++    recentRevision();
++    const recent = recentSessionIcons().filter(
++      (icon) => !icon.startsWith(SESSION_ICON_SVG_DATA_URL_PREFIX) && !isGlyph(icon),
++    );
++    const choices = [...new Set([...recent, ...SESSION_ICON_EMOJI_CHOICES])].slice(
++      0,
++      Math.max(RECENT_SESSION_ICON_LIMIT, SESSION_ICON_EMOJI_CHOICES.length),
++    );
++    return {
++      label: t("sessionsView.iconRecentSection"),
++      items: choices.map(emojiItem),
++      custom: true,
++    };
++  });
++  const groupSections = createMemo((): readonly CatalogSection[] =>
++    (emoji() ?? []).map((group) => ({
++      label: t(SESSION_EMOJI_GROUP_LABELS[group.id]),
++      group: group.id,
++      items: group.emoji.map((entry) => emojiItem(entry.emoji)),
++    })),
++  );
++  const builtInSection = createMemo((): CatalogSection => ({
++    label: t("sessionsView.iconBuiltInSection"),
++    items: [...(props.clearable ? [noIconItem()] : []), ...SESSION_ICON_GLYPH_IDS.map(glyphItem)],
++    custom: true,
++  }));
++  const librarySections = createMemo((): readonly CatalogSection[] => {
++    if (!props.allowSvg) {
++      return [];
++    }
++    const library = sessionIconLibrary();
++    return sessionIconLibraryGroups().map((group) => ({
++      label: sessionIconLibraryGroupLabel(group),
++      items: library.filter((icon) => icon.group === group).map(libraryItem),
++    }));
++  });
++
++  const searching = createMemo(() => Boolean(query().trim()));
++  const sections = createMemo((): readonly CatalogSection[] => {
++    if (searching()) {
++      const found = searchSessionEmoji(emoji() ?? [], query())
++        .slice(0, SEARCH_RESULT_LIMIT)
++        .map((entry) => emojiItem(entry.emoji));
++      const iconItems = [
++        ...searchSessionIconGlyphs(query()).map(glyphItem),
++        ...(props.allowSvg ? searchSessionIconLibrary(query()).map(libraryItem) : []),
++      ];
++      return [
++        ...(found.length ? [{ label: t("sessionsView.iconEmojiSection"), items: found }] : []),
++        ...(iconItems.length
++          ? [{ label: t("sessionsView.iconGlyphSection"), items: iconItems }]
++          : []),
++      ];
++    }
++    if (activeTab() === "icons") {
++      return [builtInSection(), ...(shown() ? librarySections() : [])];
++    }
++    return shown() ? [recentSection(), ...groupSections()] : [recentSection()];
++  });
++  // The first pressed choice, else the first choice, is the grid's one tab stop. An
++  // emoji can be listed twice (Frequently used and its group): only one is the stop.
++  const tabStop = createMemo(() => {
++    const current = props.currentIcon;
++    const all = sections();
++    for (const section of all) {
++      const item = section.items.find((candidate) => candidate.matches(current));
++      if (item) {
++        return { section, item };
++      }
++    }
++    const section = all.find((candidate) => candidate.items.length);
++    return section ? { section, item: section.items[0] } : undefined;
++  });
++
++  const select = (event: MouseEvent, icon: string | null) => {
++    if (icon !== null) {
++      rememberSessionIcon(icon);
++      setRecentRevision((revision) => revision + 1);
++    }
++    props.onSelect(event, icon);
++  };
++
++  // Choices are found from the click, not one listener per button: the Emoji tab
++  // holds about two thousand of them.
++  const choiceItems = new WeakMap<Element, CatalogItem>();
++
++  const tabItems = createMemo(() =>
++    CATALOG_TABS.map((name) => ({
++      value: name,
++      id: `${id}-${name}-tab`,
++      panelId: `${id}-${name}-panel`,
++      className: "session-menu__icon-tab",
++      label: t(
++        name === "emoji" ? "sessionsView.iconEmojiSection" : "sessionsView.iconGlyphSection",
++      ),
++    })),
++  );
++
++  const renderChoice = (section: CatalogSection, item: CatalogItem) => (
++    <button
++      type="button"
++      class={[
++        "session-menu__icon-choice",
++        { "session-menu__icon-choice--glyph": item.kind !== "emoji" },
++      ]}
++      aria-label={item.label()}
++      aria-pressed={item.matches(props.currentIcon) ? "true" : "false"}
++      tabindex={tabStop()?.section === section && tabStop()?.item === item ? 0 : -1}
++      disabled={props.disabled}
++      title={props.disabledReason ?? item.label()}
++      ref={(element) => choiceItems.set(element, item)}
++    >
++      {item.value === null ? (
++        <Icon name="circleX" />
++      ) : item.kind === "emoji" ? (
++        item.value
++      ) : (
++        <SessionIconGraphic icon={item.value} />
++      )}
++    </button>
++  );
++
++  const Sections = () => (
++    <For each={sections()}>
++      {(section) => (
++        <>
++          <div class="session-menu__icon-section-label" data-emoji-group={section.group}>
++            {section.label}
++          </div>
++          <div class="session-menu__icon-grid">
++            <For each={section.items}>{(item) => renderChoice(section, item)}</For>
++            {section.custom ? (
++              <button
++                type="button"
++                class="session-menu__icon-choice session-menu__icon-choice--custom"
++                aria-label={t(
++                  props.allowSvg ? "sessionsView.customIconCell" : "sessionsView.customEmojiCell",
++                )}
++                aria-pressed="false"
++                tabindex={-1}
++                disabled={props.disabled}
++                title={props.disabledReason}
++              >
++                <Icon name="moreHorizontal" />
++              </button>
++            ) : undefined}
++          </div>
++        </>
++      )}
++    </For>
++  );
++
++  const PanelBody = (panel: { tab: CatalogTab }) => (
++    <>
++      {panel.tab === "emoji" && emoji() ? (
++        <div class="session-menu__icon-groups">
++          <For each={emoji() ?? []}>
++            {(group) => (
++              <button
++                type="button"
++                class="session-menu__icon-group-jump"
++                aria-label={t(SESSION_EMOJI_GROUP_LABELS[group.id])}
++                title={t(SESSION_EMOJI_GROUP_LABELS[group.id])}
++                tabindex={-1}
++                data-emoji-jump={group.id}
++              >
++                {group.emoji[0]?.emoji}
++              </button>
++            )}
++          </For>
++        </div>
++      ) : undefined}
++      <div class="session-menu__icon-scroll">
++        <Sections />
++        {panel.tab === "emoji" && shown() && !emoji() ? (
++          <div class="session-menu__icon-empty">
++            {t(loadFailed() ? "sessionsView.iconEmojiLoadFailed" : "sessionsView.iconEmojiLoading")}
++          </div>
++        ) : undefined}
++      </div>
++    </>
++  );
++
++  return (
++    <div
++      class="session-menu__icon-catalog"
++      ref={nativeListener("click", (event) => {
++        // Clicks inside the picker never reach the menu's item handling.
++        event.stopPropagation();
++        const catalog = event.currentTarget;
++        const button =
++          event.target instanceof Element
++            ? event.target.closest<HTMLButtonElement>("button")
++            : null;
++        if (!button || button.disabled || !(catalog instanceof Element)) {
++          return;
++        }
++        if (button.classList.contains("session-menu__icon-choice--custom")) {
++          props.onShowCustom(event);
++          return;
++        }
++        const jump = button.dataset.emojiJump;
++        if (jump) {
++          catalog
++            .querySelector(`[data-emoji-group="${jump}"]`)
++            ?.scrollIntoView?.({ block: "start" });
++          return;
++        }
++        const item = choiceItems.get(button);
++        if (item) {
++          select(event, item.value);
++        }
++      })}
++    >
++      <input
++        type="search"
++        class="session-menu__icon-search"
++        autocomplete="off"
++        spellcheck="false"
++        placeholder={t("sessionsView.iconSearch")}
++        aria-label={t("sessionsView.iconSearch")}
++        value={query()}
++        onInput={(event) => setQuery(event.currentTarget.value)}
++        // Keys typed into the search box are text, not menu navigation or type-ahead.
++        ref={nativeListener("keydown", (event) => {
++          if (event.key === "Tab") {
++            return;
++          }
++          if (event.key === "Escape") {
++            if (!query()) {
++              return;
++            }
++            event.preventDefault();
++            setQuery("");
++          } else if (event.key === "ArrowDown") {
++            event.preventDefault();
++            body
++              ?.querySelector<HTMLButtonElement>(
++                '.session-menu__icon-scroll .session-menu__icon-choice[tabindex="0"]',
++              )
++              ?.focus();
++          }
++          event.stopPropagation();
++        })}
++      />
++      <div class="session-menu__icon-body" ref={(element) => (body = element)}>
++        <Show
++          when={searching()}
++          fallback={
++            <div
++              class="session-menu__icon-tabs-frame"
++              // Keys the tab list handled (arrows, Home, End, Enter, Space) stay here.
++              ref={nativeListener("keydown", (event) => {
++                if (
++                  event.defaultPrevented &&
++                  event.target instanceof Element &&
++                  event.target.closest('[role="tab"]')
++                ) {
++                  event.stopPropagation();
++                }
++              })}
++            >
++              <Tabs
++                id={`${id}-tabs`}
++                class="session-menu__icon-tabs"
++                ariaLabel={t("sessionsView.setIconMenu")}
++                activation="auto"
++                active={activeTab()}
++                items={tabItems()}
++                onSelect={(value) => {
++                  if (value === "emoji" || value === "icons") {
++                    setTab(value);
++                  }
++                }}
++              />
++              <For each={CATALOG_TABS}>
++                {(name) => (
++                  <div
++                    id={`${id}-${name}-panel`}
++                    class="session-menu__icon-tabpanel"
++                    role="tabpanel"
++                    aria-labelledby={`${id}-${name}-tab`}
++                    hidden={activeTab() !== name}
++                    tabindex={-1}
++                  >
++                    {activeTab() === name ? <PanelBody tab={name} /> : undefined}
++                  </div>
++                )}
++              </For>
++            </div>
++          }
++        >
++          <div class="session-menu__icon-scroll session-menu__icon-results">
++            <Sections />
++            {sections().length ? undefined : (
++              <div class="session-menu__icon-empty">
++                {t("sessionsView.iconSearchEmpty", { query: query().trim() })}
++              </div>
++            )}
++          </div>
++        </Show>
++      </div>
++    </div>
++  );
++}
 diff --git a/ui/src/components/session-icon-catalog.test.ts b/ui/src/components/session-icon-catalog.test.ts
 new file mode 100644
-index 0000000..b4479de
+index 00000000..39797ed3
 --- /dev/null
 +++ b/ui/src/components/session-icon-catalog.test.ts
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,252 @@
 +/* @vitest-environment jsdom */
 +
 +import { createHash } from "node:crypto";
-+import { render } from "lit";
++import { createComponent } from "solid-js";
 +import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 +import { normalizeSessionIconValue } from "../../../packages/gateway-protocol/src/session-agent-status.js";
-+import { waitForFast } from "../test-helpers/wait-for.ts";
++import { mountSolid } from "../test-helpers/mount-solid.ts";
++import { flush, waitForSolid } from "../test-helpers/solid-settle.ts";
 +import {
 +  loadSessionEmoji,
 +  parseSessionEmojiGroup,
@@ -18,7 +512,6 @@ index 0000000..b4479de
 +  searchSessionEmoji,
 +  searchSessionIconGlyphs,
 +  searchSessionIconLibrary,
-+  type SessionIconCatalog,
 +} from "./session-icon-catalog.ts";
 +import { SESSION_EMOJI_COUNT, SESSION_EMOJI_GROUPS } from "./session-icon-emoji-data.ts";
 +import {
@@ -27,7 +520,7 @@ index 0000000..b4479de
 +  sessionIconLibraryGroups,
 +} from "./session-icon-library.ts";
 +import { SESSION_ICON_LIBRARY_SAVED_VALUES } from "./session-icon-library.values.test-support.ts";
-+import { renderAppearancePicker } from "./session-icon-picker.ts";
++import { AppearancePicker, type AppearancePickerProps } from "./session-icon-picker-solid.tsx";
 +
 +const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 +const savedValues = SESSION_ICON_LIBRARY_SAVED_VALUES;
@@ -101,37 +594,44 @@ index 0000000..b4479de
 +
 +describe("session icon picker", () => {
 +  let host: HTMLElement;
++  let unmount: (() => void) | undefined;
 +  beforeEach(() => {
 +    localStorage.clear();
 +    host = document.createElement("div");
 +    document.body.append(host);
 +  });
-+  afterEach(() => host.remove());
++  afterEach(() => {
++    unmount?.();
++    unmount = undefined;
++    host.remove();
++  });
 +
-+  function mount(overrides: Partial<Parameters<typeof renderAppearancePicker>[0]> = {}) {
++  function mount(overrides: Partial<AppearancePickerProps> = {}) {
 +    const onSelect = vi.fn();
-+    render(
-+      renderAppearancePicker({
-+        inline: true,
-+        allowSvg: true,
-+        mode: "grid",
-+        currentIcon: null,
-+        currentColor: null,
-+        colorDisabled: false,
-+        onSelectColor: () => {},
-+        onReset: () => {},
-+        customIconValue: "",
-+        disabled: false,
-+        onSelect,
-+        onShowCustom: () => {},
-+        onBack: () => {},
-+        onInput: () => {},
-+        onApply: () => {},
-+        ...overrides,
-+      }),
-+      host,
-+    );
-+    const catalog = host.querySelector<SessionIconCatalog>("openclaw-session-icon-catalog");
++    const props: AppearancePickerProps = {
++      inline: true,
++      allowSvg: true,
++      mode: "grid",
++      currentIcon: null,
++      currentColor: null,
++      colorDisabled: false,
++      onSelectColor: () => {},
++      onReset: () => {},
++      customIconValue: "",
++      disabled: false,
++      onSelect,
++      onShowCustom: () => {},
++      onBack: () => {},
++      onInput: () => {},
++      onApply: () => {},
++      ...overrides,
++    };
++    const mounted = mountSolid(() => createComponent(AppearancePicker, props), {
++      container: host,
++    });
++    unmount = mounted.unmount;
++    flush();
++    const catalog = host.querySelector<HTMLElement>(".session-menu__icon-catalog");
 +    if (!catalog) {
 +      throw new Error("Expected the icon catalog");
 +    }
@@ -139,23 +639,23 @@ index 0000000..b4479de
 +  }
 +
 +  const labels = () =>
-+    Array.from(host.querySelectorAll(".session-menu__icon-scroll .session-menu__icon-section-label")).map(
-+      (label) => label.textContent?.trim(),
-+    );
++    Array.from(
++      host.querySelectorAll(".session-menu__icon-scroll .session-menu__icon-section-label"),
++    ).map((label) => label.textContent?.trim());
 +
-+  async function search(catalog: SessionIconCatalog, query: string) {
++  function search(query: string) {
 +    const input = host.querySelector<HTMLInputElement>(".session-menu__icon-search");
 +    if (!input) {
 +      throw new Error("Expected the search box");
 +    }
 +    input.value = query;
 +    input.dispatchEvent(new InputEvent("input", { bubbles: true }));
-+    await catalog.updateComplete;
++    flush();
 +  }
 +
 +  it("lists every emoji by category and jumps to a category", async () => {
 +    const { catalog } = mount({ currentIcon: "🦞" });
-+    await waitForFast(() => expect(labels()).toHaveLength(10));
++    await waitForSolid(() => expect(labels()).toHaveLength(10));
 +    expect(labels()[0]).toBe("Frequently used");
 +    expect(labels().slice(1)).toEqual([
 +      "Smileys & emotion",
@@ -169,11 +669,18 @@ index 0000000..b4479de
 +      "Flags",
 +    ]);
 +    // The 11 defaults, the custom-entry cell and every emoji.
-+    expect(host.querySelectorAll(".session-menu__icon-scroll .session-menu__icon-choice").length).toBe(
-+      11 + SESSION_EMOJI_COUNT + 1,
-+    );
++    expect(
++      host.querySelectorAll(".session-menu__icon-scroll .session-menu__icon-choice").length,
++    ).toBe(11 + SESSION_EMOJI_COUNT + 1);
 +    expect(host.querySelectorAll(".session-menu__icon-group-jump")).toHaveLength(9);
-+    expect(catalog.isConnected).toBe(true);
++    const animals = catalog.querySelector<HTMLElement>('[data-emoji-group="animals"]');
++    if (!animals) {
++      throw new Error("Expected the Animals & nature label");
++    }
++    const scrollIntoView = vi.fn();
++    animals.scrollIntoView = scrollIntoView;
++    host.querySelector<HTMLButtonElement>('[aria-label="Animals & nature"]')?.click();
++    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
 +  });
 +
 +  it("opens Icons for a library icon and marks its older pastel value as selected", async () => {
@@ -181,9 +688,10 @@ index 0000000..b4479de
 +    if (!icon) {
 +      throw new Error("Expected the aircraft icon");
 +    }
-+    const { catalog } = mount({ currentIcon: icon.previousValue });
-+    await catalog.updateComplete;
-+    expect(host.querySelector("wa-tab[active]")?.textContent?.trim()).toBe("Icons");
++    mount({ currentIcon: icon.previousValue });
++    expect(
++      host.querySelector('.session-menu__icon-tabs [aria-selected="true"]')?.textContent?.trim(),
++    ).toBe("Icons");
 +    expect(labels()).toEqual([
 +      "Built-in",
 +      "Aerospace & simulation",
@@ -206,16 +714,16 @@ index 0000000..b4479de
 +  });
 +
 +  it("searches emoji and icons together and selects the saved value", async () => {
-+    const { catalog, onSelect } = mount();
++    const { onSelect } = mount();
 +    await loadSessionEmoji();
-+    await search(catalog, "rocket");
++    search("rocket");
 +    expect(labels()).toEqual(["Emoji"]);
-+    await search(catalog, "simulink");
++    search("simulink");
 +    expect(labels()).toEqual(["Icons"]);
 +    host.querySelector<HTMLButtonElement>('[aria-label="Simulation blocks"]')?.click();
 +    const value = sessionIconLibrary().find((icon) => icon.id === "simulation")?.value;
 +    expect(onSelect).toHaveBeenCalledWith(expect.any(MouseEvent), value);
-+    await search(catalog, "zzzz qqqq");
++    search("zzzz qqqq");
 +    expect(labels()).toEqual([]);
 +    expect(host.querySelector(".session-menu__icon-empty")?.textContent?.trim()).toBe(
 +      "Nothing matches “zzzz qqqq”.",
@@ -223,66 +731,41 @@ index 0000000..b4479de
 +  });
 +
 +  it("puts a chosen emoji first in Frequently used", async () => {
-+    const { catalog, onSelect } = mount({ currentIcon: "🦞" });
++    const { onSelect } = mount({ currentIcon: "🦞" });
 +    await loadSessionEmoji();
-+    await search(catalog, "dog face");
++    await waitForSolid(() => expect(labels()).toHaveLength(10));
++    search("dog face");
 +    host.querySelector<HTMLButtonElement>('[aria-label="dog face"]')?.click();
 +    expect(onSelect).toHaveBeenCalledWith(expect.any(MouseEvent), "🐶");
 +    expect(recentSessionIcons()).toEqual(["🐶"]);
-+    await search(catalog, "");
++    search("");
 +    const first = host.querySelector(".session-menu__icon-grid .session-menu__icon-choice");
 +    expect(first?.textContent?.trim()).toBe("🐶");
 +  });
 +
 +  it("offers only built-in icons where SVG icons are not allowed", async () => {
-+    const { catalog } = mount({ allowSvg: false, currentIcon: "bot" });
-+    await catalog.updateComplete;
++    mount({ allowSvg: false, currentIcon: "bot" });
 +    expect(labels()).toEqual(["Built-in"]);
 +    expect(host.querySelectorAll(".session-menu__icon-choice img")).toHaveLength(0);
 +  });
 +});
 diff --git a/ui/src/components/session-icon-catalog.ts b/ui/src/components/session-icon-catalog.ts
 new file mode 100644
-index 0000000..4cecc6b
+index 00000000..776dc609
 --- /dev/null
 +++ b/ui/src/components/session-icon-catalog.ts
-@@ -0,0 +1,591 @@
-+import { html, nothing, type TemplateResult } from "lit";
-+import { property, state } from "lit/decorators.js";
-+import { ifDefined } from "lit/directives/if-defined.js";
-+import { ref } from "lit/directives/ref.js";
-+import {
-+  SESSION_ICON_GLYPH_IDS,
-+  SESSION_ICON_SVG_DATA_URL_PREFIX,
-+} from "../../../packages/gateway-protocol/src/session-agent-status.js";
+@@ -0,0 +1,147 @@
++// The session icon picker's catalog: every emoji, the built-in glyphs and the icon
++// library, with search and this browser's recent choices. The picker itself is
++// session-icon-catalog-solid.tsx.
++import { SESSION_ICON_GLYPH_IDS } from "../../../packages/gateway-protocol/src/session-agent-status.js";
 +import { t } from "../i18n/index.ts";
-+import { OpenClawLightDomElement } from "../lit/openclaw-element.ts";
-+import { icons } from "./icons.ts";
 +import type { SessionEmojiGroupId } from "./session-icon-emoji-data.ts";
-+import { resolveSessionIconGraphic } from "./session-icon-glyph-registry.ts";
-+import { syncTabGroupLabel } from "./web-awesome-tabs.ts";
 +import {
-+  isSessionIconLibraryIcon,
 +  sessionIconLibrary,
-+  sessionIconLibraryGroups,
 +  type SessionIconLibraryGroup,
 +  type SessionIconLibraryIcon,
 +} from "./session-icon-library.ts";
-+
-+/** The emoji offered first, before any recent choice. */
-+export const SESSION_ICON_EMOJI_CHOICES = [
-+  "🦞",
-+  "🚀",
-+  "🐛",
-+  "✅",
-+  "🔥",
-+  "📦",
-+  "🧪",
-+  "📝",
-+  "🔍",
-+  "⚡",
-+  "🎯",
-+] as const;
 +
 +export type SessionEmoji = { emoji: string; name: string; subgroup: string };
 +export type SessionEmojiGroup = { id: SessionEmojiGroupId; emoji: readonly SessionEmoji[] };
@@ -328,7 +811,8 @@ index 0000000..4cecc6b
 +  const compact = haystack.replace(/[^\p{L}\p{N}]+/gu, "");
 +  const matches = (term: string) => haystack.includes(term) || compact.includes(term);
 +  return terms.every(
-+    (term) => matches(term) || (term.length > 3 && term.endsWith("s") && matches(term.slice(0, -1))),
++    (term) =>
++      matches(term) || (term.length > 3 && term.endsWith("s") && matches(term.slice(0, -1))),
 +  );
 +}
 +
@@ -378,13 +862,16 @@ index 0000000..4cecc6b
 +
 +// Recent choices are this browser's presentation state, not session data.
 +const RECENT_KEY = "openclaw.control-ui.session-icons.recent.v1";
-+const RECENT_LIMIT = 18;
++/** How many recent choices this browser keeps. */
++export const RECENT_SESSION_ICON_LIMIT = 18;
 +
 +export function recentSessionIcons(): string[] {
 +  try {
 +    const value: unknown = JSON.parse(globalThis.localStorage?.getItem(RECENT_KEY) ?? "[]");
 +    return Array.isArray(value)
-+      ? value.filter((icon): icon is string => typeof icon === "string").slice(0, RECENT_LIMIT)
++      ? value
++          .filter((icon): icon is string => typeof icon === "string")
++          .slice(0, RECENT_SESSION_ICON_LIMIT)
 +      : [];
 +  } catch {
 +    return [];
@@ -394,39 +881,17 @@ index 0000000..4cecc6b
 +export function rememberSessionIcon(icon: string) {
 +  try {
 +    const recent = [icon, ...recentSessionIcons().filter((entry) => entry !== icon)];
-+    globalThis.localStorage?.setItem(RECENT_KEY, JSON.stringify(recent.slice(0, RECENT_LIMIT)));
++    globalThis.localStorage?.setItem(
++      RECENT_KEY,
++      JSON.stringify(recent.slice(0, RECENT_SESSION_ICON_LIMIT)),
++    );
 +  } catch {
 +    // Storage may be unavailable (private mode, quota); recents are optional.
 +  }
 +}
 +
-+export type SessionIconCatalogProps = {
-+  currentIcon: string | null;
-+  allowSvg: boolean;
-+  clearable: boolean;
-+  disabled: boolean;
-+  disabledReason?: string;
-+  onSelect: (event: MouseEvent, icon: string | null) => void;
-+  onShowCustom: (event: MouseEvent) => void;
-+};
-+
-+type CatalogTab = "emoji" | "icons";
-+
-+type CatalogItem = {
-+  value: string | null;
-+  kind: "emoji" | "glyph" | "image";
-+  label: string;
-+  pressed: boolean;
-+};
-+
-+type CatalogSection = {
-+  label: string;
-+  items: CatalogItem[];
-+  group?: SessionEmojiGroupId;
-+  custom?: boolean;
-+};
-+
-+const EMOJI_GROUP_LABELS = {
++/** Each emoji group's name key. */
++export const SESSION_EMOJI_GROUP_LABELS = {
 +  smileys: "sessionsView.iconEmojiGroups.smileys",
 +  people: "sessionsView.iconEmojiGroups.people",
 +  animals: "sessionsView.iconEmojiGroups.animals",
@@ -437,410 +902,9 @@ index 0000000..4cecc6b
 +  symbols: "sessionsView.iconEmojiGroups.symbols",
 +  flags: "sessionsView.iconEmojiGroups.flags",
 +} as const satisfies Record<SessionEmojiGroupId, string>;
-+
-+const SEARCH_RESULT_LIMIT = 240;
-+
-+let catalogInstances = 0;
-+
-+/**
-+ * The picker's icon choices: Emoji and Icons tabs over every emoji and the icon
-+ * library, with search across both. Light DOM, so the session menu's styles,
-+ * focus handling and arrow-key grid navigation apply to its choices.
-+ */
-+export class SessionIconCatalog extends OpenClawLightDomElement {
-+  @property({ attribute: false }) props!: SessionIconCatalogProps;
-+  @state() private tab: CatalogTab | null = null;
-+  @state() private query = "";
-+  @state() private emoji: readonly SessionEmojiGroup[] | null = null;
-+  @state() private loadFailed = false;
-+  // The session menu renders this inside a closed submenu whenever it opens. Until
-+  // the picker is shown, render only its first section; then every choice.
-+  @state() private shown = typeof IntersectionObserver === "undefined";
-+  private observer?: IntersectionObserver;
-+  private readonly instance = ++catalogInstances;
-+
-+  override connectedCallback() {
-+    super.connectedCallback();
-+    if (this.shown) {
-+      this.loadEmoji();
-+      return;
-+    }
-+    this.observer = new IntersectionObserver((entries) => {
-+      if (entries.some((entry) => entry.isIntersecting)) {
-+        this.observer?.disconnect();
-+        this.observer = undefined;
-+        this.shown = true;
-+        this.loadEmoji();
-+      }
-+    });
-+    this.observer.observe(this);
-+  }
-+
-+  override disconnectedCallback() {
-+    this.observer?.disconnect();
-+    this.observer = undefined;
-+    super.disconnectedCallback();
-+  }
-+
-+  private loadEmoji() {
-+    if (this.emoji) {
-+      return;
-+    }
-+    loadSessionEmoji().then(
-+      (groups) => {
-+        this.emoji = groups;
-+      },
-+      () => {
-+        this.loadFailed = true;
-+      },
-+    );
-+  }
-+
-+  private get activeTab(): CatalogTab {
-+    if (this.tab) {
-+      return this.tab;
-+    }
-+    const current = this.props.currentIcon;
-+    if (current === null) {
-+      return "emoji";
-+    }
-+    if (SESSION_ICON_GLYPH_IDS.some((id) => id === current)) {
-+      return "icons";
-+    }
-+    return this.props.allowSvg && current.startsWith(SESSION_ICON_SVG_DATA_URL_PREFIX)
-+      ? "icons"
-+      : "emoji";
-+  }
-+
-+  private emojiItem(entry: { emoji: string; name: string }): CatalogItem {
-+    return {
-+      value: entry.emoji,
-+      kind: "emoji",
-+      label: entry.name,
-+      pressed: this.props.currentIcon === entry.emoji,
-+    };
-+  }
-+
-+  private glyphItem(id: string): CatalogItem {
-+    return { value: id, kind: "glyph", label: id, pressed: this.props.currentIcon === id };
-+  }
-+
-+  private libraryItem(icon: SessionIconLibraryIcon): CatalogItem {
-+    return {
-+      value: icon.value,
-+      kind: "image",
-+      label: sessionIconLibraryLabel(icon),
-+      pressed: isSessionIconLibraryIcon(this.props.currentIcon, icon),
-+    };
-+  }
-+
-+  private emojiName(emoji: string): string {
-+    for (const group of this.emoji ?? []) {
-+      const entry = group.emoji.find((candidate) => candidate.emoji === emoji);
-+      if (entry) {
-+        return entry.name;
-+      }
-+    }
-+    return emoji;
-+  }
-+
-+  private recentEmojiSection(): CatalogSection {
-+    const recent = recentSessionIcons().filter(
-+      (icon) =>
-+        !icon.startsWith(SESSION_ICON_SVG_DATA_URL_PREFIX) &&
-+        !SESSION_ICON_GLYPH_IDS.some((id) => id === icon),
-+    );
-+    const choices = [...new Set([...recent, ...SESSION_ICON_EMOJI_CHOICES])].slice(
-+      0,
-+      Math.max(RECENT_LIMIT, SESSION_ICON_EMOJI_CHOICES.length),
-+    );
-+    return {
-+      label: t("sessionsView.iconRecentSection"),
-+      items: choices.map((emoji) => this.emojiItem({ emoji, name: this.emojiName(emoji) })),
-+      custom: true,
-+    };
-+  }
-+
-+  private builtInSection(): CatalogSection {
-+    return {
-+      label: t("sessionsView.iconBuiltInSection"),
-+      items: [
-+        ...(this.props.clearable
-+          ? [
-+              {
-+                value: null,
-+                kind: "glyph",
-+                label: t("sessionsView.noIcon"),
-+                pressed: this.props.currentIcon === null,
-+              } satisfies CatalogItem,
-+            ]
-+          : []),
-+        ...SESSION_ICON_GLYPH_IDS.map((id) => this.glyphItem(id)),
-+      ],
-+      custom: true,
-+    };
-+  }
-+
-+  private librarySections(): CatalogSection[] {
-+    if (!this.props.allowSvg) {
-+      return [];
-+    }
-+    const library = sessionIconLibrary();
-+    return sessionIconLibraryGroups().map((group) => ({
-+      label: sessionIconLibraryGroupLabel(group),
-+      items: library.filter((icon) => icon.group === group).map((icon) => this.libraryItem(icon)),
-+    }));
-+  }
-+
-+  private sections(): CatalogSection[] {
-+    if (this.query.trim()) {
-+      const emoji = searchSessionEmoji(this.emoji ?? [], this.query)
-+        .slice(0, SEARCH_RESULT_LIMIT)
-+        .map((entry) => this.emojiItem(entry));
-+      const iconItems = [
-+        ...searchSessionIconGlyphs(this.query).map((id) => this.glyphItem(id)),
-+        ...(this.props.allowSvg
-+          ? searchSessionIconLibrary(this.query).map((icon) => this.libraryItem(icon))
-+          : []),
-+      ];
-+      return [
-+        ...(emoji.length ? [{ label: t("sessionsView.iconEmojiSection"), items: emoji }] : []),
-+        ...(iconItems.length ? [{ label: t("sessionsView.iconGlyphSection"), items: iconItems }] : []),
-+      ];
-+    }
-+    if (this.activeTab === "icons") {
-+      return [this.builtInSection(), ...(this.shown ? this.librarySections() : [])];
-+    }
-+    if (!this.shown) {
-+      return [this.recentEmojiSection()];
-+    }
-+    return [
-+      this.recentEmojiSection(),
-+      ...(this.emoji ?? []).map((group) => ({
-+        label: t(EMOJI_GROUP_LABELS[group.id]),
-+        group: group.id,
-+        items: group.emoji.map((entry) => this.emojiItem(entry)),
-+      })),
-+    ];
-+  }
-+
-+  private select(event: MouseEvent, icon: string | null) {
-+    if (icon !== null) {
-+      rememberSessionIcon(icon);
-+    }
-+    this.props.onSelect(event, icon);
-+  }
-+
-+  private selectTab(tab: CatalogTab) {
-+    this.tab = tab;
-+    this.query = "";
-+    void this.updateComplete.then(() => {
-+      this.querySelector(".session-menu__icon-scroll")?.scrollTo?.({ top: 0 });
-+    });
-+  }
-+
-+  private onTabShow = (event: CustomEvent<{ name: string }>) => {
-+    event.stopPropagation();
-+    const tab = event.detail.name;
-+    if ((tab === "emoji" || tab === "icons") && tab !== this.activeTab) {
-+      this.selectTab(tab);
-+    }
-+  };
-+
-+  private onSearchInput = (event: InputEvent) => {
-+    if (event.currentTarget instanceof HTMLInputElement) {
-+      this.query = event.currentTarget.value;
-+    }
-+  };
-+
-+  // Keys typed into the search box are text, not menu navigation or type-ahead.
-+  private onSearchKeydown = (event: KeyboardEvent) => {
-+    if (event.key === "Tab") {
-+      return;
-+    }
-+    if (event.key === "Escape") {
-+      if (!this.query) {
-+        return;
-+      }
-+      event.preventDefault();
-+      this.query = "";
-+    } else if (event.key === "ArrowDown") {
-+      event.preventDefault();
-+      this.querySelector<HTMLButtonElement>(
-+        '.session-menu__icon-scroll .session-menu__icon-choice[tabindex="0"]',
-+      )?.focus();
-+    }
-+    event.stopPropagation();
-+  };
-+
-+  private jumpTo(group: SessionEmojiGroupId) {
-+    this.querySelector(`[data-emoji-group="${group}"]`)?.scrollIntoView?.({ block: "start" });
-+  }
-+
-+  private renderItem(item: CatalogItem, tabStop: CatalogItem | undefined): TemplateResult {
-+    const graphic =
-+      item.value === null
-+        ? icons.circleX
-+        : item.kind === "emoji"
-+          ? item.value
-+          : resolveSessionIconGraphic(item.value);
-+    return html`
-+      <button
-+        type="button"
-+        class=${`session-menu__icon-choice${item.kind === "emoji" ? "" : " session-menu__icon-choice--glyph"}`}
-+        aria-label=${item.label}
-+        aria-pressed=${item.pressed ? "true" : "false"}
-+        tabindex=${item === tabStop ? "0" : "-1"}
-+        ?disabled=${this.props.disabled}
-+        title=${this.props.disabledReason ?? item.label}
-+        @click=${(event: MouseEvent) => this.select(event, item.value)}
-+      >
-+        ${graphic}
-+      </button>
-+    `;
-+  }
-+
-+  private renderSections(sections: readonly CatalogSection[], tabStop: CatalogItem | undefined) {
-+    return sections.map(
-+      (section) => html`
-+        <div class="session-menu__icon-section-label" data-emoji-group=${section.group ?? nothing}>
-+          ${section.label}
-+        </div>
-+        <div class="session-menu__icon-grid">
-+          ${section.items.map((item) => this.renderItem(item, tabStop))}
-+          ${
-+            section.custom
-+              ? html`<button
-+                  type="button"
-+                  class="session-menu__icon-choice session-menu__icon-choice--custom"
-+                  aria-label=${t(
-+                    this.props.allowSvg ? "sessionsView.customIconCell" : "sessionsView.customEmojiCell",
-+                  )}
-+                  aria-pressed="false"
-+                  tabindex="-1"
-+                  ?disabled=${this.props.disabled}
-+                  title=${ifDefined(this.props.disabledReason)}
-+                  @click=${this.props.onShowCustom}
-+                >
-+                  ${icons.moreHorizontal}
-+                </button>`
-+              : nothing
-+          }
-+        </div>
-+      `,
-+    );
-+  }
-+
-+  private renderPanelBody(tab: CatalogTab, sections: readonly CatalogSection[], tabStop: CatalogItem | undefined) {
-+    return html`
-+      ${
-+        tab === "emoji" && this.emoji
-+          ? html`<div class="session-menu__icon-groups">
-+              ${this.emoji.map(
-+                (group) => html`<button
-+                  type="button"
-+                  class="session-menu__icon-group-jump"
-+                  aria-label=${t(EMOJI_GROUP_LABELS[group.id])}
-+                  title=${t(EMOJI_GROUP_LABELS[group.id])}
-+                  tabindex="-1"
-+                  @click=${() => this.jumpTo(group.id)}
-+                >
-+                  ${group.emoji[0]?.emoji}
-+                </button>`,
-+              )}
-+            </div>`
-+          : nothing
-+      }
-+      <div class="session-menu__icon-scroll">
-+        ${this.renderSections(sections, tabStop)}
-+        ${
-+          tab === "emoji" && this.shown && !this.emoji
-+            ? html`<div class="session-menu__icon-empty">
-+                ${t(this.loadFailed ? "sessionsView.iconEmojiLoadFailed" : "sessionsView.iconEmojiLoading")}
-+              </div>`
-+            : nothing
-+        }
-+      </div>
-+    `;
-+  }
-+
-+  override render() {
-+    const tab = this.activeTab;
-+    const searching = Boolean(this.query.trim());
-+    const sections = this.sections();
-+    const items = sections.flatMap((section) => section.items);
-+    const tabStop = items.find((item) => item.pressed) ?? items[0];
-+    const id = `session-icon-catalog-${this.instance}`;
-+    const tabsLabel = t("sessionsView.setIconMenu");
-+    return html`
-+      <input
-+        type="search"
-+        class="session-menu__icon-search"
-+        autocomplete="off"
-+        spellcheck="false"
-+        placeholder=${t("sessionsView.iconSearch")}
-+        aria-label=${t("sessionsView.iconSearch")}
-+        .value=${this.query}
-+        @click=${(event: Event) => event.stopPropagation()}
-+        @input=${this.onSearchInput}
-+        @keydown=${this.onSearchKeydown}
-+      />
-+      <div class="session-menu__icon-body">
-+      ${
-+        searching
-+          ? html`<div class="session-menu__icon-scroll session-menu__icon-results">
-+              ${this.renderSections(sections, tabStop)}
-+              ${
-+                sections.length
-+                  ? nothing
-+                  : html`<div class="session-menu__icon-empty">
-+                      ${t("sessionsView.iconSearchEmpty", { query: this.query.trim() })}
-+                    </div>`
-+              }
-+            </div>`
-+          : html`<wa-tab-group
-+              class="session-menu__icon-tabs"
-+              aria-label=${tabsLabel}
-+              .active=${tab}
-+              activation="auto"
-+              without-scroll-controls
-+              ${ref((element) => syncTabGroupLabel(element, tabsLabel))}
-+              @wa-tab-show=${this.onTabShow}
-+            >
-+              ${(["emoji", "icons"] as const).map(
-+                (name) => html`<wa-tab
-+                  slot="nav"
-+                  id=${`${id}-${name}-tab`}
-+                  aria-controls=${`${id}-${name}-panel`}
-+                  panel=${name}
-+                  ?active=${tab === name}
-+                >
-+                  ${t(name === "emoji" ? "sessionsView.iconEmojiSection" : "sessionsView.iconGlyphSection")}
-+                </wa-tab>`,
-+              )}
-+              ${(["emoji", "icons"] as const).map(
-+                (name) => html`<wa-tab-panel
-+                  id=${`${id}-${name}-panel`}
-+                  aria-labelledby=${`${id}-${name}-tab`}
-+                  name=${name}
-+                  ?active=${tab === name}
-+                >
-+                  ${tab === name ? this.renderPanelBody(name, sections, tabStop) : nothing}
-+                </wa-tab-panel>`,
-+              )}
-+            </wa-tab-group>`
-+      }
-+      </div>
-+    `;
-+  }
-+}
-+
-+if (!customElements.get("openclaw-session-icon-catalog")) {
-+  customElements.define("openclaw-session-icon-catalog", SessionIconCatalog);
-+}
 diff --git a/ui/src/components/session-icon-emoji-data.ts b/ui/src/components/session-icon-emoji-data.ts
 new file mode 100644
-index 0000000..44567d0
+index 00000000..44567d01
 --- /dev/null
 +++ b/ui/src/components/session-icon-emoji-data.ts
 @@ -0,0 +1,28 @@
@@ -874,7 +938,7 @@ index 0000000..44567d0
 +];
 diff --git a/ui/src/components/session-icon-library.ts b/ui/src/components/session-icon-library.ts
 new file mode 100644
-index 0000000..58b53b8
+index 00000000..58b53b81
 --- /dev/null
 +++ b/ui/src/components/session-icon-library.ts
 @@ -0,0 +1,465 @@
@@ -1345,7 +1409,7 @@ index 0000000..58b53b8
 +};
 diff --git a/ui/src/components/session-icon-library.values.test-support.ts b/ui/src/components/session-icon-library.values.test-support.ts
 new file mode 100644
-index 0000000..7922443
+index 00000000..79224432
 --- /dev/null
 +++ b/ui/src/components/session-icon-library.values.test-support.ts
 @@ -0,0 +1,81 @@
@@ -1430,109 +1494,96 @@ index 0000000..7922443
 +  { id: "home", bold: "3fa76587ee49448f37c08e4140733eca015edcb472fbae6e750a14680e87a6b6", pastel: "252eb5b18903ca95a64687d4df5e35e3bff50f5208f8f0ec56c43db415c8d9e7", outline: "f9c6450536d8475e13c78b0f20d77b461e503749efa754788efb94e2625687ff" },
 +  { id: "health", bold: "5b78de8522da09874b7c9dfe27ae8bdfaccd797be7dd71ead40743b0810cd8b3", pastel: "fb887ff6b8901e2962f6b77e3f04b3de306af16770fc84698a4dfaf82760c384", outline: "8cdb44abdf95e42a803ed7cec7c123991994462f30e103cc606a2373670cc06d" },
 +];
-diff --git a/ui/src/components/session-icon-picker.ts b/ui/src/components/session-icon-picker.ts
-index 3e922f9..04cd2c7 100644
---- a/ui/src/components/session-icon-picker.ts
-+++ b/ui/src/components/session-icon-picker.ts
-@@ -1,29 +1,14 @@
- import { html, nothing } from "lit";
- import {
+diff --git a/ui/src/components/session-icon-picker-solid.tsx b/ui/src/components/session-icon-picker-solid.tsx
+index c6f6342d..f1bdcf68 100644
+--- a/ui/src/components/session-icon-picker-solid.tsx
++++ b/ui/src/components/session-icon-picker-solid.tsx
+@@ -3,16 +3,12 @@ import {
    normalizeSessionIconValue,
+   SESSION_COLOR_IDS,
+   normalizeSessionColorValue,
 -  SESSION_ICON_GLYPH_IDS,
    SESSION_ICON_SVG_DATA_URL_PREFIX,
  } from "../../../packages/gateway-protocol/src/session-agent-status.js";
  import { t } from "../i18n/index.ts";
- import { icons } from "./icons.ts";
- import { renderKbd, renderShortcutText } from "./kbd.ts";
--import { resolveSessionIconGraphic } from "./session-icon-glyph-registry.ts";
-+import "./session-icon-catalog.ts";
- import { renderSessionColorOptions } from "./session-menu-options.ts";
+ import { nativeListener } from "../lib/solid-native-listener.ts";
+-import {
+-  SESSION_ICON_EMOJI_CHOICES as EMOJI_CHOICES,
+-  sessionEmojiPickerShortcut,
+-} from "./session-icon-choices.ts";
+-import { SessionIconGraphic } from "./session-icon-glyph-solid.tsx";
++import { SessionIconCatalog } from "./session-icon-catalog-solid.tsx";
++import { sessionEmojiPickerShortcut } from "./session-icon-choices.ts";
+ import { Icon } from "./solid/icon.tsx";
+ import { Kbd, ShortcutText } from "./solid/kbd.tsx";
  
--const SESSION_ICON_EMOJI_CHOICES = [
--  "🦞",
--  "🚀",
--  "🐛",
--  "✅",
--  "🔥",
--  "📦",
--  "🧪",
--  "📝",
--  "🔍",
--  "⚡",
--  "🎯",
--] as const;
--
- export function sessionEmojiPickerShortcut(): readonly string[] | null {
-   const platform = globalThis.navigator?.platform ?? "";
-   if (/Mac|iPhone|iPad|iPod/u.test(platform)) {
-@@ -126,26 +111,6 @@ function renderCustomSessionIconEntry(props: AppearancePickerProps) {
- }
- 
- function renderSessionIconGrid(props: AppearancePickerProps) {
--  const tabStop =
+@@ -44,25 +40,6 @@ export function AppearancePicker(props: AppearancePickerProps) {
+       normalized && (props.allowSvg || !normalized.startsWith(SESSION_ICON_SVG_DATA_URL_PREFIX))
+     );
+   };
+-  const tabStop = () =>
 -    props.clearable !== false && props.currentIcon === null
 -      ? null
--      : ([...SESSION_ICON_EMOJI_CHOICES, ...SESSION_ICON_GLYPH_IDS].find(
--          (icon) => icon === props.currentIcon,
--        ) ?? SESSION_ICON_EMOJI_CHOICES[0]);
--  const renderChoice = (icon: string | null, glyph = false) => html`
+-      : ([...EMOJI_CHOICES, ...SESSION_ICON_GLYPH_IDS].find((icon) => icon === props.currentIcon) ??
+-        EMOJI_CHOICES[0]);
+-  const choice = (icon: string | null, glyph = false) => (
 -    <button
 -      type="button"
--      class=${`session-menu__icon-choice${glyph ? " session-menu__icon-choice--glyph" : ""}`}
--      aria-label=${glyph ? (icon ?? t("sessionsView.noIcon")) : nothing}
--      aria-pressed=${String(props.currentIcon === icon)}
--      tabindex=${icon === tabStop ? "0" : "-1"}
--      ?disabled=${props.disabled}
--      title=${props.disabledReason ?? (icon === null ? t("sessionsView.noIcon") : nothing)}
--      @click=${(event: MouseEvent) => props.onSelect(event, icon)}
+-      class={["session-menu__icon-choice", { "session-menu__icon-choice--glyph": glyph }]}
+-      aria-label={glyph ? (icon ?? t("sessionsView.noIcon")) : undefined}
+-      aria-pressed={props.currentIcon === icon ? "true" : "false"}
+-      tabindex={icon === tabStop() ? 0 : -1}
+-      disabled={props.disabled}
+-      title={props.disabledReason ?? (icon === null ? t("sessionsView.noIcon") : undefined)}
+-      ref={nativeListener("click", (event) => props.onSelect(event, icon))}
 -    >
--      ${icon === null ? icons.circleX : glyph ? resolveSessionIconGraphic(icon) : icon}
+-      {icon === null ? <Icon name="circleX" /> : glyph ? <SessionIconGraphic icon={icon} /> : icon}
 -    </button>
--  `;
-   return html`
-     <div class="session-menu__icon-picker session-menu__icon-panel" data-mode=${props.mode}>
-       <div
-@@ -156,27 +121,17 @@ function renderSessionIconGrid(props: AppearancePickerProps) {
-         aria-label=${t("sessionsView.setIconMenu")}
-         @keydown=${handleAppearanceGridKeydown}
-       >
--        <div class="session-menu__icon-section-label">${t("sessionsView.iconEmojiSection")}</div>
--        <div class="session-menu__icon-grid">
--          ${SESSION_ICON_EMOJI_CHOICES.map((icon) => renderChoice(icon))}
--          <button
--            type="button"
--            class="session-menu__icon-choice session-menu__icon-choice--custom"
--            aria-label=${t(props.allowSvg ? "sessionsView.customIconCell" : "sessionsView.customEmojiCell")}
--            aria-pressed="false"
--            tabindex="-1"
--            ?disabled=${props.disabled}
--            title=${props.disabledReason ?? nothing}
--            @click=${props.onShowCustom}
--          >
--            ${icons.moreHorizontal}
--          </button>
--        </div>
--        <div class="session-menu__icon-section-label">${t("sessionsView.iconGlyphSection")}</div>
--        <div class="session-menu__icon-grid">
--          ${props.clearable !== false ? renderChoice(null, true) : nothing}
--          ${SESSION_ICON_GLYPH_IDS.map((icon) => renderChoice(icon, true))}
--        </div>
-+        <openclaw-session-icon-catalog
-+          .props=${{
-+            currentIcon: props.currentIcon,
-+            allowSvg: props.allowSvg === true,
-+            clearable: props.clearable !== false,
-+            disabled: props.disabled,
-+            disabledReason: props.disabledReason,
-+            onSelect: props.onSelect,
-+            onShowCustom: props.onShowCustom,
-+          }}
-+        ></openclaw-session-icon-catalog>
-       </div>
-       ${renderCustomSessionIconEntry(props)}
-     </div>
+-  );
+   return (
+     <div slot={props.inline ? undefined : "submenu"} class="session-menu__appearance">
+       <div class="session-menu__icon-section-label">{t("sessionsView.setColorMenu")}</div>
+@@ -112,29 +89,15 @@ export function AppearancePicker(props: AppearancePickerProps) {
+           aria-label={t("sessionsView.setIconMenu")}
+           ref={nativeListener("keydown", handleAppearanceGridKeydown)}
+         >
+-          <div class="session-menu__icon-section-label">{t("sessionsView.iconEmojiSection")}</div>
+-          <div class="session-menu__icon-grid">
+-            <For each={EMOJI_CHOICES}>{(icon) => choice(icon)}</For>
+-            <button
+-              type="button"
+-              class="session-menu__icon-choice session-menu__icon-choice--custom"
+-              aria-label={t(
+-                props.allowSvg ? "sessionsView.customIconCell" : "sessionsView.customEmojiCell",
+-              )}
+-              aria-pressed="false"
+-              tabindex={-1}
+-              disabled={props.disabled}
+-              title={props.disabledReason}
+-              ref={nativeListener("click", (event) => props.onShowCustom(event))}
+-            >
+-              <Icon name="moreHorizontal" />
+-            </button>
+-          </div>
+-          <div class="session-menu__icon-section-label">{t("sessionsView.iconGlyphSection")}</div>
+-          <div class="session-menu__icon-grid">
+-            {props.clearable !== false ? choice(null, true) : undefined}
+-            <For each={SESSION_ICON_GLYPH_IDS}>{(icon) => choice(icon, true)}</For>
+-          </div>
++          <SessionIconCatalog
++            currentIcon={props.currentIcon}
++            allowSvg={props.allowSvg === true}
++            clearable={props.clearable !== false}
++            disabled={props.disabled}
++            disabledReason={props.disabledReason}
++            onSelect={(event, icon) => props.onSelect(event, icon)}
++            onShowCustom={(event) => props.onShowCustom(event)}
++          />
+         </div>
+         <div
+           class="session-menu__icon-custom-entry"
 diff --git a/ui/src/components/session-menu.test.ts b/ui/src/components/session-menu.test.ts
-index f89e580..5d0b3b2 100644
+index 0acdd9d1..0da8d732 100644
 --- a/ui/src/components/session-menu.test.ts
 +++ b/ui/src/components/session-menu.test.ts
 @@ -1,6 +1,6 @@
@@ -1543,7 +1594,7 @@ index f89e580..5d0b3b2 100644
  import { createDeferred as deferred } from "../../../test/helpers/promise.js";
  import type { ApplicationContextProvider } from "../test-helpers/application-context.ts";
  import {
-@@ -33,6 +33,9 @@ function focusButton() {
+@@ -34,6 +34,9 @@ function focusButton() {
  }
  
  describe("session menu", () => {
@@ -1553,30 +1604,32 @@ index f89e580..5d0b3b2 100644
    it("keeps self, agents, and the current owner while the directory loads, then retries a visible failure", async () => {
      const pending = deferred<ReturnType<typeof sessionOwnerProfiles>>();
      const { context, request } = createSessionOwnerMenuHarness(() => pending.promise);
-@@ -512,9 +515,20 @@ describe("session menu", () => {
+@@ -585,9 +588,22 @@ describe("session menu", () => {
          .querySelector<HTMLButtonElement>('.session-menu__color-choice[aria-label="Purple"]')
          ?.click();
        iconChoices(menu)[1]?.click();
 +      // openclaw-nix's picker keeps "No icon" with the built-in glyphs under Icons.
-+      const showTab = async (name: "emoji" | "icons") => {
++      const showTab = (name: "emoji" | "icons") => {
 +        menu
-+          .querySelector("wa-tab-group")
-+          ?.dispatchEvent(new CustomEvent("wa-tab-show", { detail: { name }, bubbles: true }));
-+        await menu.updateComplete;
++          .querySelector<HTMLButtonElement>(
++            `.session-menu__icon-tabs [role="tab"][data-tab-value="${name}"]`,
++          )
++          ?.click();
 +      };
-+      await showTab("icons");
-+      await waitForFast(() =>
++      showTab("icons");
++      await waitForSolid(() =>
 +        expect(menu.querySelector<HTMLButtonElement>('[aria-label="No icon"]')).not.toBeNull(),
 +      );
        const noIcon = menu.querySelector<HTMLButtonElement>('[aria-label="No icon"]');
 -      expect(noIcon).not.toBeNull();
        noIcon?.click();
-+      await showTab("emoji");
++      showTab("emoji");
++      await waitForSolid(() => expect(menu.querySelector('[aria-label="No icon"]')).toBeNull());
        menu
          .querySelector<HTMLButtonElement>('.session-menu__color-choice[aria-label="No color"]')
          ?.click();
-@@ -619,6 +633,69 @@ describe("session menu", () => {
-     expect(calls).toEqual([`set-icon:${icon}`]);
+@@ -693,6 +709,69 @@ describe("session menu", () => {
+     expect(document.activeElement).toBe(input);
    });
  
 +  it("renders Emoji and Icons tabs with a custom entry and combined reset", async () => {
@@ -1589,12 +1642,15 @@ index f89e580..5d0b3b2 100644
 +    expect(submenu.querySelector(".session-menu__icon-options")?.getAttribute("role")).toBe(
 +      "group",
 +    );
-+    const tabs = Array.from(submenu.querySelectorAll<HTMLElement>("wa-tab"));
++    const tabs = Array.from(
++      submenu.querySelectorAll<HTMLButtonElement>('.session-menu__icon-tabs [role="tab"]'),
++    );
 +    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(["Emoji", "Icons"]);
-+    expect(tabs.map((tab) => tab.hasAttribute("active"))).toEqual([true, false]);
++    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["true", "false"]);
 +    const grids = submenu.querySelectorAll(".session-menu__icon-grid");
 +    expect(
-+      submenu.querySelector(".session-menu__icon-scroll .session-menu__icon-section-label")
++      submenu
++        .querySelector(".session-menu__icon-scroll .session-menu__icon-section-label")
 +        ?.textContent?.trim(),
 +    ).toBe("Frequently used");
 +    expect(
@@ -1618,13 +1674,11 @@ index f89e580..5d0b3b2 100644
 +    choices[1]?.click();
 +    expect(onAction).toHaveBeenCalledWith({ kind: "set-icon", icon: "🚀" });
 +
-+    submenu
-+      .querySelector("wa-tab-group")
-+      ?.dispatchEvent(new CustomEvent("wa-tab-show", { detail: { name: "icons" }, bubbles: true }));
-+    await menu.updateComplete;
-+    await waitForFast(() =>
++    tabs[1]?.click();
++    await waitForSolid(() =>
 +      expect(submenu.querySelectorAll(".session-menu__icon-choice img").length).toBe(72),
 +    );
++    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "true"]);
 +    const builtIn = submenu.querySelector(".session-menu__icon-grid");
 +    expect(
 +      Array.from(builtIn?.querySelectorAll<HTMLButtonElement>("button") ?? []).map((choice) =>
@@ -1641,11 +1695,10 @@ index f89e580..5d0b3b2 100644
 +    expect(onAction).toHaveBeenCalledWith({ kind: "reset-appearance" });
 +  });
 +
-+
    it("returns from custom entry on Escape without closing the menu", async () => {
      const onClose = vi.fn();
      const menu = await mountMenu({ onClose, session: { icon: "braces" } });
-@@ -642,7 +719,7 @@ describe("session menu", () => {
+@@ -716,7 +795,7 @@ describe("session menu", () => {
      expect(submenu.querySelector(".session-menu__icon-options")?.hasAttribute("inert")).toBe(false);
      expect(document.activeElement).toBe(submenu.querySelector('[aria-label="Custom icon…"]'));
      const currentIcon = submenu.querySelector<HTMLButtonElement>(
@@ -1655,24 +1708,26 @@ index f89e580..5d0b3b2 100644
      const reset = submenu.querySelector<HTMLButtonElement>(".session-menu__icon-remove");
      if (!currentIcon || !reset) {
 diff --git a/ui/src/components/session-people-search.test.ts b/ui/src/components/session-people-search.test.ts
-index 11b536b..1813a8e 100644
+index c4a5ce75..fe7228fb 100644
 --- a/ui/src/components/session-people-search.test.ts
 +++ b/ui/src/components/session-people-search.test.ts
-@@ -16,7 +16,8 @@ describe("searchable session people", () => {
+@@ -17,7 +17,10 @@ describe("searchable session people", () => {
      const { context, request } = createSessionOwnerMenuHarness(() => pending.promise);
      const menu = await mountMenu({ context });
      await waitForFast(() => expect(request).toHaveBeenCalledWith("users.list", {}));
 -    const search = menu.querySelector<HTMLInputElement>('input[type="search"]')!;
 +    // The session menu also holds the icon picker's search; this is the people search.
-+    const search = menu.querySelector<HTMLInputElement>('.people-menu__search input[type="search"]')!;
++    const search = menu.querySelector<HTMLInputElement>(
++      '.people-menu__search input[type="search"]',
++    )!;
      search.value = "Carol";
      search.dispatchEvent(new InputEvent("input", { bubbles: true }));
  
 diff --git a/ui/src/i18n/locales/en.ts b/ui/src/i18n/locales/en.ts
-index 44d1bdf..8df0f0e 100644
+index 42cbca68..75b33948 100644
 --- a/ui/src/i18n/locales/en.ts
 +++ b/ui/src/i18n/locales/en.ts
-@@ -979,6 +979,110 @@ export const en: TranslationMap & {
+@@ -1004,6 +1004,110 @@ export const en: TranslationMap & {
      },
      iconEmojiSection: "Emoji",
      iconGlyphSection: "Icons",
@@ -1784,13 +1839,19 @@ index 44d1bdf..8df0f0e 100644
      noColor: "No color",
      customEmojiCell: "Custom emoji…",
 diff --git a/ui/src/styles/layout.css b/ui/src/styles/layout.css
-index 8b720e2..0cd6ed2 100644
+index d20f62a6..b2525408 100644
 --- a/ui/src/styles/layout.css
 +++ b/ui/src/styles/layout.css
-@@ -2856,6 +2856,155 @@ wa-dropdown.sidebar-session-sort-menu::part(menu) {
-   gap: 3px;
+@@ -2800,6 +2800,139 @@ wa-dropdown.sidebar-session-sort-menu::part(menu) {
+   text-transform: uppercase;
  }
  
++.session-menu__icon-catalog {
++  display: flex;
++  flex-direction: column;
++  min-width: 0;
++}
++
 +.session-menu__icon-search {
 +  box-sizing: border-box;
 +  width: 100%;
@@ -1818,79 +1879,57 @@ index 8b720e2..0cd6ed2 100644
 +  margin-top: 6px;
 +}
 +
-+/* Emoji and Icons: Web Awesome's tab group, sized like the menu's own controls. */
-+.session-menu__icon-tabs {
-+  --track-width: 0;
-+  flex: 1 1 auto;
-+  min-height: 0;
-+}
-+
-+.session-menu__icon-tabs::part(base) {
-+  height: 100%;
-+}
-+
-+.session-menu__icon-tabs::part(nav) {
-+  padding: 0;
-+}
-+
-+.session-menu__icon-tabs::part(tabs) {
-+  gap: 3px;
-+}
-+
-+.session-menu__icon-tabs::part(body) {
++/* Emoji and Icons: the Control UI's tab list, sized like the menu's own controls. */
++.session-menu__icon-tabs-frame {
 +  display: flex;
 +  flex: 1 1 auto;
 +  flex-direction: column;
 +  min-height: 0;
-+  padding: 0;
-+  overflow: hidden;
 +}
 +
-+.session-menu__icon-tabs wa-tab {
++.session-menu__icon-tabs {
++  display: flex;
++  gap: 3px;
++}
++
++.session-menu__icon-tab {
++  display: inline-flex;
 +  flex: 1 1 0;
-+}
-+
-+.session-menu__icon-tabs wa-tab::part(base) {
++  align-items: center;
 +  justify-content: center;
-+  width: 100%;
 +  min-height: 26px;
 +  padding: 0 6px;
 +  border-radius: var(--menu-item-radius);
 +  background: transparent;
 +  color: var(--muted);
-+  font: inherit;
 +  font-size: calc(12px * var(--control-ui-text-scale));
 +  font-weight: 600;
 +}
 +
-+.session-menu__icon-tabs wa-tab:hover::part(base) {
++.session-menu__icon-tab:hover {
 +  background: var(--bg-hover);
 +  color: var(--text);
 +}
 +
-+.session-menu__icon-tabs wa-tab[active]::part(base) {
++.session-menu__icon-tab[aria-selected="true"] {
 +  background: color-mix(in srgb, var(--accent) 14%, transparent);
 +  color: var(--text);
 +}
 +
-+.session-menu__icon-tabs wa-tab-panel {
-+  --padding: 0;
-+  padding: 0;
++.session-menu__icon-tab:focus-visible {
++  outline: 2px solid var(--accent);
++  outline-offset: -2px;
 +}
 +
-+.session-menu__icon-tabs wa-tab-panel[active] {
++.session-menu__icon-tabpanel:not([hidden]) {
 +  display: flex;
 +  flex: 1 1 auto;
 +  flex-direction: column;
 +  min-height: 0;
 +}
 +
-+.session-menu__icon-tabs wa-tab-panel::part(base) {
-+  display: flex;
-+  flex: 1 1 auto;
-+  flex-direction: column;
-+  min-height: 0;
-+  padding: 0;
++.session-menu__icon-tabpanel:focus {
++  outline: none;
 +}
 +
 +.session-menu__icon-groups {
