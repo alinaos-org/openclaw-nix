@@ -3,6 +3,9 @@
 # or tag. scripts/new-release.py writes new entries; pnpmDepsHash is per system
 # because the dependency store is fetched for the host platform only;
 # desktopDebHash is the release's amd64 desktop .deb (packages/desktop).
+# `sessionIconPicker = false;` builds a release with OpenClaw's own session icon
+# picker: new-release.py sets it when openclaw-nix's picker patch does not apply,
+# and the re-port deletes it (README, "Session icons").
 {
   "2026.10.10" = {
     rev = "7dc3350cb9f08fcf9a0af5c4845a20d5b2f1a8be";

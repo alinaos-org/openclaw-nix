@@ -445,8 +445,23 @@ other locales fall back to it), its styles (`styles/session-icon-catalog.css`) a
 tests. The build runs those tests, upstream's picker and people-search tests, and
 upstream's session menu tests unmodified except two the picker changes on purpose (their
 adapted copies are in `session-icon-menu.test.ts`; `ownUiTestExclusions` in
-`packages/gateway/default.nix`). A release that rewrites the lines around the hook fails
-`patch` there, and the patch is re-ported.
+`packages/gateway/default.nix`).
+
+A release that rewrites the lines around the hook no longer stops on the picker, as
+2026.10.5 and 2026.10.10 did. `release-watch` dry-runs the patch on each new release
+(`scripts/new-release.py <v> --icon-picker-only`, the build's `patch -F0`). When it no
+longer applies, the release's `releases.nix` entry gets `sessionIconPicker = false;`:
+that release builds and ships with OpenClaw's own picker, without the patch or its
+tests. Its pull request is labelled `stock-icon-picker`, titled "(stock session icon
+picker)" and stays ready, and an issue with the same label holds the re-port's
+checklist (a later release that fails too is added to it as a comment). Sessions keep
+their saved icons, and the stock UI still shows them: library icons are SVG data URLs
+and emoji are text, which the gateway and every renderer accept without the patch. What
+waits for the re-port is choosing them in the picker (Custom… still takes a pasted
+value). The re-port ships as the next `-r<N>`: port the hook, keep the previous patch
+under `patches/<previous release>/`, delete the line, and dispatch `tag-release`. Every
+other patch still fails the build, and so does a picker patch that applies but no longer
+compiles or passes its tests; set the line by hand in that pull request.
 
 The session-icons plugin (`runtimePlugins = ["session-icons"]`, the NixOS module's
 `sessionIcons.enable`) is deprecated: its Custom icons… dialog duplicates the picker. It
@@ -494,7 +509,9 @@ local commands. `--desktop-only <version>` adds the hash to an existing entry.
 
 When a hotfix patch fails on a new release, upstream either fixed the bug (drop the
 patch and its test) or moved the code (re-port its anchors). The same goes for this
-repository's own source patches (`packages/gateway/patches`), which fail `patch -F0`.
+repository's own source patches (`packages/gateway/patches`), which fail `patch -F0`,
+except the session icon picker's: a release it no longer applies to builds with
+OpenClaw's own picker until it is re-ported ([Session icons](#session-icons)).
 
 ### Hotfix layer
 

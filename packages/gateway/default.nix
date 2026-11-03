@@ -19,7 +19,8 @@
 #   under Icons. Its emoji catalog is scripts/generate-session-emoji.mjs's output.
 #   From 2026.10.10 its only edit to an upstream file is a three-line hook in the
 #   picker (session-icon-picker-solid.tsx); its code, copy, styles and tests are
-#   new files.
+#   new files. A release whose entry sets `sessionIconPicker = false;` builds
+#   without it (OpenClaw's own picker) until it is re-ported.
 #
 # Host identity (which state directory a host may use) is not part of this
 # build: see ../state-fence.nix. Consumer-specific changes go through
@@ -70,23 +71,29 @@
 
   # openclaw-nix's own changes, then the consumer's. A release that moves the code a
   # patch targets fails `patch -F0` below: re-port the patch (or drop it).
-  ownSourcePatches = [
-    {
-      name = "session-icon-picker.patch";
-      # 2026.10.5 rewrote the session menu's icon tests and made the grid's
-      # keydown handler private; 2026.10.10 moved the picker to Solid (its own
-      # tabs, no Web Awesome tab group). Earlier releases keep the patch they were
-      # qualified with (same file name, so their store paths are unchanged).
-      patch =
-        if lib.versionOlder upstreamVersion "2026.10.5"
-        then ./patches/2026.10.4/session-icon-picker.patch
-        else if lib.versionOlder upstreamVersion "2026.10.10"
-        then ./patches/2026.10.9/session-icon-picker.patch
-        else ./patches/session-icon-picker.patch;
-    }
-  ];
+  #
+  # The session icon picker is the exception: `sessionIconPicker = false;` in a
+  # releases.nix entry builds that release with OpenClaw's own picker, without the
+  # patch and its tests. release-watch sets it when the patch no longer applies to
+  # a new release and opens a re-port issue, so the picker never blocks a release;
+  # the re-port deletes the line again.
+  sessionIconPicker = releaseInfo.sessionIconPicker or true;
+  # 2026.10.5 rewrote the session menu's icon tests and made the grid's keydown
+  # handler private; 2026.10.10 moved the picker to Solid (its own tabs, no Web
+  # Awesome tab group). Earlier releases keep the patch they were qualified with
+  # (same file name, so their store paths are unchanged).
+  sessionIconPickerPatch =
+    if lib.versionOlder upstreamVersion "2026.10.5"
+    then ./patches/2026.10.4/session-icon-picker.patch
+    else if lib.versionOlder upstreamVersion "2026.10.10"
+    then ./patches/2026.10.9/session-icon-picker.patch
+    else ./patches/session-icon-picker.patch;
+  ownSourcePatches = lib.optional sessionIconPicker {
+    name = "session-icon-picker.patch";
+    patch = sessionIconPickerPatch;
+  };
   # Control UI tests the own patches change; run with the UI's vitest config.
-  ownUiTests =
+  ownUiTests = lib.optionals sessionIconPicker (
     if lib.versionOlder upstreamVersion "2026.10.10"
     then [
       "ui/src/components/session-icon-catalog.test.ts"
@@ -100,13 +107,14 @@
       # Upstream's, unmodified: the hooked picker and the people search beside it.
       "ui/src/components/session-icon-picker.test.tsx"
       "ui/src/components/session-people-search.test.ts"
-    ];
+    ]
+  );
   # Upstream Control UI tests run unmodified, each in its own vitest run, without
   # the named tests the own patches change on purpose. session-icon-menu.test.ts
   # carries those two, adapted: "No icon" is under the Icons tab, and the tab list
   # has its own tab stop. If upstream renames one, its old assertion fails here,
   # at the test step: rename it in this list and in session-icon-menu.test.ts.
-  ownUiTestExclusions = lib.optionalAttrs (!lib.versionOlder upstreamVersion "2026.10.10") {
+  ownUiTestExclusions = lib.optionalAttrs (sessionIconPicker && !lib.versionOlder upstreamVersion "2026.10.10") {
     "ui/src/components/session-menu.test.ts" = [
       "edits icon and color together"
       "returns from custom entry on Escape"
@@ -284,6 +292,10 @@
     lib.concatStrings (lib.mapAttrsToList (test: names: "-e ${lib.escapeShellArg ''/log_step "pnpm prune --prod"/i log_step "test: upstream Control UI ${baseNameOf test}" node node_modules/vitest/vitest.mjs run --config ui/vitest.config.ts ${test} -t ${lib.escapeShellArg "^(?!.*(${lib.concatStringsSep "|" names}))"}''} \\\n  ")
       ownUiTestExclusions);
 
+  # The gateway-build.sh step for ownUiTests. None when the picker is off: vitest
+  # with no files would run the whole UI suite.
+  ownUiTestStep = lib.optionalString (ownUiTests != []) "-e ${lib.escapeShellArg ''/log_step "pnpm prune --prod"/i log_step "test: openclaw-nix Control UI changes" node node_modules/vitest/vitest.mjs run --config ui/vitest.config.ts ${lib.concatStringsSep " " ownUiTests}''} \\\n  ";
+
   gatewayBuild = runCommand "openclaw-gateway-build" {} ''
     cp ${gatewayRecipe}/scripts/gateway-build.sh $out
     chmod u+w $out
@@ -299,8 +311,7 @@
       -e '/log_step "build: plugin-sdk dts"/d' \
       -e '/log_step "build: write-plugin-sdk-entry-dts"/d' \
       -e ${lib.escapeShellArg ''/log_step "pnpm prune --prod"/i ${lib.concatMapStrings (t: "test -f ${t} && ") tests}log_step "test: downstream contracts" node node_modules/vitest/vitest.mjs run ${lib.concatStringsSep " " tests}''} \
-      -e ${lib.escapeShellArg ''/log_step "pnpm prune --prod"/i log_step "test: openclaw-nix Control UI changes" node node_modules/vitest/vitest.mjs run --config ui/vitest.config.ts ${lib.concatStringsSep " " ownUiTests}''} \
-      ${upstreamUiTestSteps}-e 's#write-cli-compat\.ts#write-cli-startup-metadata.ts#g' \
+      ${ownUiTestStep}${upstreamUiTestSteps}-e 's#write-cli-compat\.ts#write-cli-startup-metadata.ts#g' \
       $out
     cat >> $out <<'EOF'
     log_step "materialize @openclaw/ai dependencies" ${aiDependencyMaterializer}/bin/openclaw-materialize-ai-dependencies
@@ -762,6 +773,10 @@ in
           # Runtime plugins that 2026.10.x ships bundled at the release version.
           upstreamBundledRuntimePlugins = ["acpx" "codex"];
           sourcePatches = map (p: p.name) sourcePatches;
+          # Whether this release has the session icon picker patch, and the patch
+          # it would apply either way (scripts/new-release.py dry-runs it).
+          inherit sessionIconPicker;
+          sessionIconPickerPatch = "${sessionIconPickerPatch}";
           buildIdentity = {
             commit = rev;
             timestamp = buildTimestamp;
