@@ -125,10 +125,18 @@ function providerFactory(name, source, store, {baseline = false} = {}) {
   const nos = region.match(/clientMetadataUrl:\s*([\w$]+)\(/)?.[1];
   const uuid = region.match(/return\s+([\w$]+)\(\)\s*;?\s*\}\s*,\s*async clientInformation\(\)/)?.[1];
   assert(nos && uuid, `${name}: provider helper names not found`);
+  // From 2026.10.10 a worker copy imports the store reads and mutations under minified
+  // names (readMcpOAuthStore as D, mutateMcpOAuthStore as h): take them from the
+  // provider's own readStore and updateStore.
+  const reader = region.match(/readStore\s*=\s*async\s*\(\)\s*=>\s*\{[^}]*?await\s+([\w$]+)\(/)?.[1];
+  const mutator = region.match(/updateStore\s*=\s*async[\s\S]*?await\s+([\w$]+)\(\s*\{\s*storeKey\b/)?.[1];
+  assert(reader && mutator, `${name}: store helper names not found`);
   return vm.runInNewContext(`${region}\n;createMcpOAuthClientProvider`, {
     URL, AbortSignal, structuredClone,
     readMcpOAuthStore: store.readMcpOAuthStore,
     mutateMcpOAuthStore: store.mutateMcpOAuthStore,
+    [reader]: store.readMcpOAuthStore,
+    [mutator]: store.mutateMcpOAuthStore,
     [nos]: normalizeOptionalString,
     [uuid]: () => crypto.randomUUID(),
   });
