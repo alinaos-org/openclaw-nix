@@ -30,13 +30,17 @@ if (atLeast(receipt.upstreamVersion, "2026.9.6")) {
   // only the hard exit is clamped, with the marker after it.
   const v106 = atLeast(receipt.upstreamVersion, "2026.10.6");
   assert.equal(receipt.stopDrainOwner ?? "openclaw-nix", v106 ? "upstream" : "openclaw-nix");
+  // 2026.10.10 also gives an external restart with interruptAfterDrain the whole budget.
+  const externalRestartBudget = atLeast(receipt.upstreamVersion, "2026.10.10")
+    ? "(budget.nativeStopBudget || params.interruptAfterDrain)"
+    : "budget.nativeStopBudget";
   const baselineSrc = (v106
     ? patchedSrc.replace("restartTimeoutMs(restartDrainTimeoutMs) /* openclaw-nix-stop-budget-v1 */", "restartTimeoutMs(restartDrainTimeoutMs)")
     : patchedSrc.replace(`Math.min(${seconds(drainMs)}, Math.max(0, budget.timeoutMs - budget.reserveMs)), /* openclaw-nix-stop-budget-v1 */`,
                          "Math.max(0, budget.timeoutMs - budget.reserveMs),"))
-    .replace(v97 ? `forceExitMs: !isRestart ? Math.min(budget.timeoutMs, ${seconds(hardExitMs)}) : action === "external-restart" && budget.nativeStopBudget ?`
+    .replace(v97 ? `forceExitMs: !isRestart ? Math.min(budget.timeoutMs, ${seconds(hardExitMs)}) : action === "external-restart" && ${externalRestartBudget} ?`
                  : `forceExitMs: !isRestart ? Math.min(budget.timeoutMs, ${seconds(hardExitMs)}) :`,
-             v97 ? "forceExitMs: !isRestart || action === \"external-restart\" && budget.nativeStopBudget ?"
+             v97 ? `forceExitMs: !isRestart || action === "external-restart" && ${externalRestartBudget} ?`
                  : "forceExitMs: !isRestart ? budget.timeoutMs :");
   assert(!baselineSrc.includes("openclaw-nix-stop-budget-v1"), "baseline reversal failed");
 
@@ -98,7 +102,7 @@ if (atLeast(receipt.upstreamVersion, "2026.9.6")) {
   if (v97) {
     // The upstream baseline must reproduce the exact 9.7 source, or every
     // comparison above is against a fabricated function.
-    assert(baselineSrc.includes("forceExitMs: !isRestart || action === \"external-restart\" && budget.nativeStopBudget ? budget.timeoutMs :"), "9.7 baseline reversal mismatch");
+    assert(baselineSrc.includes(`forceExitMs: !isRestart || action === "external-restart" && ${externalRestartBudget} ? budget.timeoutMs :`), "9.7 baseline reversal mismatch");
     for (const budget of [long, { timeoutMs: 325000, reserveMs: 10000, nativeStopBudget: false }]) {
       const p = call(patchedFn, budget, true, "external-restart");
       const b = call(baseFn, budget, true, "external-restart");
