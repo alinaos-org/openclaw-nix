@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.4.10";
   expectedIntegrity = "";
   packageName = "@openclaw/zalouser";
-  version = "2026.10.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/zalouser/-/zalouser-2026.10.9.tgz";
-  npmIntegrity = "sha512-Kb2QnYUOsFeaTO93liCaXb2AiTb1Y013B1ZkXThJq/ukMUU4qN8gZKK0sfbsW/AiS+LESxrCcQPurizqRk5ytA==";
-  npmShasum = "019e9eaf4dacc3e9548c0e6e697384d059ba31aa";
-  nixHash = "sha256-GutAr7oSTumi00tiduK9RZfP4THLX1VU1j3nGTDGuf8=";
+  version = "2026.10.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/zalouser/-/zalouser-2026.10.10.tgz";
+  npmIntegrity = "sha512-i1C1wsU8ARQLpgK3AnJ3YoCx8TqAVnWVdS6ceVwRN45dmDvryg+2uF07jVQ8rnNCj1AvQ0BxNXViCs4kE0lavw==";
+  npmShasum = "0d83fb1f4292357b309678cac8f51f7bcd89fbd7";
+  nixHash = "sha256-Fh2YsqT74/XHkmqWukmbkJDNQdSU9XnVEjI/BP2g0ok=";
   dependencyMode = "bundled";
   manifestId = "zalouser";
-  openclawCompat = ">=2026.10.9";
-  peerOpenClaw = ">=2026.10.9";
+  openclawCompat = ">=2026.10.10";
+  peerOpenClaw = ">=2026.10.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];
@@ -35,7 +35,7 @@
     ];
   };
   dependencies = {
-    typebox = "1.3.34";
+    typebox = "1.3.35";
     zca-js = "2.2.0";
     zod = "4.6.5";
   };

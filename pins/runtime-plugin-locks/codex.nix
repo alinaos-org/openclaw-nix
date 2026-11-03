@@ -13,26 +13,26 @@
   minHostVersion = ">=2026.5.1-beta.1";
   expectedIntegrity = "";
   packageName = "@openclaw/codex";
-  version = "2026.10.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/codex/-/codex-2026.10.9.tgz";
-  npmIntegrity = "sha512-t7NcogmLmKpQmGOFIaiw5vmsDtelgT8/B/Ur8kla4okJhIXl6R4+fdV0z9IIHHc/fn+hbK65KdSNKjNhXQ0osg==";
-  npmShasum = "091b67fb49a72bc0ef00feeb94c1f9a0555d9bc7";
-  nixHash = "sha256-fLX46z/tVJNudcloFOdNuuFd+xQoSRLOP8drUv9swK4=";
+  version = "2026.10.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/codex/-/codex-2026.10.10.tgz";
+  npmIntegrity = "sha512-V26zSEGNepdoboWU25IwsjOY5h5AWjKHvGUeI9vzsWiVoOwnEOoqlNAI4EVYYCNaSqGYwg3x4x9UO+TElu7pOA==";
+  npmShasum = "ae34af9b1943704760eb4dddbe050a982c76f46d";
+  nixHash = "sha256-yFcc/pSNnWYGbP7JnjwZusnC/4+C0Y4PC7NKfYGXA6M=";
   dependencyMode = "package-lock";
-  npmDepsHash = "sha256-Lhb4cp6gkHcapmOSosugQpniyBtGfScJfSqtgbvmmnQ=";
+  npmDepsHash = "sha256-haEBUMvp4w4Z2Nsi67PsA/yPNSSdBY5lzJk7M9+9pSg=";
   npmPackageLockFile = "codex.package-lock.json";
-  npmPackageLockSha256 = "a739b8899392fdea5b6a9d1571e96bca48938f3f225350b9cde560aa6cf7ea4a";
+  npmPackageLockSha256 = "e077e3f4bdd290b4a3eec7b47eabd11b9408c6ca231938082ad0de747cda7105";
   npmPackageLockEvidence = {
-    assetName = "openclaw-2026.10.9-dependency-evidence.zip";
-    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.10.9/openclaw-2026.10.9-dependency-evidence.zip";
-    assetNixHash = "sha256-Gj4z5wBtP0Yex/mGPSFIscjjJTIOX60FkSVHuwO/9jc=";
+    assetName = "openclaw-2026.10.10-dependency-evidence.zip";
+    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.10.10/openclaw-2026.10.10-dependency-evidence.zip";
+    assetNixHash = "sha256-pRSxvP+IwA6/NsaLYtxH2dU3YUowFnuUoVPG6RPSh7E=";
     source = "release";
-    sourceSha = "8b18b5578f66eab1501cba4cef2310d88bfb9a41";
-    generatedAt = "2026-10-29T11:21:09.571Z";
+    sourceSha = "7dc3350cb9f08fcf9a0af5c4845a20d5b2f1a8be";
+    generatedAt = "2026-11-02T19:51:39.302Z";
   };
   manifestId = "codex";
-  openclawCompat = ">=2026.10.9";
-  peerOpenClaw = ">=2026.10.9";
+  openclawCompat = ">=2026.10.10";
+  peerOpenClaw = ">=2026.10.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];
@@ -59,11 +59,11 @@
     ];
   };
   dependencies = {
-    "@openai/codex" = "0.160.0";
-    "@openclaw/fs-safe" = "0.26.0";
+    "@openai/codex" = "0.164.0";
+    "@openclaw/fs-safe" = "0.26.5";
     semver = "7.8.5";
     smol-toml = "1.9.0";
-    typebox = "1.3.34";
+    typebox = "1.3.35";
     ws = "8.22.0";
     zod = "4.6.5";
   };

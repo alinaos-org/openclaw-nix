@@ -13,26 +13,26 @@
   minHostVersion = ">=2026.5.28";
   expectedIntegrity = "";
   packageName = "@openclaw/copilot";
-  version = "2026.10.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/copilot/-/copilot-2026.10.9.tgz";
-  npmIntegrity = "sha512-murF/rAOCgw0MKkPLLGLqoBVNPaWBDgqRucYK258ZVfu85JuU1+vph/urX7PdjVs54v+OY+pbtx8K6BdeSYNtw==";
-  npmShasum = "8a28d1bbb1251881a550c463a34aae38d10368d2";
-  nixHash = "sha256-3HKcsSnyl5WeHFMtn1hj8jnf72Yog0pqFs2WuCoU77M=";
+  version = "2026.10.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/copilot/-/copilot-2026.10.10.tgz";
+  npmIntegrity = "sha512-m1XLaaeMtMo8BCPssk9ZrVTLtx4Ag7eS6HzCxti8RfrQbQprT3tl6BtUSeHWoOjD5jRDa2Vr2E/JAS/DNpjIuw==";
+  npmShasum = "ba6b21f0848b9d1c07da410019115094a6e485eb";
+  nixHash = "sha256-751twcuSW26L5yrEy5yLiAv3Fcu6sm4+pNk67nH5Oqc=";
   dependencyMode = "package-lock";
-  npmDepsHash = "sha256-pVDZbNK/Y37Q5ZB+dQTcMgaayI0MCF0pn8WqMGNce70=";
+  npmDepsHash = "sha256-MxXQVBna+fd3wOkdMzxjqftNcsikvN/yAfCt3euMUJo=";
   npmPackageLockFile = "copilot.package-lock.json";
-  npmPackageLockSha256 = "a22b33fdc1b0a94f8fab6d7a3282348f252e282c3759ddff66b61a530bfa296b";
+  npmPackageLockSha256 = "52e6dc6f37c395b6cd680f0a9b4b307d5e5631646c56009081a009d60228b648";
   npmPackageLockEvidence = {
-    assetName = "openclaw-2026.10.9-dependency-evidence.zip";
-    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.10.9/openclaw-2026.10.9-dependency-evidence.zip";
-    assetNixHash = "sha256-Gj4z5wBtP0Yex/mGPSFIscjjJTIOX60FkSVHuwO/9jc=";
+    assetName = "openclaw-2026.10.10-dependency-evidence.zip";
+    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.10.10/openclaw-2026.10.10-dependency-evidence.zip";
+    assetNixHash = "sha256-pRSxvP+IwA6/NsaLYtxH2dU3YUowFnuUoVPG6RPSh7E=";
     source = "release";
-    sourceSha = "8b18b5578f66eab1501cba4cef2310d88bfb9a41";
-    generatedAt = "2026-10-29T11:21:09.571Z";
+    sourceSha = "7dc3350cb9f08fcf9a0af5c4845a20d5b2f1a8be";
+    generatedAt = "2026-11-02T19:51:39.302Z";
   };
   manifestId = "copilot";
-  openclawCompat = ">=2026.10.9";
-  peerOpenClaw = ">=2026.10.9";
+  openclawCompat = ">=2026.10.10";
+  peerOpenClaw = ">=2026.10.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];

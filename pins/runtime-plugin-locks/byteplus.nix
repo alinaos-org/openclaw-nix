@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.7.2";
   expectedIntegrity = "";
   packageName = "@openclaw/byteplus-provider";
-  version = "2026.10.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/byteplus-provider/-/byteplus-provider-2026.10.9.tgz";
-  npmIntegrity = "sha512-CC2Nli0tQV+DHP8QO8pxsosdFkott/+14nQT5gTlMm+tq4gCX1NOcjWZSYZ2j2/gz+dd7b27xpxALWgPYMlPww==";
-  npmShasum = "68c5640d4829af5877fbf81792f53ce172212473";
-  nixHash = "sha256-YvXU2huBVSpl9wVCID/IkNuCspX8eEdj7ZlOuM1Kb0o=";
+  version = "2026.10.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/byteplus-provider/-/byteplus-provider-2026.10.10.tgz";
+  npmIntegrity = "sha512-V0cinpKATQ8NvVTCheDFSZMZna9v5QboUOVKJJYESTcdwCK3BvQp8LRnvOQODjuoWXVRW0tagDqfD47xgB8Yow==";
+  npmShasum = "e6503c63a245ec3c57ebb47cfc65a2c587a61025";
+  nixHash = "sha256-ICKq4jeEG4qJPPPJ/i7KPu3GGxsXTqENW/5BteeGarQ=";
   dependencyMode = "none";
   manifestId = "byteplus";
-  openclawCompat = ">=2026.10.9";
-  peerOpenClaw = ">=2026.10.9";
+  openclawCompat = ">=2026.10.10";
+  peerOpenClaw = ">=2026.10.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];
