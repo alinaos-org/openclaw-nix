@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.4.20";
   expectedIntegrity = "";
   packageName = "@openclaw/google-meet";
-  version = "2026.10.10";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/google-meet/-/google-meet-2026.10.10.tgz";
-  npmIntegrity = "sha512-eJjEw77EQfcXwxx505/b/AbzBnG87sjpfc30QlyTmexTEf0oL1JI+d8y40ex0skZxHk8N7ktTXhI1rCkisMmWA==";
-  npmShasum = "2322178eae67ddaa52615781aca4631ec38ea5b2";
-  nixHash = "sha256-iOGK2ZWMJd4AI8PezpE1dJZOvC7sT+evATH2H11ZbPs=";
+  version = "2026.11.1";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/google-meet/-/google-meet-2026.11.1.tgz";
+  npmIntegrity = "sha512-dqMN7IaNPTTW4ZqVn5vAG+NsfQ+mhvh92WD+vdxdE61VPOuPCHGr5oGBJcYJY1d8WcCtUTcWHbyYeuagL1WYFQ==";
+  npmShasum = "092119df1e06da7061e277997311c9bb62c1e5b6";
+  nixHash = "sha256-/zPUN3a5Cz0ZZAXTe/AKTvX2xlnGHxL2vFOUef6syhw=";
   dependencyMode = "bundled";
   manifestId = "google-meet";
-  openclawCompat = ">=2026.10.10";
-  peerOpenClaw = ">=2026.10.10";
+  openclawCompat = ">=2026.11.1";
+  peerOpenClaw = ">=2026.11.1";
   runtimeExtensions = [
     "./dist/index.js"
   ];
