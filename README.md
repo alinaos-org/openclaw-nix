@@ -547,8 +547,8 @@ An entry with no patch is a check on the final tree, such as the
 `checks.hotfix-register` fails evaluation when a patch or test file is unregistered,
 an entry lacks a test reason, an upstream status or a removal condition, or the
 package's advertised markers (`passthru.hotfixes`) differ from the register. The
-register is also `passthru.hotfixRegister`. As of 2026.10.10 (`hotfix.10`) there are
-fourteen patches and one check without a patch (the MCP SDK floor); 2026.10.10 carries
+register is also `passthru.hotfixRegister`. As of 2026.11.1 (`hotfix.11`) there are
+fifteen patches and one check without a patch (the MCP SDK floor); 2026.10.10 carries
 upstream's fixes for three earlier ones (the agent-database retry, the read-only corpus
 revision and the Control UI's hardlinked store manifests), which were dropped. One of
 them is a per-agent switch rather than a fix (the Claude loopback tools' deferral and,
