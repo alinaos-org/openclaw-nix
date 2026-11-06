@@ -368,14 +368,27 @@
       (rescue), a heartbeat run's call threw "only accepted during a heartbeat run", and the
       error reached the heartbeat's channel as "Heartbeat Respond failed" (11 rejections on
       prod on 2026-11-05, one post; the duplicate guard held back the rest). The Claude CLI
-      loopback server never offered the tool. Now every heartbeat run enables it, an
-      isolated run also gets upstream's tool prompt, and an isolated run's Claude CLI turn
-      gets the tool and returns the embedded run's payload for it. The source reply mode
-      still follows the setting: the heartbeat's outcome reads the recorded response, and
-      message_tool_only under "automatic" would only add a forced message tool and tell the
-      model its final text is private. Plain alert text is still delivered, ordinary turns
-      and ordinary group replies do not change, and a Claude CLI heartbeat on a shared
-      session still has no tool (one more tool on one turn invalidates its Claude session).
+      loopback server never offered the tool. Now a heartbeat run of an enrolled agent, and
+      any isolated heartbeat run, enables it (a non-enrolled agent's shared session keeps its
+      tool schema). An isolated run also gets upstream's tool prompt, plus upstream's fallback
+      for a run without the tool (an explicit tools.allow, a node-placed Claude CLI). An
+      isolated run's Claude CLI turn gets the tool and returns the embedded run's payload for
+      its first accepted response, and that response outlives a CLI failure on the closing
+      turn: no failure post, no lost alert, no second run on a fallback model. The source
+      reply mode still follows the setting: the heartbeat's outcome reads the recorded
+      response, and message_tool_only under "automatic" would only add a forced message tool
+      and tell the model its final text is private. Plain alert text is still delivered,
+      ordinary turns and ordinary group replies do not change, and a Claude CLI heartbeat on a
+      shared session still has no tool (one more tool on one turn invalidates its Claude
+      session).
+
+      Known, left as upstream has them: the tool's scratch field now also works on ticks of
+      embedded and isolated Claude CLI runs, and it replaces the monitor scratch those ticks
+      run from (empty or comments only: the ticks skip) until the checklist sync at the next
+      gateway start restores the Nix file and keeps the replaced text. A notify=true response
+      is not deduplicated against the same text sent with the message tool, which needs an
+      agent holding that tool. The copilot harness accepts the call and discards the response,
+      as it already did under "message_tool"; no instance here uses that runtime.
     '';
     test = ./test-heartbeat-respond-run.mjs;
     upstream = null;
