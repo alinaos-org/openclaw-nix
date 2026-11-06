@@ -12,7 +12,7 @@
   stdenvNoCC,
   gateway,
   # Bump when the patch set changes for the same gateway.
-  revision ? "hotfix.10",
+  revision ? "hotfix.11",
 }: let
   # A correction release (2026.7.1-2) is its base release's code, so the patches'
   # release gates read the base.
@@ -109,6 +109,13 @@ in
         # a session's transcript is found and a changed live process resumes from it.
         ${node} ${./patch-claude-cli-config-dir.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-claude-cli-config-dir.mjs} "${root}"
+
+        # heartbeat_respond: every heartbeat run accepts it, whatever
+        # messages.[groupChat.]visibleReplies says (the source reply mode still follows
+        # that setting), an isolated run also gets the tool prompt, and an isolated run's
+        # Claude CLI turn gets the tool and returns its result.
+        ${node} ${./patch-heartbeat-respond-run.mjs} "${root}" "${upstreamVersion}"
+        ${node} ${./test-heartbeat-respond-run.mjs} "${root}"
       '';
       passthru =
         (gateway.passthru or {})
@@ -128,6 +135,7 @@ in
             agentScopedCompactionModel = "openclaw-nix-agent-scoped-compaction-model-v1";
             spawnTargetOwnedMcp = "openclaw-nix-spawn-target-owned-mcp-v1";
             claudeCliConfigDir = "openclaw-nix-claude-cli-config-dir-v1";
+            heartbeatRespondRun = "openclaw-nix-heartbeat-respond-run-v1";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
@@ -145,6 +153,7 @@ in
             agentScopedCompactionModel = agentScopedCompactionTest;
             spawnTargetOwnedMcp = ./test-spawn-target-owned-mcp.mjs;
             claudeCliConfigDir = ./test-claude-cli-config-dir.mjs;
+            heartbeatRespondRun = ./test-heartbeat-respond-run.mjs;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;

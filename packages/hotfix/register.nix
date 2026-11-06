@@ -355,4 +355,31 @@
     upstreamStatus = "not reported";
     removeWhen = "Upstream resolves Claude CLI transcripts through CLAUDE_CONFIG_DIR, or nova stops giving its gateways their own Claude config dir.";
   };
+
+  heartbeatRespondRun = {
+    patch = ./patch-heartbeat-respond-run.mjs;
+    marker = "openclaw-nix-heartbeat-respond-run-v1";
+    since = "2026.11.1";
+    fixes = ''
+      Heartbeats: an enrolled agent is offered heartbeat_respond on every turn, but the
+      embedded runtime accepted it only when messages.[groupChat.]visibleReplies is
+      "message_tool" or, with neither set, on the codex runtime. With "automatic" (nova's
+      prod and merlin, for ordinary group replies) or on another runtime with no setting
+      (rescue), a heartbeat run's call threw "only accepted during a heartbeat run", and the
+      error reached the heartbeat's channel as "Heartbeat Respond failed" (11 rejections on
+      prod on 2026-11-05, one post; the duplicate guard held back the rest). The Claude CLI
+      loopback server never offered the tool. Now every heartbeat run enables it, an
+      isolated run also gets upstream's tool prompt, and an isolated run's Claude CLI turn
+      gets the tool and returns the embedded run's payload for it. The source reply mode
+      still follows the setting: the heartbeat's outcome reads the recorded response, and
+      message_tool_only under "automatic" would only add a forced message tool and tell the
+      model its final text is private. Plain alert text is still delivered, ordinary turns
+      and ordinary group replies do not change, and a Claude CLI heartbeat on a shared
+      session still has no tool (one more tool on one turn invalidates its Claude session).
+    '';
+    test = ./test-heartbeat-respond-run.mjs;
+    upstream = null;
+    upstreamStatus = "not reported";
+    removeWhen = "Upstream accepts heartbeat_respond on every heartbeat run regardless of visibleReplies, and on the Claude CLI loopback.";
+  };
 }
