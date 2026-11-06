@@ -12,19 +12,31 @@
 // What decides a heartbeat's outcome (buildEmbeddedRunPayloads, selectHeartbeatToolResponse,
 // classifyHeartbeatAgentOutcome) reads the recorded response and not the source reply mode,
 // so accepting the tool is enough for its result to be used. Edits, all heartbeat-only:
-// - the runner enables the tool on every heartbeat run, and asks for
-//   sourceReplyDeliveryMode "message_tool_only" only when upstream's setting says so. That
-//   mode stays out of it for "automatic": it adds "without the tool the user gets nothing",
-//   forces a message tool that needs an explicit target here (a failed send is a terminal
-//   tool failure), and the heartbeat's reply goes through the runner's own delivery anyway;
-// - an isolated heartbeat run gets upstream's tool prompt, whose fallback keeps plain alert
-//   text working. A run on a shared session keeps its prompt, since a Claude CLI turn on a
-//   shared session cannot be offered the tool (below);
+// - the runner enables the tool on a heartbeat run of an enrolled agent, which is offered it
+//   anyway, and on an isolated run, which starts a new session. A non-enrolled agent's wake on
+//   a shared session is left alone: the tool would change that session's tool schema for one
+//   turn. The runner asks for sourceReplyDeliveryMode "message_tool_only" only when upstream's
+//   setting says so. That mode stays out of it for "automatic": it adds "without the tool the
+//   user gets nothing", forces a message tool that needs an explicit target here (a failed
+//   send is a terminal tool failure), and the heartbeat's reply goes through the runner's own
+//   delivery anyway;
+// - an isolated heartbeat run gets upstream's tool prompt. Only upstream's default prompt says
+//   what to do when the tool is missing, and an agent with an explicit tools.allow or a
+//   node-placed Claude CLI has no such tool, so every tool wording here also gets that
+//   fallback: NO_REPLY stays the silent option and plain alert text keeps working. A run on a
+//   shared session keeps its prompt, since a Claude CLI turn on a shared session cannot be
+//   offered the tool (below);
 // - the loopback server offers and accepts the tool on an isolated heartbeat run. Isolated
 //   only: each such run starts a new session, whereas adding a tool to one turn of a shared
 //   session invalidates its Claude session (prompt-tools) on that turn and on the next;
-// - the CLI runner records the accepted response from the loopback call and returns it as
-//   the same heartbeat payload an embedded run returns.
+// - the CLI runner records the first accepted response from the loopback call (the loopback
+//   tool instance, and so its one-shot guard, lasts 30 s) and returns it as the same heartbeat
+//   payload an embedded run returns;
+// - an accepted response outlives a CLI failure on the closing turn, as it does on an embedded
+//   run: it travels on the error as delivery evidence, which stops the retry and the model
+//   fallback, and the run settles as completed with the response. Otherwise a silent run would
+//   post the failure text, an alert would be replaced by it, or a fallback model would run the
+//   whole heartbeat again.
 // Ordinary turns are untouched: non-heartbeat calls are still refused, and the worker
 // bundles' copies stay as they are, since the runner runs on the gateway's main thread.
 import assert from "node:assert/strict";
@@ -75,8 +87,7 @@ const optionsBefore = [
   "\t\t\t\t} : {},",
 ].join("\n");
 const optionsAfter = [
-  `enableHeartbeatTool: true, ${MARKER}`,
-  "\t\t\t\tforceHeartbeatTool: true,",
+  `...prepared.usesHeartbeatResponseTool || prepared.run.kind === "isolated" || isHeartbeatEnabledForAgent(cfg, agentId) ? { enableHeartbeatTool: true, forceHeartbeatTool: true } : {}, ${MARKER}`,
   "\t\t\t\t...prepared.usesHeartbeatResponseTool ? { sourceReplyDeliveryMode: \"message_tool_only\" } : {},",
 ].join("\n");
 const promptBefore = [
@@ -90,17 +101,25 @@ const promptBefore = [
   "\t});",
 ].join("\n");
 const promptAfter = [
-  `const resolveRunPrompt = (useHeartbeatResponseTool) => ({ ${MARKER}`,
-  "\t\t...resolveHeartbeatRunPrompt({",
-  "\t\t\tcfg,",
-  "\t\t\theartbeat,",
-  "\t\t\tpreflight,",
-  "\t\t\tcanRelayToUser,",
-  "\t\t\tscheduledTasks,",
-  "\t\t\tuseHeartbeatResponseTool: useHeartbeatResponseTool || run.kind === \"isolated\"",
-  "\t\t}),",
-  "\t\tusesHeartbeatResponseTool: useHeartbeatResponseTool",
-  "\t});",
+  `const resolveRunPrompt = (useHeartbeatResponseTool) => openclawNixHeartbeatToolPrompt(resolveHeartbeatRunPrompt({ ${MARKER}`,
+  "\t\tcfg,",
+  "\t\theartbeat,",
+  "\t\tpreflight,",
+  "\t\tcanRelayToUser,",
+  "\t\tscheduledTasks,",
+  "\t\tuseHeartbeatResponseTool: useHeartbeatResponseTool || run.kind === \"isolated\"",
+  "\t}), useHeartbeatResponseTool, run.kind === \"isolated\" && !useHeartbeatResponseTool);",
+].join("\n");
+// The fallback sentence is upstream's own, which only its default prompt carries.
+const promptHelper = [
+  `function openclawNixHeartbeatToolPrompt(resolved, usesHeartbeatResponseTool, toolWordingAdded) { ${MARKER}`,
+  "\tconst needsFallback = toolWordingAdded && resolved.prompt.includes(HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS) && !resolved.prompt.includes(\"If the heartbeat_respond tool is not available\");",
+  "\treturn {",
+  "\t\t...resolved,",
+  "\t\tprompt: needsFallback ? `${resolved.prompt}\\n\\nIf the heartbeat_respond tool is not available in this run, reply ${SILENT_REPLY_TOKEN} when nothing needs the user's attention; when the user should be interrupted, reply with only the alert text instead of a prose report.` : resolved.prompt,",
+  "\t\tusesHeartbeatResponseTool",
+  "\t};",
+  "}",
 ].join("\n");
 // `run` must be the prepare stage's own, and the prompt flag must still be what the runner
 // reads for the source reply mode.
@@ -111,8 +130,15 @@ const promptAfter = [
   assert.equal(count(text, "usesHeartbeatResponseTool: params.useHeartbeatResponseTool,"), 1, "the prompt builder no longer returns its flag");
   assert.equal(count(text, "prepared.usesHeartbeatResponseTool"), 1, "the runner reads the prompt flag somewhere new");
   assert.equal(count(text, "if (run.kind === \"isolated\") {"), 1, "the prepare stage no longer names an isolated run");
+  assert.equal(count(text, "prepared.run.kind === \"isolated\""), 1, "the dispatch no longer reads the prepared run");
+  for (const binding of ["isHeartbeatEnabledForAgent", "HEARTBEAT_RESPONSE_TOOL_INSTRUCTIONS", "SILENT_REPLY_TOKEN"]) {
+    assert(new RegExp(`^import \\{[^}]*\\bas ${binding}\\b[^}]*\\} from `, "m").test(text), `the runner no longer imports ${binding}`);
+  }
+  // The dispatch that builds the options has the config and the agent in scope.
+  const dispatch = assertOrder(runnerFile, "const { cfg, agentId, heartbeat, startedAt } = wake;", optionsBefore);
+  assert(!/\n(?:async )?function /.test(dispatch.slice(1)), "the reply options left the function that has the config and the agent");
 }
-const patchedFiles = [edit(runnerFile, [[optionsBefore, optionsAfter], [promptBefore, promptAfter]])];
+const patchedFiles = [edit(runnerFile, [[optionsBefore, optionsAfter], [promptBefore, promptAfter], [runnerAnchor, `${promptHelper}\n${runnerAnchor}`]])];
 
 // The loopback server: an isolated heartbeat run's Claude CLI turn gets the tool.
 const scopedAnchor = "async function resolveGatewayScopedTools(params, assertPreparationCurrent) {";
@@ -148,6 +174,7 @@ const trackingFile = chunkWith("CLI tool tracking", /^execute\.runtime-.*\.mjs$/
 const spawnsBefore = "const acceptedSessionSpawns = [];";
 const recordBefore = "if (acceptedSessionSpawn && acceptedSessionSpawns.length < CLI_LOOPBACK_CORRELATION_MAX_CALLS) acceptedSessionSpawns.push(acceptedSessionSpawn);";
 const evidenceBefore = "...current.acceptedSessionSpawns.length > 0 ? { acceptedSessionSpawns: current.acceptedSessionSpawns.slice() } : {}";
+const snapshotBefore = "toolTrustedLocalMedia,\n\t\tacceptedSessionSpawns\n\t});";
 const trackingHelper = [
   `function openclawNixHeartbeatResponseOf(toolName, call) { ${MARKER}`,
   "\treturn toolName === \"heartbeat_respond\" && call.outcome === \"completed\" ? openclawNixNormalizeHeartbeatResponse(readToolResultDetails(call.result)) : void 0;",
@@ -157,15 +184,28 @@ const trackingHelper = [
   const text = fs.readFileSync(trackingFile, "utf8");
   assert.equal(count(text, "readToolResultDetails } from "), 1, "the tracking chunk no longer imports readToolResultDetails");
   assert.equal(count(text, "normalizeHeartbeatToolResponse"), 0, "upstream's CLI tracking now knows the heartbeat response (fixed upstream? drop this patch)");
-  const region = assertOrder(trackingFile, "function createCliToolTracking(context) {", spawnsBefore, "onToolCallResult: (call) => {", "const toolName = stripOpenClawMcpToolPrefix(call.toolName);", recordBefore, "withExecutionEvidence(output) {", evidenceBefore);
+  const region = assertOrder(trackingFile, "function createCliToolTracking(context) {", spawnsBefore, "onToolCallResult: (call) => {", "const toolName = stripOpenClawMcpToolPrefix(call.toolName);", recordBefore, "const evidence = () => ({", snapshotBefore, "withExecutionEvidence(output) {", evidenceBefore, "attachDeliveryEvidence(error) {\n\t\t\treturn attachCliMessagingDeliveryEvidence(error, evidence());");
   assert(!/\n(?:async )?function /.test(region.slice(1)), "the CLI tool tracking was split");
 }
 patchedFiles.push(edit(trackingFile, [
   [spawnsBefore, `${spawnsBefore}\n\tlet openclawNixHeartbeatResponse;`],
-  [recordBefore, `${recordBefore}\n\t\t\t\topenclawNixHeartbeatResponse = openclawNixHeartbeatResponseOf(toolName, call) ?? openclawNixHeartbeatResponse;`],
-  [evidenceBefore, `${evidenceBefore},\n\t\t\t\t...openclawNixHeartbeatResponse ? { heartbeatToolResponse: openclawNixHeartbeatResponse } : {}`],
+  [recordBefore, `${recordBefore}\n\t\t\t\topenclawNixHeartbeatResponse ??= openclawNixHeartbeatResponseOf(toolName, call);`],
+  [snapshotBefore, "toolTrustedLocalMedia,\n\t\tacceptedSessionSpawns,\n\t\theartbeatToolResponse: openclawNixHeartbeatResponse\n\t});"],
+  [evidenceBefore, `${evidenceBefore},\n\t\t\t\t...current.heartbeatToolResponse ? { heartbeatToolResponse: current.heartbeatToolResponse } : {}`],
   ["function createCliToolTracking(context) {", `${trackingHelper}\nfunction createCliToolTracking(context) {`],
 ], `import { ${alias} as openclawNixNormalizeHeartbeatResponse } from "./${path.basename(responseChunk)}";`));
+
+// A failed attempt: the response is evidence too, whoever attaches it (the tracking above, or
+// the runner with the attempt's output), and only the failure's own builder reads it back.
+const deliverySnapshotBefore = "function snapshotCliMessagingDeliveryEvidence(output) {\n\treturn output.didSendViaMessagingTool === true ? projectCliMessagingDeliveryEvidence(output, true) : void 0;\n}";
+const deliverySnapshotAfter = [
+  `function snapshotCliMessagingDeliveryEvidence(output) { ${MARKER}`,
+  "\tif (output.heartbeatToolResponse) return { ...projectCliMessagingDeliveryEvidence(output, true), heartbeatToolResponse: output.heartbeatToolResponse };",
+  "\treturn output.didSendViaMessagingTool === true ? projectCliMessagingDeliveryEvidence(output, true) : void 0;",
+  "}",
+].join("\n");
+const deliveryFile = chunkWith("CLI delivery evidence", /^delivery-evidence-.*\.mjs$/, deliverySnapshotBefore);
+patchedFiles.push(edit(deliveryFile, [[deliverySnapshotBefore, deliverySnapshotAfter]]));
 
 const cliRunnerFile = chunkWith("CLI runner", /^cli-runner-.*\.mjs$/, "function resolveCliSourceReplyMirror(params) {");
 const mirrorBefore = "messagingToolSourceReplyPayloads: evidence.messagingToolSourceReplyPayloads,\n\t\tsourceReplyDeliveryMode: runParams.sourceReplyDeliveryMode,";
@@ -178,7 +218,37 @@ const mirrorAfter = `messagingToolSourceReplyPayloads: evidence.messagingToolSou
   }
   assert.equal(count(text, "function resolveCliSourceReplyMirror(params) {\n\tconst { evidence, modelId, runParams } = params;\n\tconst payloads = buildEmbeddedRunPayloads({"), 1, "the source reply mirror no longer starts by building the run's payloads");
 }
-patchedFiles.push(edit(cliRunnerFile, [[mirrorBefore, mirrorAfter]]));
+const failureBefore = "function buildCliDeliveredFailure(params) {";
+const failureAfter = [
+  `function buildCliDeliveredFailure(params) { ${MARKER}`,
+  "\tconst result = openclawNixCliDeliveredFailure(params);",
+  "\tif (!params.evidence.heartbeatToolResponse) return result;",
+  "\t// The heartbeat already gave its outcome. The error stays in the execution trace and the log.",
+  "\tcliBackendLog.warn(`cli heartbeat run failed after its heartbeat_respond was accepted, keeping the response: runId=${params.context.params.runId} error=${formatErrorMessage(params.error)}`);",
+  "\tconst { didSendViaMessagingTool: _unconfirmed, ...settled } = result;",
+  "\treturn {",
+  "\t\t...settled,",
+  "\t\t...params.evidence.didSendViaMessagingTool ? { didSendViaMessagingTool: true } : {},",
+  "\t\tmeta: {",
+  "\t\t\t...result.meta,",
+  "\t\t\tstopReason: \"completed\",",
+  "\t\t\tcompletion: { finishReason: \"stop\", stopReason: \"completed\", refusal: false }",
+  "\t\t}",
+  "\t};",
+  "}",
+  "function openclawNixCliDeliveredFailure(params) {",
+].join("\n");
+{
+  const text = fs.readFileSync(cliRunnerFile, "utf8");
+  const failure = assertOrder(cliRunnerFile, failureBefore, "const { payloads } = resolveCliSourceReplyMirror({", "stopReason: \"error\",", "didSendViaMessagingTool: true", "function buildCliRunResult(params) {");
+  assert(failure.includes("...projectCliMessagingDeliveryEvidence(evidence),"), "the delivered failure no longer projects its evidence");
+  // A failed attempt asks for this result before any retry, and the fallback stops on a result.
+  assert.equal(count(text, "const evidence = getCliMessagingDeliveryEvidence(error);\n\t\t\tif (!evidence) return;"), 1, "the CLI failure path no longer reads the evidence first");
+  assert.equal(count(text, "return buildCliDeliveredFailure({"), 1, "the delivered failure has another caller");
+  assert.match(text, /^import \{[^}]*\bas cliBackendLog\b[^}]*\} from /m, "the CLI runner no longer imports cliBackendLog");
+  assert.match(text, /^import \{[^}]*\bas formatErrorMessage\b[^}]*\} from /m, "the CLI runner no longer imports formatErrorMessage");
+}
+patchedFiles.push(edit(cliRunnerFile, [[mirrorBefore, mirrorAfter], [failureBefore, failureAfter]]));
 
 fs.writeFileSync(path.join(root, ".heartbeat-respond-run-hotfix.json"), JSON.stringify({
   id: "openclaw-nix-heartbeat-respond-run-v1", upstreamVersion: version, patchedFiles,
