@@ -71,11 +71,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1793205861,
-        "narHash": "sha256-mpx7o3kRTn1RlWLWX6ckaBtyljlVfemXDiZfuEqZ+jY=",
+        "lastModified": 1793932537,
+        "narHash": "sha256-PdM3ih9tSyM7PjKKeX5EiWIsNwFnj+f0uf5zhdvyfZs=",
         "owner": "alinaos-org",
         "repo": "nix-openclaw-tools",
-        "rev": "196ada26fae88b01cf5b3fb026b48136bf271744",
+        "rev": "472c08c44c687b8cfae48ec1e08ee075015716b9",
         "type": "github"
       },
       "original": {
