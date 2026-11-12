@@ -203,14 +203,20 @@ in {
     checkSingleRelease = {
       name ? "openclaw-single-release",
       roots,
-    }:
+    }: let
+      desktopVersion = final.openclaw-desktop.version;
+    in
       final.runCommand name {
         closure = final.closureInfo {rootPaths = roots;};
         nativeBuildInputs = [final.gnugrep final.gawk];
       } ''
         stale=$(grep -E '${coreNamePattern}' "$closure/store-paths" \
           | grep -vE -- '-openclaw-runtime-plugin-.*-${lib.escapeRegex packageVersion}${versionEnd}' \
-          | grep -vE -- '-${lib.escapeRegex release.current}${versionEnd}' || true)
+          | grep -vE -- '-${lib.escapeRegex release.current}${versionEnd}' \
+          ${lib.optionalString (desktopVersion != release.current)
+          # A release upstream shipped without a Linux .deb keeps the desktop app on
+          # the newest release that has one (packages/desktop); only that app may lag.
+          "| grep -vE -- '-openclaw-desktop-${lib.escapeRegex desktopVersion}${versionEnd}'"} || true)
         if [ -n "$stale" ]; then
           echo "OpenClaw packages from a release other than ${release.current}:" >&2
           printf '  %s\n' $stale >&2
