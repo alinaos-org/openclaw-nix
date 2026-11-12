@@ -112,7 +112,11 @@ replaceExact({
 // resolveEmbeddedCompactionTarget as Zt (was Qt), DEFAULT_PROVIDER/DEFAULT_MODEL as de/ue
 // (were G/W, the same exports of the same chunk), resolveMemoryFlushPlanForRun as j (was
 // k) and resolveDefaultAgentId as o (was a); each checked against its chunk's exports.
-const minified = atLeast(version, "2026.10.10")
+// 2026.11.3 imports DEFAULT_PROVIDER as le (was de); DEFAULT_MODEL stays ue
+// (worker-chunk-*.mjs: `import{i as le,n as ue,o as de}`, where i is `openai`).
+const minified = atLeast(version, "2026.11.3")
+  ? { target: "Zt", provider: "le", model: "ue", plan: "j", defaultAgent: "o", followup: "a" }
+  : atLeast(version, "2026.10.10")
   ? { target: "Zt", provider: "de", model: "ue", plan: "j", defaultAgent: "o", followup: "a" }
   : { target: "Qt", provider: "G", model: "W", plan: "k", defaultAgent: "a", followup: "o" };
 replaceExact({
