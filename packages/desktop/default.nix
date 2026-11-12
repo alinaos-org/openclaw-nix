@@ -2,6 +2,9 @@
 # stable release. It follows release.nix `current` like the gateway does, so a
 # host that bumps openclaw-nix moves the app in the same change; the hash is the
 # release's desktopDebHash in releases.nix (scripts/new-release.py fills it).
+# A release upstream shipped without a Linux .deb (2026.11.3) has no
+# desktopDebHash: the app then stays on the newest release that has one, and
+# `scripts/new-release.py --desktop-only <v>` adds it if the .deb comes later.
 #
 # `cli` is the openclaw the app runs for local commands (OPENCLAW_DESKTOP_CLI);
 # override it with the host's own wrapper if it has one.
@@ -26,12 +29,18 @@
   openclaw,
   cli ? openclaw,
 }: let
-  version = (import ../../release.nix).current;
-  release = (import ../../releases.nix).${version};
+  releases = import ../../releases.nix;
   system = stdenv.hostPlatform.system;
-  hash =
-    release.desktopDebHash.${system}
-    or (throw "openclaw-nix: releases.nix ${version} has no desktopDebHash.${system}; run scripts/new-release.py --desktop-only ${version}");
+  current = (import ../../release.nix).current;
+  withDeb = builtins.filter (v: releases.${v} ? desktopDebHash.${system}) (builtins.attrNames releases);
+  newest = builtins.head (builtins.sort (a: b: builtins.compareVersions a b > 0) withDeb);
+  version =
+    if releases ? ${current} && releases.${current} ? desktopDebHash.${system}
+    then current
+    else if withDeb != []
+    then newest
+    else throw "openclaw-nix: no release in releases.nix has a desktopDebHash.${system}";
+  hash = releases.${version}.desktopDebHash.${system};
 in
   stdenv.mkDerivation {
     pname = "openclaw-desktop";

@@ -121,7 +121,12 @@ def main():
     entry, n = re.subn(r'(pnpmDepsHash\.x86_64-linux = ")[^"]+(";)', rf"\g<1>{FAKE}\g<2>", entry)
     if n != 1:
         sys.exit("could not find the pnpmDepsHash field in the copied entry")
-    entry = with_desktop_hash(entry, desktop_hash(v))
+    deb = desktop_hash(v)
+    if deb:
+        entry = with_desktop_hash(entry, deb)
+    else:
+        # No desktopDebHash: packages/desktop stays on the newest release that has one.
+        entry = re.sub(r'    desktopDebHash\.x86_64-linux = "[^"]+";\n', "", entry)
     # Each release tries the picker patch afresh (step 5).
     entry = PICKER_OFF_RE.sub("", entry)
     table.write_text(table_text.replace(m.group(1), entry + "\n" + m.group(1), 1))
@@ -143,11 +148,14 @@ def main():
 
 
 def desktop_hash(v):
-    """SRI hash of the release's amd64 desktop .deb, as fetchurl checks it."""
+    """SRI hash of the release's amd64 desktop .deb, as fetchurl checks it, or None
+    when the release has no .deb (2026.11.3 shipped none): the gateway still follows
+    the release, and packages/desktop stays on the newest release that has one."""
     name = f"OpenClaw-{v}-amd64.deb"
     assets = json.loads(gh(f"repos/{REPO}/releases/tags/v{v}", "[.assets[].name]"))
     if name not in assets:
-        sys.exit(f"v{v} has no {name}; the desktop app cannot follow this release")
+        print(f"warning: v{v} has no {name}; the desktop app stays on the newest release with one")
+        return None
     b32 = run("nix-prefetch-url", "--type", "sha256",
               f"https://github.com/{REPO}/releases/download/v{v}/{name}").splitlines()[-1]
     sri = run("nix", "hash", "convert", "--hash-algo", "sha256", "--to", "sri", b32)
@@ -170,7 +178,10 @@ def desktop_only(table, v):
     m = re.search(r'\n(  "' + re.escape(v) + r'" = \{\n.*?\n  \};\n)', text, re.S)
     if not m:
         sys.exit(f"no releases.nix entry for {v}")
-    table.write_text(text.replace(m.group(1), with_desktop_hash(m.group(1), desktop_hash(v)), 1))
+    deb = desktop_hash(v)
+    if not deb:
+        sys.exit(f"v{v} has no desktop .deb yet")
+    table.write_text(text.replace(m.group(1), with_desktop_hash(m.group(1), deb), 1))
 
 
 PICKER_OFF = (
