@@ -28,9 +28,35 @@ const generationFile = [...changedFiles].find(
   (file) => file.startsWith("dist/prepared-model-runtime.plugin-generation-") && file.endsWith(".mjs"),
 );
 assert(generationFile, "main prepared plugin-generation module missing from receipt");
-const generationModule = await import(pathToFileURL(path.join(root, generationFile)));
-const supportsSelections = generationModule.i;
-assert.equal(typeof supportsSelections, "function", "prepared owner guard export moved");
+
+// Resolve a bundled export by its source name: the minified alias letters move
+// between releases, the names in the bundle's export clause do not.
+function exportAlias(source, name, where) {
+  const clause = source.match(/^export \{([^}]*)\};?$/m);
+  assert(clause, `${where}: export clause missing`);
+  const entry = clause[1]
+    .split(",")
+    .map((part) => part.trim().split(/\s+as\s+/))
+    .find(([local]) => local === name);
+  assert(entry, `${where}: ${name} is no longer exported`);
+  return entry[1] ?? entry[0];
+}
+async function importNamed(file, names) {
+  const source = fs.readFileSync(file, "utf8");
+  const module = await import(pathToFileURL(file));
+  return Object.fromEntries(
+    names.map((name) => {
+      const value = module[exportAlias(source, name, path.basename(file))];
+      assert.equal(typeof value, "function", `${path.basename(file)}: ${name} is not a function`);
+      return [name, value];
+    }),
+  );
+}
+
+const { preparedPluginGenerationSupportsSelections: supportsSelections } = await importNamed(
+  path.join(root, generationFile),
+  ["preparedPluginGenerationSupportsSelections"],
+);
 
 const pluginRecord = (id) => ({
   id,
@@ -61,24 +87,28 @@ assert.equal(
   "a prepared generation containing the authenticated owner was rejected",
 );
 
-const hookFile = fs
-  .readdirSync(path.join(root, "dist"))
-  .find(
-    (name) =>
-      /^hook-runner-global-.*\.mjs$/.test(name) &&
-      fs
-        .readFileSync(path.join(root, "dist", name), "utf8")
-        .includes("function resolveHookRegistry(state)"),
-  );
-assert(hookFile, "global hook runner module missing");
-const hookPath = path.join(root, "dist", hookFile);
-const hookSource = fs.readFileSync(hookPath, "utf8");
-const generationImport = hookSource.match(/from "\.\/(generation-state-[^"]+\.mjs)"/);
-assert(generationImport, "hook runner generation-state import moved");
+// Find a dist module by a name in its export clause, not by its contents: 2026.11.4
+// moved resolveHookRegistry into hook-runner-global-state, beside the hook runner.
+function moduleExporting(prefix, name) {
+  const matches = fs
+    .readdirSync(path.join(root, "dist"))
+    .filter((file) => file.startsWith(prefix) && file.endsWith(".mjs"))
+    .map((file) => path.join(root, "dist", file))
+    .filter((file) =>
+      new RegExp(`^export \\{[^}]*\\b${name} as `, "m").test(fs.readFileSync(file, "utf8")),
+    );
+  assert.equal(matches.length, 1, `${prefix}*.mjs exporting ${name}: found ${matches.length}`);
+  return matches[0];
+}
 
-const hooks = await import(pathToFileURL(hookPath));
-const generationScope = await import(
-  pathToFileURL(path.join(root, "dist", generationImport[1]))
+const hooks = await importNamed(moduleExporting("hook-runner-global-", "initializeGlobalHookRunner"), [
+  "initializeGlobalHookRunner",
+  "getGlobalHookRunner",
+  "resetGlobalHookRunner",
+]);
+const generationScope = await importNamed(
+  moduleExporting("generation-state-", "withPluginRuntimeGenerationRegistryScope"),
+  ["withPluginRuntimeGenerationRegistryScope"],
 );
 const calls = [];
 const registration = (pluginId, label) => ({
@@ -103,10 +133,10 @@ const runRegistry = registry([
   registration("provider", "generation-provider"),
 ]);
 
-hooks.a(rootRegistry);
+hooks.initializeGlobalHookRunner(rootRegistry);
 try {
-  await generationScope.r(runRegistry, () =>
-    hooks.n().runLlmOutput(
+  await generationScope.withPluginRuntimeGenerationRegistryScope(runRegistry, () =>
+    hooks.getGlobalHookRunner().runLlmOutput(
       {
         runId: "run-1",
         sessionId: "session-1",
@@ -125,7 +155,7 @@ try {
   );
   assert.deepEqual(calls, ["generation-owner", "generation-provider"]);
 } finally {
-  hooks.o();
+  hooks.resetGlobalHookRunner();
 }
 
 console.log(
