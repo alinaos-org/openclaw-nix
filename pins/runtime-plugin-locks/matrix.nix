@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.4.10";
   expectedIntegrity = "";
   packageName = "@openclaw/matrix";
-  version = "2026.11.4";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/matrix/-/matrix-2026.11.4.tgz";
-  npmIntegrity = "sha512-hMV4HgSy9qDht5NbFm0nU8MRKMkc8YQlt2gVTLdvYgcbQXdusLhYLAlns+RnVxuCwe3ntCTOfLpXdEGJvigoHg==";
-  npmShasum = "9c103970603d3b08b3a6e7910bf9a490eed61b5b";
-  nixHash = "sha256-7z4r5WrQAQvzY09JCiIIy6ptvOJDEhBiorm5pnjkTsM=";
+  version = "2026.11.5";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/matrix/-/matrix-2026.11.5.tgz";
+  npmIntegrity = "sha512-hR3kovAhu0/jLu9oVcGYSEs79qslHWW1X4rhz2RIInXdtCx1UqR7ACl3BklLEu51apzvWszmGetsafUHLEEaOA==";
+  npmShasum = "f481a54290f7fafad8fc773aff0aad0060da625d";
+  nixHash = "sha256-HBT5CgkVSk70yxHIEAUTr2oNwzdARpyFisdLAdQu5es=";
   dependencyMode = "bundled";
   manifestId = "matrix";
-  openclawCompat = ">=2026.11.4";
-  peerOpenClaw = ">=2026.11.4";
+  openclawCompat = ">=2026.11.5";
+  peerOpenClaw = ">=2026.11.5";
   runtimeExtensions = [
     "./dist/index.js"
   ];
@@ -33,13 +33,13 @@
   dependencies = {
     "@matrix-org/matrix-sdk-crypto-nodejs" = "0.6.6";
     "@matrix-org/matrix-sdk-crypto-wasm" = "18.9.0";
-    "@openclaw/fs-safe" = "0.26.7";
-    fake-indexeddb = "6.2.5";
-    markdown-it = "15.0.2";
-    matrix-js-sdk = "42.4.0";
-    music-metadata = "11.16.1";
-    typebox = "1.3.35";
-    zod = "4.6.5";
+    "@openclaw/fs-safe" = "0.26.13";
+    fake-indexeddb = "6.2.6";
+    markdown-it = "15.0.3";
+    matrix-js-sdk = "43.0.0";
+    music-metadata = "12.2.3";
+    typebox = "1.4.2";
+    zod = "4.6.7";
   };
   optionalDependencies = {};
   bundleDependencies = [
@@ -84,6 +84,7 @@
     "node_modules/events"
     "node_modules/fake-indexeddb"
     "node_modules/file-type"
+    "node_modules/file-type/node_modules/strtok3"
     "node_modules/https-proxy-agent"
     "node_modules/ieee754"
     "node_modules/immediate"
@@ -102,7 +103,6 @@
     "node_modules/media-typer"
     "node_modules/ms"
     "node_modules/music-metadata"
-    "node_modules/music-metadata/node_modules/content-type"
     "node_modules/node-downloader-helper"
     "node_modules/p-retry"
     "node_modules/pako"
