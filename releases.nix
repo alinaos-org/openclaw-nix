@@ -7,6 +7,20 @@
 # picker: new-release.py sets it when openclaw-nix's picker patch does not apply,
 # and the re-port deletes it (README, "Session icons").
 {
+  "2026.11.5" = {
+    rev = "e13cf15ece9bbd969b7362927c315362c90c97ff";
+    sourceHash = "sha256-QM9QQndWpExuDos12tU71/LFGRNEOZM82uihPFnPlX8=";
+    pnpmDepsHash.x86_64-linux = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    desktopDebHash.x86_64-linux = "sha256-SJNAPx41h5M0hD6jVULl7tNYEhPG7p87XkwkbCq7Fio=";
+    buildTimestamp = "2026-11-17T03:12:30Z";
+    pnpmBootstrapVersion = "12.15.0";
+    tsdownHeapMb = "6144";
+    # The session icon picker patch does not apply to this release: it builds
+    # with OpenClaw's own picker until the patch is re-ported (README,
+    # "Session icons"). The re-port deletes these lines.
+    sessionIconPicker = false;
+  };
+
   "2026.11.4" = {
     rev = "d843d6af39a42cd3c30084edbeabeece732fd93a";
     sourceHash = "sha256-R3q8kRgXm7idp0RG7lGJBSzrWyvYF+nxSBxpmGD3pg8=";

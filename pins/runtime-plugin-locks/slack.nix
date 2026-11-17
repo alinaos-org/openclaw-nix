@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.9.8";
   expectedIntegrity = "";
   packageName = "@openclaw/slack";
-  version = "2026.11.4";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/slack/-/slack-2026.11.4.tgz";
-  npmIntegrity = "sha512-0THCwgx8Ai0xAQ1sbjpMTINRXyHh7gB7tjUWdvWVp3CNeGYzFngCPEgMi+SalFKSLQmvvb+Eiy5uwHXWgiZ8WA==";
-  npmShasum = "1115af648be8624c453f93c8ad32477843299f9d";
-  nixHash = "sha256-DJyycRn3C1GbevfqAzOj/ymYPf9XdKRYQ8lGSVyw9fs=";
+  version = "2026.11.5";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/slack/-/slack-2026.11.5.tgz";
+  npmIntegrity = "sha512-Kp/PFDhPK2IKhhYeMyv7rNcw2kFdwR9m22PmFJN8jry1rMTwj1LD5Rxl4nlmpCto6z53Ttnyp3dQONvOcG0HCQ==";
+  npmShasum = "1a052c1f2cc4d50bc60c75206e414a67bd1835f0";
+  nixHash = "sha256-nH+7LrfFa1ufv0xLjyXmNTxxvWQ7q/TUiVoJRmmaUEc=";
   dependencyMode = "bundled";
   manifestId = "slack";
-  openclawCompat = ">=2026.11.4";
-  peerOpenClaw = ">=2026.11.4";
+  openclawCompat = ">=2026.11.5";
+  peerOpenClaw = ">=2026.11.5";
   runtimeExtensions = [
     "./dist/index.js"
   ];
@@ -35,9 +35,9 @@
     "@slack/types" = "3.2.0";
     "@slack/web-api" = "8.2.0";
     get-east-asian-width = "1.7.0";
-    typebox = "1.3.35";
-    undici = "8.12.2";
-    zod = "4.6.5";
+    typebox = "1.4.2";
+    undici = "8.12.3";
+    zod = "4.6.7";
   };
   optionalDependencies = {};
   bundleDependencies = [
@@ -59,7 +59,6 @@
     "node_modules/@slack/bolt/node_modules/@types/node"
     "node_modules/@slack/bolt/node_modules/accepts"
     "node_modules/@slack/bolt/node_modules/body-parser"
-    "node_modules/@slack/bolt/node_modules/body-parser/node_modules/content-type"
     "node_modules/@slack/bolt/node_modules/buffer-equal-constant-time"
     "node_modules/@slack/bolt/node_modules/bytes"
     "node_modules/@slack/bolt/node_modules/call-bind-apply-helpers"
@@ -112,7 +111,6 @@
     "node_modules/@slack/bolt/node_modules/mime-types"
     "node_modules/@slack/bolt/node_modules/ms"
     "node_modules/@slack/bolt/node_modules/negotiator"
-    "node_modules/@slack/bolt/node_modules/negotiator/node_modules/content-type"
     "node_modules/@slack/bolt/node_modules/object-inspect"
     "node_modules/@slack/bolt/node_modules/on-finished"
     "node_modules/@slack/bolt/node_modules/once"
@@ -137,7 +135,6 @@
     "node_modules/@slack/bolt/node_modules/toidentifier"
     "node_modules/@slack/bolt/node_modules/tsscmp"
     "node_modules/@slack/bolt/node_modules/type-is"
-    "node_modules/@slack/bolt/node_modules/type-is/node_modules/content-type"
     "node_modules/@slack/bolt/node_modules/undici-types"
     "node_modules/@slack/bolt/node_modules/unpipe"
     "node_modules/@slack/bolt/node_modules/vary"
