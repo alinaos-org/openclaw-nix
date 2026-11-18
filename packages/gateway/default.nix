@@ -425,6 +425,7 @@ in
       # worker, whose own esbuild instance stop() cannot join.
       postPatch =
         (old.postPatch or "")
+        + "\n"
         + seedWorkerNativeAssets
         + ''
 
