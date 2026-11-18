@@ -1,5 +1,6 @@
 // Drive every patched copy of OpenClaw's MCP OAuth provider through the packaged
-// @modelcontextprotocol/sdk auth(), over OpenClaw's own store mutations and row
+// auth() it calls (@modelcontextprotocol/sdk, or @modelcontextprotocol/client 2.x from
+// 2026.11.5), over OpenClaw's own store mutations and row
 // parser in memory and a fake resource and authorization server; no state, no
 // network. A saved client and token set without an issuer is not presented to the
 // authorization server: a gateway refresh asks for a login, and a login registers
@@ -19,44 +20,91 @@ const receipt = JSON.parse(fs.readFileSync(path.join(root, ".mcp-oauth-issuer-bi
 assert.equal(receipt.id, "openclaw-nix-mcp-oauth-issuer-binding-v1");
 const MARKER = `/* ${receipt.id} */`;
 const HELPER = "openclawNixMcpOAuthIssuerBound";
-// The SDK's issuer binding: its refusal to present client information stamped for
-// another authorization server. A literal, so it survives minification.
-const BINDING = "is bound to authorization server";
+// The SDK's issuer binding, as literals that survive minification: sdk 1.31 on
+// refuses client information stamped for another authorization server; client 2.x
+// (SEP-2352) warns inside the stamp check that discards a mismatched value.
+const BINDINGS = ["is bound to authorization server", "SEP-2352: stored OAuth credential has no 'issuer' stamp"];
 const dist = path.join(root, "dist");
 const read = (file) => fs.readFileSync(file, "utf8");
 const count = (text, needle) => text.split(needle).length - 1;
 const escape = (name) => name.replace(/\$/g, "\\$");
 
-// @modelcontextprotocol/sdk/<subpath> as node resolves an ESM import from `from`.
-function resolveSdk(from, subpath) {
+// A scoped package specifier (@modelcontextprotocol/sdk/client/auth.js,
+// @modelcontextprotocol/client) as node resolves an ESM import of it from `from`:
+// its exports entry for the subpath, or the "./*" pattern, under "import".
+function resolvePackage(from, spec) {
+  const [scope, name, ...rest] = spec.split("/");
+  assert(scope.startsWith("@") && name, `${spec}: not a scoped package`);
+  const subpath = rest.length ? `./${rest.join("/")}` : ".";
+  const pick = (target) => (typeof target === "string" || target == null ? target : pick(target.import ?? target.default));
   for (let dir = path.dirname(from); ; dir = path.dirname(dir)) {
-    const pkg = path.join(dir, "node_modules", "@modelcontextprotocol", "sdk");
+    const pkg = path.join(dir, "node_modules", scope, name);
     if (fs.existsSync(path.join(pkg, "package.json"))) {
-      const target = JSON.parse(read(path.join(pkg, "package.json"))).exports?.["./*"]?.import;
-      assert(typeof target === "string" && target.includes("*"), "SDK subpath exports changed");
-      return path.join(pkg, target.replace("*", subpath));
+      const exports = JSON.parse(read(path.join(pkg, "package.json"))).exports;
+      let target = pick(exports?.[subpath]);
+      if (target === undefined && subpath !== ".") {
+        const pattern = pick(exports?.["./*"]);
+        target = typeof pattern === "string" && pattern.includes("*") ? pattern.replace("*", subpath.slice(2)) : undefined;
+      }
+      assert(typeof target === "string", `${scope}/${name} exports no import for ${subpath}`);
+      return path.join(pkg, target);
     }
-    assert.notEqual(path.dirname(dir), dir, `@modelcontextprotocol/sdk is not resolvable from ${from}`);
+    assert.notEqual(path.dirname(dir), dir, `${scope}/${name} is not resolvable from ${from}`);
   }
 }
 const importsOf = (source) => [...source.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)].map(([, names, from]) => ({
   from, names: names.split(",").map((s) => s.trim().split(/\s+as\s+/)).filter(([name]) => name).map(([name, local]) => ({name, local: local ?? name})),
 }));
-const importTarget = (file, from) => from.startsWith(".")
-  ? path.resolve(path.dirname(file), from)
-  : resolveSdk(file, from.replace(/^@modelcontextprotocol\/sdk\//, ""));
+const importTarget = (file, from) => from.startsWith(".") ? path.resolve(path.dirname(file), from) : resolvePackage(file, from);
+
+// The file that defines what `file` exports as `name`, through re-exporting chunks
+// (export{ue as auth} of an imported ue).
+function definingFile(file, name, depth = 0) {
+  assert(depth < 8, `${file}: ${name} re-exported too deep`);
+  const source = read(file);
+  let local = name;
+  for (const [, list] of source.matchAll(/export\s*\{([^}]*)\}/g)) {
+    for (const entry of list.split(",")) {
+      const [inner, outer = inner] = entry.trim().split(/\s+as\s+/);
+      if (outer === name) local = inner;
+    }
+  }
+  if (new RegExp(`function ${escape(local)}\\(`).test(source)) return file;
+  for (const {from, names} of importsOf(source)) {
+    const hit = names.find((entry) => entry.local === local);
+    if (hit) return definingFile(importTarget(file, from), hit.name, depth + 1);
+  }
+  return file;
+}
+
+// Where the auth() bound to `callee` is defined. From 2026.11.5 it is taken lazily
+// inside the caller (const {auth: l} = await import("@modelcontextprotocol/client"),
+// a worker chunk, or the bundler's inlined module), which shadows any module-level
+// import of the same minified name; before, a static import or a bundled function.
+function authSource(file, source, callee) {
+  const lazy = new RegExp(String.raw`\{\s*auth\s*:\s*${escape(callee)}\s*\}\s*=\s*await\s+(?:import\(\s*(["'\x60])([^"'\x60]+)\1\s*\)|Promise\.resolve\(\)\.then\(\(\)\s*=>\s*\([\w$]+\(\)\s*,\s*[\w$]+\)\))`, "g");
+  const specs = new Set([...source.matchAll(lazy)].map((m) => m[2] ?? ""));
+  if (specs.size > 0) {
+    assert.equal(specs.size, 1, `${file}: ${callee} is taken from more than one module`);
+    const [spec] = specs;
+    if (spec) return definingFile(importTarget(file, spec), "auth");
+    assert(/function auth\(/.test(source), `${file}: the inlined auth() module is not bundled here`);
+    return file;
+  }
+  for (const {from, names} of importsOf(source)) {
+    const hit = names.find(({local}) => local === callee);
+    if (hit) return definingFile(importTarget(file, from), hit.name);
+  }
+  return new RegExp(`function ${escape(callee)}\\(`).test(source) ? file : undefined;
+}
 
 // The SDK auth() each copy calls (an import, or bundled in the same file) must carry
-// the issuer binding this patch relies on.
+// the issuer binding this patch relies on; every call site reaches the same one.
 function pairedSdk(file, source) {
   const callees = new Set([...source.matchAll(/await\s+([\w$]+)\(\s*[\w$]+\s*,\s*\{\s*serverUrl:/g)].map((m) => m[1]));
-  assert.equal(callees.size, 1, `${file}: SDK auth() call sites changed`);
-  const [callee] = callees;
-  for (const {from, names} of importsOf(source)) {
-    if (names.some(({local}) => local === callee)) return importTarget(file, from);
-  }
-  assert(new RegExp(`function ${escape(callee)}\\(`).test(source), `${file}: ${callee} is neither imported nor defined`);
-  return file;
+  const targets = new Set([...callees].map((callee) => authSource(file, source, callee)).filter(Boolean));
+  assert.equal(targets.size, 1, `${file}: SDK auth() call sites changed (${[...callees].join(", ")})`);
+  return [...targets][0];
 }
 
 // OpenClaw's store: its mutations and the row parser that validates each write.
@@ -79,6 +127,12 @@ const stringCoerce = importsOf(read(sourceFile)).find(({names}) => names.some(({
 assert(stringCoerce, "normalizeOptionalString import moved");
 const normalizeOptionalString = (await import(pathToFileURL(importTarget(sourceFile, stringCoerce.from)).href))[
   stringCoerce.names.find(({local}) => local === "normalizeOptionalString").name];
+// From 2026.11.5 the provider's authorization-required error comes from the store's
+// mcpOAuthAuthorizationRequiredError (a minified import in the worker copies); before,
+// it was built inline.
+const requiredError = importsOf(read(sourceFile)).find(({names}) => names.some(({local}) => local === "mcpOAuthAuthorizationRequiredError"));
+const mcpOAuthAuthorizationRequiredError = requiredError && (await import(pathToFileURL(importTarget(sourceFile, requiredError.from)).href))[
+  requiredError.names.find(({local}) => local === "mcpOAuthAuthorizationRequiredError").name];
 const sdkAuthFile = pairedSdk(sourceFile, read(sourceFile));
 const {auth} = await import(pathToFileURL(sdkAuthFile).href);
 assert.equal(typeof auth, "function", "the SDK's auth()");
@@ -131,7 +185,10 @@ function providerFactory(name, source, store, {baseline = false} = {}) {
   const reader = region.match(/readStore\s*=\s*async\s*\(\)\s*=>\s*\{[^}]*?await\s+([\w$]+)\(/)?.[1];
   const mutator = region.match(/updateStore\s*=\s*async[\s\S]*?await\s+([\w$]+)\(\s*\{\s*storeKey\b/)?.[1];
   assert(reader && mutator, `${name}: store helper names not found`);
+  const required = region.match(/allowAuthorizationRedirect\s*!==\s*(?:true|!0)\s*\)\s*\{?\s*throw\s+(?!(?:new\s+)?Error\()([\w$]+)\(/)?.[1];
+  assert(!required || typeof mcpOAuthAuthorizationRequiredError === "function", `${name}: mcpOAuthAuthorizationRequiredError not found`);
   return vm.runInNewContext(`${region}\n;createMcpOAuthClientProvider`, {
+    ...(required ? {[required]: mcpOAuthAuthorizationRequiredError} : {}),
     URL, AbortSignal, structuredClone,
     readMcpOAuthStore: store.readMcpOAuthStore,
     mutateMcpOAuthStore: store.mutateMcpOAuthStore,
@@ -212,7 +269,7 @@ for (const name of receipt.patchedFiles) {
   assert.equal(count(source, MARKER), 1, `${name}: marker`);
   assert.equal(count(source, `${HELPER}(`), 3, `${name}: helper and its two uses`);
   const sdk = pairedSdk(file, source);
-  assert(read(sdk).includes(BINDING), `${name}: its SDK auth() (${path.relative(root, sdk)}) lacks the issuer binding`);
+  assert(BINDINGS.some((binding) => read(sdk).includes(binding)), `${name}: its SDK auth() (${path.relative(root, sdk)}) lacks the issuer binding`);
 
   // Unstamped, gateway refresh: nothing reaches the authorization server.
   {
@@ -220,7 +277,7 @@ for (const name of receipt.patchedFiles) {
     const provider = await open(providerFactory(name, source, store), false);
     assert.equal(await provider.tokens(), undefined, `${name}: unstamped tokens were returned`);
     await assert.rejects(auth(provider, {serverUrl: SERVER, fetchFn: net.fetchFn}),
-      new RegExp(`requires OAuth authorization\\. Run openclaw mcp login ${KEY}`), `${name}: refresh did not ask for a login`);
+      new RegExp(`MCP server "${KEY}" requires OAuth authorization\\.`), `${name}: refresh did not ask for a login`);
     assert(!net.sent("unstamped-refresh") && !net.sent("unstamped-client"), `${name}: unstamped credentials were sent`);
     assert.equal(net.requests.filter((r) => r.method === "POST").length, 0, `${name}: a refresh registered or posted`);
     assert.equal(store.get(KEY).clientInformation.client_id, "unstamped-client");
@@ -274,5 +331,5 @@ for (const name of receipt.patchedFiles) {
     assert.equal(net.posts(`${AS}/register`).length, 1);
   }
 }
-assert(warnings.some((w) => w.includes("no 'issuer' property")), "the SDK did not flag the baseline's unstamped tokens");
+assert(warnings.some((w) => w.includes("no 'issuer' property") || w.includes("no 'issuer' stamp")), "the SDK did not flag the baseline's unstamped tokens");
 console.log(`MCP OAuth issuer binding: unstamped credentials refused, stamped ones used, mismatches discarded by the SDK in ${receipt.patchedFiles.join(", ")}`);

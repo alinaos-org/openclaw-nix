@@ -9,6 +9,12 @@
 # release that moves or fixes that code fails the build; a test exercises the patched
 # code in the build; and it is reported upstream, then removed when upstream's fix
 # ships in a release openclaw-nix pins.
+#
+# From 2026.11.5 upstream's build mangles local names in dist (tsdown keepNames,
+# toplevel false), so an anchor on a local variable name holds only for one build:
+# anchors match the code's shape, or carry a release-gated set of the minified names,
+# and each must still occur exactly once. Entries name the dist/worker bundle copies
+# of patched code that a patch leaves alone, where the port found them.
 {
   mcpCloseRejection = {
     patch = ./patch-mcp-close-rejection.mjs;
@@ -21,14 +27,23 @@
       Its one edit there is the Codex stale-registration fix
       (openclaw-codex-stale-registration-v1): drop a registered child that is gone or
       whose PID was reused, instead of two whole-host process scans after a crash.
+
+      From 2026.11.5 upstream loads isMcpRequestTimeoutError lazily in
+      connectMcpClient's catch block. The verification points that one load (an
+      import() of the mcp-error chunk, or the worker's inlined
+      init_mcp_error()/mcp_error_exports) at a stub module, after checking that the
+      load reaches a module exporting the helper. The Codex edit now awaits
+      store.delete and refuses a second application.
     '';
     test = null;
     untested = ''
-      The MCP part runs upstream's packaged connectMcpClient in a VM context and
-      asserts the rejection is observed. The Codex stale-registration edit has no test.
+      The MCP part runs upstream's packaged connectMcpClient (main chunk and both
+      worker copies) in a VM context, with the lazy mcp-error load stubbed from
+      2026.11.5 on. It asserts that the close rejection is observed, the timeout check
+      runs once and close is restored. The Codex stale-registration edit has no test.
     '';
     upstream = null;
-    upstreamStatus = "not reported";
+    upstreamStatus = "not reported: the MCP part is fixed upstream since 2026.9.5; the Codex stale-registration part is still downstream";
     removeWhen = ''
       Split the Codex stale-registration edit into its own patch with a test; the MCP
       verification then becomes a regression test. Remove the Codex patch when upstream
@@ -41,16 +56,21 @@
     marker = "openclaw-nix-stop-budget-v1";
     since = "2026.9.4";
     fixes = ''
-      Shutdown: a plain stop drained for up to upstream's full budget. Clamp only the
-      stop path to a 120 s drain and 180 s hard exit; every restart keeps upstream's.
-      (30 s / 90 s until 2026.10.4, which cut running agent turns at a stop.) From
-      2026.10.6 upstream bounds the stop drain itself (20 s, then cancellation and
-      durable cleanup), so only the hard exit is clamped: upstream's is the whole
-      native budget, about 325 s under a 6 min TimeoutStopSec.
+      Shutdown: a plain stop's hard exit is upstream's whole native budget (about 325 s
+      under a 6 min TimeoutStopSec). Clamp only the stop path's hard exit to 180 s;
+      every restart keeps upstream's. Until 2026.10.6 this also clamped the drain
+      (120 s; 30 s until 2026.10.4, which cut running agent turns at a stop). 10.6
+      bounded the stop drain upstream (20 s), and 2026.11.5 removed the drain:
+      shutdown aborts active work. From 11.5 the clamp sits in runAcceptedRequest's
+      armForceExitTimer, which also bounds the cleanup deadline and the hard-exit
+      watchdog. It applies to requests accepted as a stop; a SIGTERM that lands while
+      a restart is already running finishes under the restart's own timer, as on
+      2026.11.4. The receipt records stopDrainMs null, stopDrainOwner "none" and the
+      clamped line.
     '';
     test = ./test-stop-budget.mjs;
     upstream = null;
-    upstreamStatus = "drain bounded upstream from 2026.10.6 (openclaw/openclaw#171308); the hard exit is still the native budget; not reported";
+    upstreamStatus = "drain bounded upstream from 2026.10.6 (openclaw/openclaw#171308) and removed in 2026.11.5 (stop aborts active work); the stop hard exit is still the native budget (armForceExitTimer(budget.timeoutMs)); not reported";
     removeWhen = "Upstream bounds a stop's hard exit below the native budget (or makes it configurable).";
   };
 
@@ -61,13 +81,19 @@
     fixes = ''
       Cloud workers: the node bootstrap packer assumes the npm layout, so every
       environments.create failed on the Nix gateway ("Unsafe package dist path").
-      Skip the plugin node_modules symlinks it already omits, and copy the launchers
-      and scripts the packer selects from the pinned source.
+      Skip the plugin node_modules symlinks it already omits. Copy the root runtime
+      files it selects from the pinned source: through 2026.11.4, BOOTSTRAP_LAUNCHER_FILES
+      and the scripts/ entries of package.json files; from 2026.11.5 on, every literal
+      files entry under scripts/ or ending in .[cm]?[jt]s (53 files on 11.5).
+
+      Not covered, as before: dist/worker/worker-chunk-*.mjs and
+      sqlite-store.worker.mjs carry a minified copy of collectRelativeFiles that the
+      node bootstrap path does not use (its build chunk imports package-dist-inventory).
     '';
     test = ./test-node-bootstrap-layout.mjs;
     upstream = null;
-    upstreamStatus = "not reported";
-    removeWhen = "Upstream's packer accepts a non-npm install layout.";
+    upstreamStatus = "not reported; still needed on 2026.11.5 (a symlink is rejected before the omission check in collectRelativeFiles)";
+    removeWhen = "Upstream's packer accepts a non-npm install layout, or the Nix gateway installs package.json files at the package root.";
   };
 
   cloudWorkerGatewayUrl = {
@@ -78,7 +104,8 @@
       Cloud workers: node enrollment reuses the phone-pairing URL, so a gateway that
       keeps pairing on a private network leaves workers unable to reach it. Give
       enrollment its own URL (OPENCLAW_CLOUD_WORKER_GATEWAY_URL), with the same
-      validation.
+      validation. From 2026.11.5 the anchors match the bundler's shortened local
+      names.
     '';
     test = ./test-cloud-worker-gateway-url.mjs;
     upstream = null;
@@ -94,6 +121,12 @@
       Cloud workers: skill bundles refuse hardlinked files, and Nix store optimisation
       hardlinks every identical store file, so every worker turn failed. Allow hard
       links only under /nix/store (immutable, world-readable); symlinks stay refused.
+      From 2026.11.5 on the bundle chunk ships minified locals; the patch selects the
+      minified names by release and checks that each binds the same value (symlinks
+      default, safe root, entries loop, rootReal) exactly once.
+
+      Not covered, as before: the copies of readSkillBundleTree in
+      dist/worker/worker-chunk-*.mjs and sqlite-store.worker.mjs.
     '';
     test = ./test-skill-tree-store-hardlinks.mjs;
     upstream = null;
@@ -108,7 +141,13 @@
     fixes = ''
       Cloud workers: one skill description over the protocol's 1024 characters failed
       the whole catalog, so no worker turn ran. Clamp each description when the
-      delivery is built.
+      delivery is built. From 2026.11.5 upstream mangles local names in dist, so the
+      anchors match the builder's shape with any identifiers there; each shape must
+      still occur exactly once.
+
+      Not covered, as before: the copies of prepareSkillResourceDelivery in
+      dist/worker/worker-chunk-*.mjs and sqlite-store.worker.mjs (reached only with
+      librarySelections, whose bundle imports already refuse long descriptions).
     '';
     test = ./test-skill-delivery-description.mjs;
     upstream = null;
@@ -121,17 +160,33 @@
     marker = "openclaw-nix-codex-cyber-access-program-v1";
     since = "2026.10.4";
     fixes = ''
-      Codex: OpenAI retires the gpt-daybreak-blue-latest / -red-latest aliases on
-      2026-10-28 and makes Daybreak a per-request choice, which OpenClaw never sends.
-      turn/start now carries cyberAccessProgram "daybreakBlue" for the agents listed in
-      OPENCLAW_CODEX_DAYBREAK_BLUE_AGENTS and for the cyber-failover retry; the failover
-      default moves to gpt-6-sol, and a plain refusal on that model is retried once with
-      Daybreak. Every other turn omits the field, as upstream does.
+      Codex: OpenAI retired the gpt-daybreak-blue-latest / -red-latest aliases on
+      2026-10-28 and made Daybreak a per-request choice. Through 2026.11.4 OpenClaw
+      never sends it: turn/start carries cyberAccessProgram "daybreakBlue" for the
+      agents listed in OPENCLAW_CODEX_DAYBREAK_BLUE_AGENTS and for the cyber-failover
+      retry, the failover default moves to gpt-6-sol, and a plain refusal on that
+      model is retried once with Daybreak. From 2026.11.5 upstream sends
+      cyberAccessProgram itself and its failover retries the same model with
+      daybreak_blue, so only the per-agent default remains. A listed agent's Access
+      resolves to daybreak_blue where it would be Standard; a session choice, the
+      failover retry and an explicit daybreak_red setting still win. Upstream's own
+      setting (params.accessPrograms on the model or agent) would move the turn off
+      the Codex runtime, because any authored params entry is a request transport
+      override that Codex declares it cannot reproduce.
+
+      Known: on 2026.11.5 a listed agent's native-settings (supervision) turn, which
+      has no runtime plan, also requests daybreak_blue; nothing on nova uses
+      supervision bindings. 11.5 checks the program's entitlement before turn/start.
     '';
     test = ./test-codex-cyber-access-program.mjs;
     upstream = null;
-    upstreamStatus = "not reported";
-    removeWhen = "Upstream sends cyberAccessProgram itself and its failover default leaves the alias.";
+    upstreamStatus = "not reported (worth reporting: hasAuthoredProviderRequestParams should exempt a valid accessPrograms value, as docs/providers/openai/models.md says native Codex accepts it)";
+    removeWhen = ''
+      Upstream lets params.accessPrograms.cyber on a Codex-runtime model keep the Codex
+      harness (accessPrograms no longer counts as an authored request transport
+      override); then set agents.entries.reverser.models."openai/gpt-6-sol".params.accessPrograms.cyber
+      = "daybreak_blue" in alinaos and drop the env var.
+    '';
   };
 
   pluginRuntimeOwnerGeneration = {
@@ -145,10 +200,17 @@
       contained the model provider but not the initiating plugin's llm_input or
       llm_output hooks. Carry only that authenticated owner into the admitted run's
       prepared registry; generation isolation remains authoritative.
+
+      From 2026.11.5 the bundle renames every local binding, so the patch carries a
+      second anchor set for the minified bindings, gated from 2026.11.5. The 11.5
+      bundle also decides the configured-workspace fallback in three places
+      (readPublishedModelRuntimeSnapshot, projectPublishedModelRuntimeOwner,
+      projectNormalizedModelRuntimeOwner). 11.5's new borrowed-generation fast path
+      goes through preparedPluginGenerationSupportsSelections and so needs the owner.
     '';
     test = ./test-plugin-runtime-owner-generation.mjs;
     upstream = "https://github.com/openclaw/openclaw/pull/177903";
-    upstreamStatus = "open";
+    upstreamStatus = "open (2026-11-17); 2026.11.5 does not carry the owner";
     removeWhen = "An OpenClaw release carries the authenticated runtime plugin owner into the run-prepared generation.";
   };
 
@@ -198,12 +260,23 @@
       copies) handed stored values to the SDK unchanged. Its clientInformation() and
       tokens() now read a value without an issuer as absent: a login registers again
       and stores stamped values (OpenClaw's store keeps the SDK's stamp), and a
-      gateway refresh fails with "requires OAuth authorization. Run openclaw mcp login
-      <server>" instead of registering in the background. A fresh access token still
-      goes to its own MCP server until it expires. Servers whose credentials predate
-      the stamp need `openclaw mcp logout <server>` and then `openclaw mcp login
-      <server>` once (login alone returns early while the old access token is
-      unexpired). On nova (2026-10-22) every prod MCP OAuth store is already stamped.
+      gateway refresh fails with `MCP server "<server>" requires OAuth authorization.
+      <sign-in hint>` (before 2026.11.5: "... Run openclaw mcp login <server>")
+      instead of registering in the background. A fresh access token still goes to
+      its own MCP server until it expires. Servers whose credentials predate the stamp
+      need `openclaw mcp logout <server>` and then `openclaw mcp login <server>` once
+      (login alone returns early while the old access token is unexpired); both run
+      only with the gateway stopped, so on a running gateway use the Control UI's
+      Settings, MCP sign-in. On nova (2026-10-22) every prod MCP OAuth store is
+      already stamped.
+
+      From 2026.11.5 the provider calls @modelcontextprotocol/client 2.x auth()
+      (SEP-2352). It also uses an unstamped value: it warns, stamps the value with the
+      issuer it resolved (metadata.issuer, else the AS URL) and refreshes or registers
+      with it. Upstream's new bindTokensIssuer mutation only binds OpenClaw's own
+      tokensAuthorizationServerUrl, and only when discoveryState exists, so this
+      hotfix is still needed. The 11.5 tokens() has a refreshClaim guard before its
+      return, and the patch anchors past it.
     '';
     test = ./test-mcp-oauth-issuer-binding.mjs;
     upstream = null;
@@ -216,49 +289,40 @@
     marker = "openclaw-nix-agent-scoped-compaction-model-v1";
     since = "2026.10.7";
     fixes = ''
-      Compaction and the pre-compaction memory flush read only
-      agents.defaults.compaction[.memoryFlush].model; AgentEntryBaseSchema has no
-      per-agent compaction field at all, so an agent whose primary model is denylisted
-      to one provider (an Abliteration-only agent that must never reach
-      Anthropic/OpenAI/Google) still summarizes and flushes memory through the shared
-      default model. Two call sites also dropped the caller's agentId when they
-      rebuilt a fresh params object for a retry: the embedded-agent-runner's
-      model-fallback retry path (resolveEmbeddedCompactionTarget's second call site,
-      compact-*.mjs and its two worker-pool duplicates) and the memory flush's own
-      model resolution (prepareMemoryFlushAttempt, memory-flush-prepare-*.mjs and its
-      two worker-pool duplicates, sqlite-store.worker.mjs and a
-      worker/worker-chunk-*.mjs), so even a config-level override would not have
-      reached them, and the one that did (sqlite-store.worker.mjs) used the run's bare
-      possibly-undefined agentId instead of the resolveDefaultAgentId(cfg) fallback the
-      rest of that same function already applies. resolveMemoryFlushPlanForRun's own
-      final model line also let a tools-arm plugin plan's own model, or any file-arm
-      plan at all, override every tier unconditionally, so the per-agent override and
-      even the shared default could never reach a flush the file arm or a model-naming
-      plugin owned.
+      Compaction reads only agents.defaults.compaction.model
+      (resolveEmbeddedCompactionTarget); there is no per-agent override. An agent
+      whose primary model is denylisted to one provider (an Abliteration-only agent)
+      therefore still summarizes through the shared default. The compactPrepared
+      model-fallback retry (compact-*.mjs and its sqlite-store.worker.mjs and
+      worker-chunk duplicates) also rebuilds its params without agentId.
 
-      Adds agents.entries.<id>.compaction.model and
-      agents.entries.<id>.compaction.memoryFlush.model (model only; the schema admits
-      no per-agent .enabled) to AgentEntryBaseSchema -- both the shared chunk and the
-      one config-doctor bundle that inlines its own full copy instead of importing it
-      (feishu's) -- and resolves them ahead of the shared default in
-      resolveEmbeddedCompactionTarget and resolveMemoryFlushTiming, and ahead of every
-      tier (shared default and the resolution's own plan) in
-      resolveMemoryFlushPlanForRun's final model line, in every chunk carrying a copy
-      of any of the three; threads agentId, defaulted the same way the rest of each
-      function already defaults it, into every retry/call site that dropped it,
-      including the sqlite-store.worker.mjs and worker-chunk copies of
-      prepareMemoryFlushAttempt. Every target is located by content, not by chunk
-      filename, and must sit in exactly the expected chunks (2026.10.8 re-hashed all
-      eleven with their code unchanged). A locked model selection is unaffected:
-      resolveEmbeddedCompactionTarget already skips every override, default or
-      per-agent, once modelSelectionLocked is set. Other agents' shared defaults, and
-      every plugin-owned or file-arm model when no per-agent override is configured,
-      are read exactly as before.
+      From 2026.11.5 on, the patch adds `model` to upstream's own strict per-agent
+      compaction object, agents.entries.<id>.compaction {maxSummaryChars}, in the
+      AgentEntryBaseSchema copies the gateway and doctor validate with: zod-schema.core,
+      config-doctor/feishu.js and sqlite-store.worker.mjs. A fourth, fully minified
+      copy in dist/worker/worker-chunk-*.mjs is not patched (2026.11.4's equivalent
+      was not either; nova's paths do not validate the config with it). It adds no
+      second key, so maxSummaryChars survives. It resolves the per-agent model ahead
+      of the shared default in every resolveEmbeddedCompactionTarget copy and threads
+      agentId into every retry copy. It does not touch the memory flush: 11.5 retired
+      compaction.memoryFlush.model, flushes use the active session model, and no
+      per-agent memoryFlush is admitted.
+
+      From 2026.10.7 to 2026.11.4 the legacy anchor set also adds and resolves
+      agents.entries.<id>.compaction.memoryFlush.model (resolveMemoryFlushTiming,
+      resolveMemoryFlushPlanForRun's final model line, and prepareMemoryFlushAttempt's
+      agentId).
+
+      Targets are located by content and must sit in exactly the expected chunks. A
+      locked model selection skips every override. The direct-once gate and ChatGPT
+      V2 eligibility still read only the shared default. Known limit on 2026.11.5:
+      buildAfterTurnRuntimeContext passes no agentId, so a context engine's afterTurn
+      resolves the shared default (the built-in legacy engine has no afterTurn).
     '';
     test = ./test-agent-scoped-compaction-model.mjs;
     upstream = null;
-    upstreamStatus = "not reported";
-    removeWhen = "Upstream carries a native per-agent compaction/memory-flush model override through every resolution and retry path.";
+    upstreamStatus = "not reported; 2026.11.5 added a per-agent compaction object (maxSummaryChars) but no per-agent model";
+    removeWhen = "Upstream resolves a per-agent compaction model (agents.entries.<id>.compaction.model or equivalent) in resolveEmbeddedCompactionTarget and carries agentId through the compactPrepared retry.";
   };
 
   # Not a patch: a check on the final tree, rerun after a plugin graft.
@@ -274,13 +338,17 @@
       package: the pnpm store, plugin node_modules under dist/extensions and
       dist-runtime/extensions, and grafted plugins, following module links out of the
       tree. 2026.10.5 ships 1.32.0 (2026.9.x shipped 1.30.0, without the binding).
+      It now also requires every @modelcontextprotocol/client copy to be 2.3.1 or
+      later (the version qualified for 2026.11.5, whose MCP OAuth provider calls it),
+      and fails if a package the tree's package.json depends on, sdk or client, has no
+      copy, so a layout change is caught. 2026.11.5 ships client 2.3.1 and sdk 1.32.1.
       Bundled copies carry no version; the ones OpenClaw's provider calls are checked
       by test-mcp-oauth-issuer-binding.mjs.
     '';
     test = ./test-mcp-sdk-floor.mjs;
     upstream = null;
     upstreamStatus = "not applicable: a floor on a dependency, not an upstream bug";
-    removeWhen = "OpenClaw's lockfile itself requires @modelcontextprotocol/sdk >= 1.31.0 for every package that depends on it; until then raise the floor for a later SDK advisory rather than drop it.";
+    removeWhen = "OpenClaw's lockfile itself requires @modelcontextprotocol/sdk >= 1.31.0 and @modelcontextprotocol/client >= 2.3.1 for every package that depends on them; until then raise the floor for a later SDK advisory rather than drop it.";
   };
 
   spawnTargetOwnedMcp = {
@@ -299,10 +367,18 @@
       `<server>__*` deny is not inherited and they join an inherited allowlist. The
       target agent's own tool policy still applies; everything else is inherited as
       before. Hidden children and visible sessions both.
+
+      From 2026.11.5 upstream's build shortens local names and spawnSubagentDirect
+      first applies a plugin subagent profile into a const ctx; the patch captures the
+      shortened names, makes that binding a let, and never releases a server the
+      profile denies. A rewritten hidden-spawn context keeps the parent's execution
+      identity (upstream keys it on the context object), which the earlier object copy
+      dropped. Not covered, as before: the copies of spawnSubagentDirect and
+      maybeSpawnVisibleSession in dist/worker/ (a spawn from a turn on a cloud worker).
     '';
     test = ./test-spawn-target-owned-mcp.mjs;
     upstream = null;
-    upstreamStatus = "not reported: upstream keeps a child within its requester by design. 2026.10.10 adds an operator grant, agents.entries.<id>.subagents.delegateToolsTo, that waives the requester's own tools.deny for named native targets, but only for deny-only requesters on a Gateway-native surface (an inherited allowlist refuses the spawn), and it waives the whole local deny, not only the target's MCP servers";
+    upstreamStatus = "not reported: upstream keeps a child within its requester by design. 2026.10.10 adds an operator grant, agents.entries.<id>.subagents.delegateToolsTo, that waives the requester's own tools.deny for named native targets, but only for deny-only requesters on a Gateway-native surface (an inherited allowlist refuses the spawn), and it waives the whole local deny, not only the target's MCP servers. 2026.11.5: still inherits ctx.inheritedToolAllowlist/Denylist unchanged (subagent-spawn.ts:247-249, 415-416)";
     removeWhen = "Upstream lets a cross-agent child keep the target agent's own scoped MCP servers (or the host moves to delegateToolsTo and its restrictions fit), or nova stops scoping MCP servers to single agents.";
   };
 }

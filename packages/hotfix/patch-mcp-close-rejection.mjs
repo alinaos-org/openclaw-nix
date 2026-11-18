@@ -40,7 +40,8 @@ for (const name of files) {
     const end = source.indexOf("async function disposeMcpClient(", start);
     assert(start >= 0 && end > start, `MCP lifecycle extraction failed: ${name}`);
     let failures = 0;
-    const slice = source.slice(start, end);
+    let timeoutChecks = 0;
+    let slice = source.slice(start, end);
     // 10.1's worker chunks minify these imported helpers too (`.catch(() => l())`,
     // `t.aborted || de(n)`), so take their local names from the call shape.
     const cleanupName = /\.catch\(\(\)\s*=>\s*([A-Za-z_$][\w$]*)\(\)\)/.exec(slice)?.[1] ?? "recordAgentCleanupFailure";
@@ -48,9 +49,32 @@ for (const name of files) {
     // 10.5 races the connect against its abort signal (racePromiseWithAbortSignal);
     // the fixture never aborts, so the race is the connect itself.
     const raceName = /await\s+([A-Za-z_$][\w$]*)\(\(async\s*\(\)\s*=>/.exec(slice)?.[1];
+    // From 2026.11.5 on the catch block loads the timeout helper lazily:
+    // `const { isMcpRequestTimeoutError: r } = await import("./mcp-error-*.mjs")`
+    // (a worker chunk imports a worker-chunk-*.mjs; the single-file worker inlines
+    // it as `Promise.resolve().then(() => (init_mcp_error(), mcp_error_exports))`).
+    // A vm script cannot import without --experimental-vm-modules, so point that one
+    // load at a stub module in the context. Only this verification copy changes.
+    const lazyTimeoutHelper = /(\{\s*isMcpRequestTimeoutError\s*:\s*[A-Za-z_$][\w$]*\s*\}\s*=\s*await\s+)(?:import\(\s*(["'`])(\.\/[^"'`]+)\2\s*\)|Promise\.resolve\(\)\.then\(\(\)\s*=>\s*\(\s*[A-Za-z_$][\w$]*\(\)\s*,\s*([A-Za-z_$][\w$]*)\s*\)\))/g;
+    const lazyLoads = [...slice.matchAll(lazyTimeoutHelper)];
+    if (atLeast(upstreamVersion, "2026.11.5")) {
+      assert.equal(lazyLoads.length, 1, `expected one lazy MCP timeout helper load in ${name}, found ${lazyLoads.length}`);
+      const [, , , specifier, inlinedExports] = lazyLoads[0];
+      // The stubbed load must be the module that exports the real helper.
+      const target = specifier ? fs.readFileSync(path.join(path.dirname(file), specifier), "utf8") : source;
+      const exportsHelper = specifier
+        ? /export\s*\{[^}]*\bisMcpRequestTimeoutError\b[^}]*\}/.test(target)
+        : new RegExp(`\\b${inlinedExports.replace(/\$/g, "\\$")}\\s*=\\s*(?:\\/\\*[^*]*\\*\\/\\s*)?[\\w$]+\\(\\{[^}]*\\bisMcpRequestTimeoutError\\s*:`).test(target);
+      assert(exportsHelper, `lazy MCP timeout helper load does not reach isMcpRequestTimeoutError: ${name}`);
+      slice = slice.replace(lazyTimeoutHelper, (_match, binding) => `${binding}__openclawNixMcpErrorModule`);
+    } else {
+      assert.equal(lazyLoads.length, 0, `unexpected lazy MCP timeout helper load before 2026.11.5: ${name}`);
+    }
+    const timeoutStub = () => (timeoutChecks++, false);
     const connect = vm.runInNewContext(
       slice + ";connectMcpClient",
-      { AbortSignal, Error, Promise, [cleanupName]: () => failures++, [timeoutName]: () => false,
+      { AbortSignal, Error, Promise, [cleanupName]: () => failures++, [timeoutName]: timeoutStub,
+        __openclawNixMcpErrorModule: { isMcpRequestTimeoutError: timeoutStub },
         ...(raceName ? { [raceName]: (promise) => promise } : {}) },
     );
     const initializationError = new Error("fixture initialization failure");
@@ -67,6 +91,7 @@ for (const name of files) {
     await assert.rejects(connect({ client, transport: {}, timeoutMs: 1000 }),
       (error) => error === initializationError);
     assert.equal(failures, 1, `SDK-discarded cleanup failure must be observed: ${name}`);
+    assert.equal(timeoutChecks, 1, `initialize failure must reach the timeout classification once: ${name}`);
     assert.equal(client.close, close, `original close method must be restored: ${name}`);
     continue;
   }
@@ -99,12 +124,16 @@ const codexFiles = fs.readdirSync(codexDir).filter((name) => /^transport-stdio-.
 if (codexFiles.length !== 1) throw new Error(`expected one Codex transport chunk, found ${codexFiles.length}`);
 const codexFile = path.join(codexDir, codexFiles[0]);
 const codexSource = fs.readFileSync(codexFile, "utf8");
+const codexMarker = "openclaw-codex-stale-registration-v1";
+if (codexSource.includes(codexMarker)) throw new Error(`Codex stale-registration hotfix already applied: ${codexFiles[0]}`);
 const codexAnchor = "\t\tconst child = snapshot.find((row) => row.pid === registration.child.pid);";
 if (codexSource.split(codexAnchor).length !== 2) throw new Error("Codex orphan snapshot anchor changed");
+// The sweep is async and upstream awaits every store.delete; a floating delete
+// would turn a store failure into an unhandled rejection.
 fs.writeFileSync(codexFile, codexSource.replace(codexAnchor, codexAnchor + `
-    /* openclaw-codex-stale-registration-v1 */
+    /* ${codexMarker} */
     if (!child || child.startedAt !== registration.child.startedAt || isDeadProcessState(child.state)) {
-      store.delete(entry.key);
+      await store.delete(entry.key);
       continue;
     }
 `));
@@ -116,7 +145,7 @@ fs.writeFileSync(path.join(root, ".mcp-close-hotfix.json"), JSON.stringify({
   verifiedUpstreamFiles: atLeast(upstreamVersion, "2026.9.5") ? files.slice(0, -1) : [],
   cleanupFailuresRemainObservable: true,
   closeRejectionImplementation: atLeast(upstreamVersion, "2026.9.5") ? "upstream" : "downstream",
-  orphanRegistrationHotfix: "openclaw-codex-stale-registration-v1",
+  orphanRegistrationHotfix: codexMarker,
 }, null, 2) + "\n");
 console.log(atLeast(upstreamVersion, "2026.9.5")
   ? `Verified upstream MCP rejection handling in ${files.length - 1} entries; patched Codex stale-registration cleanup`

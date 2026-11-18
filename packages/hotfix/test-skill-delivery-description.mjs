@@ -17,6 +17,12 @@ const start = text.indexOf("function clampSkillDeliveryDescription(text) {");
 const end = text.indexOf("\n}\n", start);
 assert(start >= 0 && end > start, "clamp helper missing");
 const clamp = vm.runInNewContext(`(${text.slice(start, end + 2)})`);
+// The delivery builder itself must route the description through the clamp.
+assert.equal(
+  [...text.matchAll(/^\t\t\tdescription: clampSkillDeliveryDescription\(\w+\.description\), \/\* openclaw-nix-skill-delivery-description-v1 \*\/$/gm)].length,
+  1,
+  "delivery builder does not call the clamp",
+);
 
 // Validate against the real protocol schema the gateway and worker both check.
 const schemaChunk = /from "\.\/(skill-resources-[^"]+\.mjs)"/.exec(text)?.[1];

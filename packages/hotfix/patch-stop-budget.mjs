@@ -23,6 +23,46 @@ let source = fs.readFileSync(file, "utf8");
 const STOP_DRAIN_MS = 120e3;
 const STOP_HARD_EXIT_MS = 180e3;
 const seconds = (ms) => `${ms / 1e3}e3`;
+// 2026.11.5 deletes resolveGatewayShutdownDrainBudget and the stop drain with it:
+// a committed shutdown records running sessions and aborts them instead of
+// waiting. Every stop now arms its hard exit as armForceExitTimer(budget.timeoutMs),
+// the whole native budget (325 s under prod's 6 min TimeoutStopSec), and restarts
+// use the same timer. Clamp inside that timer, stops only, so every stop arm
+// (pre-refresh safety net and the shutdown deadline, which also bounds cleanup)
+// gets the 180 s hard exit and every restart keeps upstream's deadline. From
+// 11.5 on the run loop ships minified, so the local names are read from the
+// source, not hard-coded.
+if (atLeast(version, "2026.11.5")) {
+  const marker = "openclaw-nix-stop-budget-v1";
+  assert(!source.includes(marker), "stop-budget: already applied");
+  const esc = (name) => name.replace(/\$/g, "\\$");
+  const head = source.match(/const runAcceptedRequest = \(([\w$]+)\) => \{\n\s*const \{ action: ([\w$]+), restartIntent: ([\w$]+) \} = \1;\n/);
+  assert(head, "stop-budget: runAcceptedRequest header moved");
+  const [, , action, intent] = head;
+  const bodyEnd = source.indexOf("const clearForceExitTimer = ", head.index);
+  assert(bodyEnd > head.index, "stop-budget: clearForceExitTimer not found after runAcceptedRequest");
+  const body = source.slice(head.index, bodyEnd);
+  const restartDecls = [...body.matchAll(new RegExp(`\\n\\s*const ([\\w$]+) = ${esc(action)} !== "stop";\\n`, "g"))];
+  assert.equal(restartDecls.length, 1, "stop-budget: isRestart declaration moved");
+  const isRestart = restartDecls[0][1];
+  const timers = [...body.matchAll(new RegExp(`const armForceExitTimer = \\(([\\w$]+)\\) => \\{\\n\\s*(const ([\\w$]+) = ${esc(intent)}\\?\\.requireFreshProcess \\? Math\\.min\\(\\1, 1e4\\) : \\1;)`, "g"))];
+  assert.equal(timers.length, 1, "stop-budget: armForceExitTimer deadline moved");
+  const [, forceExitMs, before, deadlineMs] = timers[0];
+  // The stop path must have no hard exit outside this timer.
+  assert.equal(source.split('"gateway.stop_shutdown_timeout"').length, 2, "stop-budget: a second stop hard exit appeared");
+  assert(body.indexOf('"gateway.stop_shutdown_timeout"') > body.indexOf(before), "stop-budget: the stop hard exit left armForceExitTimer");
+  const after = `const ${deadlineMs} = ${intent}?.requireFreshProcess ? Math.min(${forceExitMs}, 1e4) : !${isRestart} ? Math.min(${forceExitMs}, ${seconds(STOP_HARD_EXIT_MS)}) /* ${marker} */ : ${forceExitMs};`;
+  assert.equal(source.split(before).length, 2, `stop-budget anchor changed: ${before}`);
+  source = source.replace(before, after);
+  fs.writeFileSync(file, source);
+  fs.writeFileSync(path.join(root, ".stop-budget-hotfix.json"), JSON.stringify({
+    id: marker, upstreamVersion: version, patchedFile: candidates[0],
+    stopDrainMs: null, stopDrainOwner: "none", stopHardExitMs: STOP_HARD_EXIT_MS,
+    restartPolicyUnchanged: true, clampedLine: after,
+  }, null, 2) + "\n");
+  console.log(`Applied stop-only ${STOP_HARD_EXIT_MS / 1e3}s hard-exit budget (11.5 has no stop drain; active work is aborted); restart policy unchanged`);
+  process.exit(0);
+}
 const drainClamp = ["drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.max(0, budget.timeoutMs - budget.reserveMs),",
   `drainTimeoutMs: isRestart ? restartDrainTimeoutMs : Math.min(${seconds(STOP_DRAIN_MS)}, Math.max(0, budget.timeoutMs - budget.reserveMs)), /* openclaw-nix-stop-budget-v1 */`];
 // 9.7 derives isRestart from params.action and gives native external restarts
