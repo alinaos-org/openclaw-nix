@@ -34,7 +34,10 @@ trap 'chmod -R u+w "$work"; rm -rf "$work"' EXIT
 cp -r "$src/." "$work/src"
 chmod -R u+w "$work/src"
 
-shell=(nix shell --inputs-from "$repo" nixpkgs#nodejs_24 "path:$upstream#pnpm_$pnpm_major" --command)
+# pnpm from this flake's nixpkgs, not nix-openclaw's: nix-openclaw's pnpm_12 (12.6.0)
+# cannot parse 2026.11.5's lobster patch ("error parsing patch at byte 2109:
+# expected end of hunk"); nixpkgs' 12.9.0 and the gateway build's pnpm 11 apply it.
+shell=(nix shell --inputs-from "$repo" nixpkgs#nodejs_24 "nixpkgs#pnpm_$pnpm_major" --command)
 "${shell[@]}" bash -c "cd '$work/src' && PNPM_CONFIG_MANAGE_PACKAGE_MANAGER_VERSIONS=false pnpm install --frozen-lockfile --ignore-scripts"
 mkdir -p "$(dirname "$out")"
 "${shell[@]}" bash -c "cd '$work/src' && PNPM_CONFIG_MANAGE_PACKAGE_MANAGER_VERSIONS=false OPENCLAW_SCHEMA_REV='$rev' pnpm exec tsx '$upstream/nix/scripts/generate-config-options.ts' --repo . --out '$out'"
