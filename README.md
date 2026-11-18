@@ -183,10 +183,14 @@ For the host, beside the instances:
   drift. Once every workspace has its full set, `skipBootstrap = true` stops the
   gateway from seeding its own.
 - **Heartbeat checklists.** Since 9.x a heartbeat reads its cron job's scratch, not
-  `HEARTBEAT.md`. With `heartbeatChecklists.enable`, a user unit writes each ticking
-  heartbeat's Nix `HEARTBEAT.md` into its scratch after every gateway start. A
-  replaced scratch is kept under `~/.local/share/openclaw/retired-heartbeat-scratch`.
-  `heartbeatChecklists.tool`'s `check <instance>` prints drift for a health report.
+  `HEARTBEAT.md`; 2026.11.5's doctor turns each heartbeat into an ordinary automation
+  (`heartbeat-<agent>`, agentTurn with `skipIfScratchEmpty`) that keeps reading it.
+  With `heartbeatChecklists.enable`, a user unit writes each ticking heartbeat's Nix
+  `HEARTBEAT.md` into its scratch after every gateway start. A replaced scratch is
+  kept under `~/.local/share/openclaw/retired-heartbeat-scratch`.
+  `heartbeatChecklists.tool`'s `check <instance>` prints drift for a health report,
+  and, for an instance in `heartbeatChecklists.ticking`, every check that ticks
+  against that declaration or is declared and does not tick.
 - **Nightly UI sync.** With `uiSync = {enable; repo; sourceFile;}`, each `uiOverlay`
   instance's Control UI edits become a commit on the branch `<name>-ui-sync` of the
   host's checkout every night. It never pushes, merges or activates. Merge the branch,
@@ -200,7 +204,8 @@ For the host, beside the instances:
 - an agent turn against a stub model provider;
 - the restore command;
 - the workspace files and the retirement of `TOOLS.md`;
-- the heartbeat checklist sync;
+- the heartbeat checklist sync, on a job of the shape 2026.11.5's doctor converts a
+  heartbeat to, and the declared ticking set;
 - a Control UI edit folded into a commit.
 
 `lib.mkWorkstationModule {optionPath = [...];}` puts the options at another path, for a

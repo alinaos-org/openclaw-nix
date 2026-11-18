@@ -1,7 +1,7 @@
 # Heartbeat checklists, Nix-managed.
 #
 # Until a 9.x release OpenClaw read an agent's heartbeat checklist from
-# <workspace>/HEARTBEAT.md. It now reads the scratch of the agent's heartbeat
+# <workspace>/HEARTBEAT.md. It then read the scratch of the agent's heartbeat
 # cron job (doctor copied each file in once), so a HEARTBEAT.md that agentFiles
 # delivers steers nothing on its own, and editing one changes nothing. This
 # module puts the files back in charge: the checklist of a heartbeat is the Nix
@@ -10,17 +10,33 @@
 # into the scratch of each heartbeat that ticks there; `tool`'s check mode
 # reports drift in between.
 #
-# What the scratch does since 2026.10.1 (src/infra/heartbeat-runner-prompt.ts):
+# 2026.11.5 retired heartbeats. Its doctor converts each heartbeat job into an
+# ordinary automation (payload agentTurn with skipIfScratchEmpty, no
+# declarationKey) that keeps the job's id, schedule, enabled state and name
+# heartbeat-<agent>, and creates a "Proactive check (<agent>)" for an agent that
+# only had a HEARTBEAT.md. Those jobs, and 2026.11.4's heartbeat jobs (a
+# gateway that has not migrated yet), are the heartbeats here
+# (decide.jq's proactiveCheck).
+#
+# What the scratch does on 2026.11.5 (src/cron/scratch-contract.ts,
+# src/cron/session-run.ts):
 # - A scheduled tick appends it to the prompt. Comments, headers and blank
-#   lines only: the tick is skipped before any model call
-#   (empty-heartbeat-file). No scratch at all: the generic heartbeat prompt
-#   runs, a model turn every tick.
-# - A wake (system, cron or exec event) never shows it, but the agent may
-#   replace it through heartbeat_respond. On a disabled heartbeat it is only
-#   the agent's notes, so it is left alone. On a ticking one a rewrite changes
-#   what every tick runs and bills, so the next sync puts the Nix file back and
-#   keeps the replaced text under
+#   lines only: the tick is skipped before any model call ("Automation scratch
+#   is explicitly empty"), unless it carries pending session notices. No
+#   scratch at all: the job's proactive prompt runs, a model turn every tick.
+#   There is no no-route skip: a tick runs whether or not its delivery has a
+#   route. (2026.10.1 to 2026.11.4: the same, skipped as empty-heartbeat-file,
+#   and a heartbeat with no route skipped too.)
+# - The running automation may rewrite it (the cron tool's scratch_set; through
+#   2026.11.4, heartbeat_respond), and so may an operator. On a disabled job it
+#   is only notes, so it is left alone. On a ticking one a rewrite changes what
+#   every tick runs and bills, so the next sync puts the Nix file back and keeps
+#   the replaced text under
 #   ~/.local/share/openclaw/retired-heartbeat-scratch/<date>/.
+#
+# `ticking.<instance>` declares which agents' checks may tick there; sync logs
+# and check prints a ticking check Nix declares off and a declared one with
+# none ticking. Nothing here creates, enables or disables a job.
 {optionPath}: {
   config,
   lib,
@@ -53,6 +69,8 @@
       cfg.workspaces)}
   '';
   decide = ./heartbeat-checklists/decide.jq;
+  # {instance: [agent ids]}, for the instances that declare a ticking set.
+  tickingJson = pkgs.writeText "openclaw-heartbeat-ticking.json" (builtins.toJSON cfg.ticking);
   tests = pkgs.runCommand "openclaw-heartbeat-checklists-tests" {nativeBuildInputs = [pkgs.jq];} ''
     bash ${./heartbeat-checklists/test.sh} ${./heartbeat-checklists}
     touch "$out"
@@ -138,18 +156,25 @@
       offset=0
       while :; do
         page=$(rpc cron.list "$(jq -cn --argjson o "$offset" '{includeDisabled: true, limit: 200, offset: $o}')")
-        more=$(jq -c '[(.jobs // [])[] | select(.payload.kind == "heartbeat") | {id, agentId, enabled, schedule, payload: {kind: .payload.kind}}]' <<<"$page")
+        more=$(jq -c --arg phase page --arg inst "$inst" -f ${decide} <<<"$page")
         jobs=$(jq -c --argjson more "$more" '. + $more' <<<"$jobs")
         [ "$(jq -r '.hasMore // false' <<<"$page")" = true ] || break
         offset=$(jq -r '.nextOffset' <<<"$page")
       done
       agents=null
       scratch='{}'
+      declared=$(jq -c --arg i "$inst" '.[$i] // null' ${tickingJson})
       decide() {
-        printf '{"cron":%s,"jobs":%s,"agents":%s,"scratch":%s,"checklists":%s}' \
-          "$cron" "$jobs" "$agents" "$scratch" "$(cat ${checklistsJson})" \
+        printf '{"cron":%s,"jobs":%s,"agents":%s,"scratch":%s,"checklists":%s,"declared":%s}' \
+          "$cron" "$jobs" "$agents" "$scratch" "$(cat ${checklistsJson})" "$declared" \
           | jq -c --arg phase "$1" --arg inst "$inst" -f ${decide}
       }
+
+      # The ticking set against the one Nix declares: reported, never changed.
+      undeclared=$(decide declared | jq -r '.[]')
+      if [ -n "$undeclared" ]; then
+        if [ "$mode" = check ]; then printf '%s\n' "$undeclared"; else printf '%s\n' "$undeclared" >&2; fi
+      fi
 
       mapfile -t ticking < <(decide ticking | jq -r '.[]')
       if [ "''${#ticking[@]}" -eq 0 ]; then
@@ -225,6 +250,20 @@ in {
         heartbeat's checklist is the one declared for its agent's workspace, as
         the gateway's agents.list resolves it. Includes every agentFiles
         workspace that declares a HEARTBEAT.md.
+      '';
+    };
+
+    ticking = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+      default = {};
+      example = lib.literalExpression ''{ prod = []; merlin = ["main-work" "coder-work"]; }'';
+      description = ''
+        Per instance, the agents whose heartbeat (from 2026.11.5 a proactive
+        check, the job doctor converts it into) may tick there. With the
+        scheduler on, sync logs and `check` prints a ticking check of an agent
+        not listed ("declares it off") and a listed agent with none ticking. An
+        instance not listed is not checked. Nothing is created, enabled or
+        disabled.
       '';
     };
 
