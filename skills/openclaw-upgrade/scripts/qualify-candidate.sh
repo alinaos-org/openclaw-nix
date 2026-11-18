@@ -7,8 +7,8 @@
 # Per instance: snapshot the live state (SQLite online backup of every *.sqlite, plain
 # copies of the rest, caches and old backups skipped) and copies of the workspaces the
 # config names outside it -> SQLite schema, row and cron census -> optional
-# QUAL_PRE_DOCTOR hook -> candidate `doctor --fix` on the copy (home read-only, only
-# $QUAL_DIR writable, under 900 s) -> census again -> a second doctor pass, as the next
+# QUAL_PRE_DOCTOR hook -> candidate `doctor --fix` on the copy (a Landlock write fence:
+# only $QUAL_DIR and /dev/null writable; under 900 s) -> census again -> a second doctor pass, as the next
 # upgrade would run it -> candidate opens the migrated copy -> the working copy, its
 # workspaces and scratch home are deleted.
 #
@@ -56,6 +56,16 @@ case "$CAND" in
   *) echo "refusing: candidate must be a built store path, not a checkout: $CAND" >&2; exit 65 ;;
 esac
 command -v jq >/dev/null || { echo "jq is required (workspace copies)" >&2; exit 69; }
+# The candidate runs under a Landlock write fence (setpriv, util-linux 2.40+), not a
+# systemd mount sandbox: in the user manager any mount property (ProtectHome,
+# ReadWritePaths, PrivateTmp) implies PrivateUsers, and inside that user namespace / and
+# /home are owned by nobody. 2026.11.5's SQLite staging refuses such ancestors ("must not
+# allow another user to replace its child"). Landlock leaves ownership as it is and
+# denies every write outside $Q. No fallback: without the fence the candidate does not run.
+setpriv_bin=$(command -v setpriv || true)
+if [ -z "$setpriv_bin" ] || ! "$setpriv_bin" --help 2>/dev/null | grep -q -- --landlock-access; then
+  echo "setpriv with Landlock support (util-linux 2.40 or later) is required" >&2; exit 69
+fi
 doctor_limit=${QUAL_DOCTOR_LIMIT:-900}
 # A fenced secondary binary (rescue's) refuses to run against the default state, so
 # probe the version with a scratch state; never let the probe end the script silently.
@@ -65,6 +75,38 @@ cand_version=$(OPENCLAW_STATE_DIR="$probe" OPENCLAW_CONFIG_PATH="$probe/openclaw
 rmdir "$probe" 2>/dev/null || true
 Q=${QUAL_DIR:-$scratch_root/qual-${cand_version:-candidate}-$(date +%Y%m%d)}
 mkdir -p "$Q"
+Q=$(readlink -f "$Q")
+
+# fenced <NAME=value>... -- <command>...: run in a transient user unit (a cgroup with
+# MemoryMax; no namespaces) under a Landlock fence that denies every write, create,
+# rename, delete and truncate outside $Q. Reads stay open, as with ProtectHome=read-only.
+fence_rights="write-file,remove-dir,remove-file,make-char,make-dir,make-reg,make-sock,make-fifo,make-block,make-sym,refer,truncate"
+fence_args=(--landlock-access "fs:$fence_rights")
+IFS=, read -ra fence_list <<<"$fence_rights"
+for right in "${fence_list[@]}"; do fence_args+=(--landlock-rule "path-beneath:$right:$Q"); done
+fence_args+=(--landlock-rule path-beneath:write-file:/dev/null)
+fenced() {
+  local props=(--user --pipe --wait --quiet --collect -p MemoryMax=6G)
+  while [ "$1" != -- ]; do props+=(-E "$1"); shift; done
+  shift
+  systemd-run "${props[@]}" "$setpriv_bin" "${fence_args[@]}" -- "$@"
+}
+# Prove the fence before trusting it: a write beside $Q must fail, one inside must work.
+fence_probe="$(dirname "$Q")/.qual-fence-probe-$$"
+if fenced -- mkdir "$fence_probe" 2>/dev/null; then
+  rmdir "$fence_probe"
+  echo "refusing: the Landlock fence did not stop a write outside $Q" >&2; exit 70
+fi
+if ! fenced -- mkdir "$Q/.fence-probe-$$" || ! rmdir "$Q/.fence-probe-$$"; then
+  echo "refusing: the Landlock fence blocked a write inside $Q" >&2; exit 70
+fi
+# Ancestors as the candidate sees them: 2026.11.5's staging check accepts only the
+# current user or root, and group/world-writable ones only when sticky.
+fenced -- stat -c '%U %a %n' / "$(dirname "$Q")" > "$Q/fence-ancestors.txt" 2>&1 || true
+if grep -q '^nobody ' "$Q/fence-ancestors.txt"; then
+  echo "refusing: the fenced unit sees a user namespace (nobody-owned ancestors):" >&2
+  cat "$Q/fence-ancestors.txt" >&2; exit 70
+fi
 echo "candidate: $CAND (${cand_version:-unknown}); output: $Q"
 
 census() { # census <state-dir> -> JSON {db: {user_version, rows}}
@@ -139,14 +181,19 @@ PY
 # copy of them makes doctor refuse with "An agent database is in use".
 snapshot() {
   python3 - "$1" "$2" <<'PY'
-import os, pathlib, shutil, sqlite3, sys
+import os, pathlib, shutil, sqlite3, stat, sys
 src, dst = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+# Directory and database modes follow the live state: mkdir and sqlite3.connect create
+# them with the umask's 0755/0644, and 2026.11.5 refuses a client/ that is not 0700
+# ("Client credential directory is unsafe"). Directories get theirs after the walk.
+dir_modes = []
 skip_top = {"backups", "tmp", "runtime-plugins", "media", "logs", "cache", "quarantine", "browser", "locks"}
 for root, dirs, files in os.walk(src):
     rel = pathlib.Path(root).relative_to(src)
     if not rel.parts:
         dirs[:] = [d for d in dirs if d not in skip_top]
     (dst / rel).mkdir(parents=True, exist_ok=True)
+    dir_modes.append((dst / rel, stat.S_IMODE(os.stat(root).st_mode) | stat.S_IRWXU))
     for name in files:
         s, d = pathlib.Path(root) / name, dst / rel / name
         if s.is_symlink() or name.endswith((".sqlite-wal", ".sqlite-shm")) \
@@ -164,8 +211,11 @@ for root, dirs, files in os.walk(src):
                 copy.execute(f'delete from "{table}"')
             copy.commit()
             copy.close(); live.close()
+            os.chmod(d, stat.S_IMODE(os.stat(s).st_mode))
         else:
             shutil.copy2(s, d)
+for d, mode in reversed(dir_modes):
+    os.chmod(d, mode)
 PY
 }
 
@@ -173,6 +223,7 @@ for inst in "$@"; do
   I="$Q/$inst"
   if [ -e "$I" ]; then mv "$I" "$I.prev-$(date +%H%M%S)"; fi
   mkdir -p "$I/home"
+  install -d -m 0700 "$I/tmp"
   # shellcheck disable=SC2059
   live=$(printf "$state_pattern" "$inst")
   [ -f "$live/$config_name" ] || { echo "FAIL $inst: no $config_name in $live (OPENCLAW_UPGRADE_STATE_DIR_PATTERN)"; continue; }
@@ -236,9 +287,9 @@ for inst in "$@"; do
       continue
     fi
   fi
-  # Workspaces outside the state dir are agent files under a read-only home: doctor
-  # writes there (2026.11.5 renames HEARTBEAT.md to claim it, then removes it), and the
-  # sandbox fails that with EROFS. Copy each, as prepare-config does on a real start,
+  # Workspaces outside the state dir are agent files outside the fence: doctor writes
+  # there (2026.11.5 renames HEARTBEAT.md to claim it, then removes it), and the fence
+  # refuses that (EACCES; EROFS under the old ProtectHome sandbox). Copy each, as prepare-config does on a real start,
   # and point the config at the copy with the same walk.
   printf '{}' > "$I/workspace-map.json"
   ws_n=0
@@ -284,9 +335,8 @@ for inst in "$@"; do
     local start
     rc=0
     start=$(date +%s)
-    systemd-run --user --pipe --wait --quiet --collect -p ProtectHome=read-only -p "ReadWritePaths=$Q" \
-      -p MemoryMax=6G -E OPENCLAW_NIX_MODE=0 -E "OPENCLAW_STATE_DIR=$ST" -E "OPENCLAW_CONFIG_PATH=$I/doctor-config.json" \
-      -E HOME="$I/home" \
+    fenced OPENCLAW_NIX_MODE=0 "OPENCLAW_STATE_DIR=$ST" "OPENCLAW_CONFIG_PATH=$I/doctor-config.json" \
+      "HOME=$I/home" "TMPDIR=$I/tmp" -- \
       timeout "$doctor_limit" "$CAND" doctor --fix --non-interactive > "$1" 2>&1 || rc=$?
     secs=$(( $(date +%s) - start ))
     # Exit 1 whose only errors are plugin dependencies missing from the copy is the
@@ -325,9 +375,8 @@ for inst in "$@"; do
 
   echo "== $inst: candidate opens the migrated copy"
   arc=0
-  systemd-run --user --pipe --wait --quiet --collect -p ProtectHome=read-only -p "ReadWritePaths=$Q" \
-    -p MemoryMax=6G -E OPENCLAW_NIX_MODE=1 -E "OPENCLAW_STATE_DIR=$ST" -E "OPENCLAW_CONFIG_PATH=$I/doctor-config.json" \
-    -E HOME="$I/home" \
+  fenced OPENCLAW_NIX_MODE=1 "OPENCLAW_STATE_DIR=$ST" "OPENCLAW_CONFIG_PATH=$I/doctor-config.json" \
+    "HOME=$I/home" "TMPDIR=$I/tmp" -- \
     timeout 300 "$CAND" agents list --json > "$I/admission.log" 2>&1 || arc=$?
   echo "   admission rc=$arc"
 
@@ -470,5 +519,5 @@ json.dump({"inst": inst, "ok": ok, "schema_changes": changed, "lost": lost, "tri
 PY
   # Copied plugin sets keep the store's read-only modes; rm needs them writable.
   chmod -R u+w "$I/state/$(basename "$live")/runtime-plugins" 2>/dev/null || true
-  [ "${QUAL_KEEP:-0}" = 1 ] || rm -rf "${I:?}/state" "${I:?}/home" "${I:?}/workspaces"
+  [ "${QUAL_KEEP:-0}" = 1 ] || rm -rf "${I:?}/state" "${I:?}/home" "${I:?}/workspaces" "${I:?}/tmp"
 done

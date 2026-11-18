@@ -50,12 +50,29 @@ live state (SQLite online backup of every database, read-only with a busy timeou
 running gateway is fine; caches, logs, media, old backups, runtime-plugin trees, WAL and
 lock files skipped) and copies the workspaces its config names outside the state dir,
 records schema versions, row counts and a cron census, runs the candidate's
-`doctor --fix` on the copy in a `ProtectHome=read-only` scope, counts again, runs a
+`doctor --fix` on the copy under a Landlock write fence, counts again, runs a
 second doctor pass, and has the candidate open the migrated copy. PASS needs both
 doctor passes and admission to exit 0 within the time limit, no lost records, no
 unreadable database and a clean cron census. Never run the candidate against live
 state.
 
+- The candidate runs under a Landlock write fence (`setpriv --landlock-access`, in a
+  `systemd-run --user` unit that sets only `MemoryMax`): every write, create, rename,
+  delete and truncate outside the qualification directory is denied, reads stay open.
+  It used to be `ProtectHome=read-only` with `ReadWritePaths`, but in the user manager
+  any mount property implies `PrivateUsers`, and inside that user namespace `/` and
+  `/home` belong to nobody (check:
+  `systemd-run --user --pipe --wait -p ProtectHome=read-only stat -c '%n %U' / /home`).
+  2026.11.5's SQLite staging accepts only ancestors owned by the user or root ("SQLite
+  staging ancestor must not allow another user to replace its child: /tmp"), and has no
+  switch to relax it, so on 2026-11-18 doctor failed on every copy of already-migrated
+  11.5 state, the live binary included. The script proves the fence before each run
+  (a write beside the directory must fail, one inside must work, no nobody-owned
+  ancestor) and refuses to run the candidate without it.
+- The snapshot keeps each directory's and database's mode. Created with the umask, the
+  copy's `client/` was 0755 where the live one is 0700, and 2026.11.5 refuses it
+  ("Client credential directory is unsafe"). The 11.4 to 11.5 qualification passed
+  only because 11.4 state had no `client/` yet.
 - The copy drops every `*lease*` table's rows: they name the live gateway, which is
   alive, so doctor would refuse with "An agent database is in use".
 - Only records may not shrink. Doctor drops derived caches (cached
@@ -73,8 +90,8 @@ state.
 - Doctor rewrites the copy's config (`doctor-config.json` against `.before.json`): that
   diff is what it would propose on the live gateway.
 - Workspaces are copied (`workspaces/<n>`, without `.git`, `node_modules` and `media`)
-  and the config pointed at the copies, as prepare-config does. Workspaces under a
-  read-only home made 2026.11.5's doctor fail with EROFS when it claimed `HEARTBEAT.md`
+  and the config pointed at the copies, as prepare-config does. Workspaces outside the
+  writable copy made 2026.11.5's doctor fail (EROFS then) when it claimed `HEARTBEAT.md`
   (a rename), a false FAIL that also hid the heartbeat migration.
 - `QUAL_PRE_DOCTOR=<cmd>` runs `<cmd> <instance> <instance dir> <state copy>` just
   before the doctor. Use it to put into the copy what the activation will deploy and
