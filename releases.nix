@@ -15,6 +15,17 @@
     buildTimestamp = "2026-11-17T03:12:30Z";
     pnpmBootstrapVersion = "12.15.0";
     tsdownHeapMb = "6144";
+    # The macOS fs-safe natives the worker bundle embeds (packages/gateway/default.nix).
+    workerNativeAssets = {
+      darwin-arm64 = {
+        version = "0.26.13";
+        integrity = "sha512-R3mXijsyLrFVRiLjNlpEcmN9SZWMVd7keZWtVngGp19C56lHm/ye5/UJV2rICe5xsuxXM6q0iGKXkcQdUc9uKA==";
+      };
+      darwin-x64 = {
+        version = "0.26.13";
+        integrity = "sha512-s0ZKDbVIQCjUpgwxA3RMmt7UTyGQcWmkicxC7DdOq/hqLwzCRx74nb0zDrbuBHZCW9y6lF6PeqPfppPtwXqjDg==";
+      };
+    };
     # The session icon picker patch does not apply to this release: it builds
     # with OpenClaw's own picker until the patch is re-ported (README,
     # "Session icons"). The re-port deletes these lines.
