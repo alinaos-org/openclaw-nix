@@ -70,13 +70,6 @@ in
         ${node} ${./patch-plugin-runtime-owner-generation.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-plugin-runtime-owner-generation.mjs} "${root}"
 
-        # Claude CLI runs: for the agents in OPENCLAW_CLAUDE_DEFERRED_LOOPBACK_AGENTS,
-        # build the loopback MCP server entry without alwaysLoad and (from 2026.10.7)
-        # keep Claude Code's ToolSearch in the run's native tools, so Claude Code
-        # defers their OpenClaw tools behind it.
-        ${node} ${./patch-claude-deferred-loopback-tools.mjs} "${root}" "${upstreamVersion}"
-        ${node} ${./test-claude-deferred-loopback-tools.mjs} "${root}"
-
         # Configured plugins: never download a configured plugin that Nix does not
         # provide (doctor --fix, update, model selection); report it instead.
         # OPENCLAW_NIX_ALLOW_RUNTIME_PLUGIN_INSTALL=1 restores upstream's installs.
@@ -103,19 +96,6 @@ in
         # losing them to the requester's inherited deny and allowlist.
         ${node} ${./patch-spawn-target-owned-mcp.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-spawn-target-owned-mcp.mjs} "${root}"
-
-        # Claude CLI transcripts: look for them in $CLAUDE_CONFIG_DIR/projects when the
-        # gateway runs Claude with its own config dir, not only in ~/.claude/projects, so
-        # a session's transcript is found and a changed live process resumes from it.
-        ${node} ${./patch-claude-cli-config-dir.mjs} "${root}" "${upstreamVersion}"
-        ${node} ${./test-claude-cli-config-dir.mjs} "${root}"
-
-        # heartbeat_respond: every heartbeat run accepts it, whatever
-        # messages.[groupChat.]visibleReplies says (the source reply mode still follows
-        # that setting), an isolated run also gets the tool prompt, and an isolated run's
-        # Claude CLI turn gets the tool and returns its result.
-        ${node} ${./patch-heartbeat-respond-run.mjs} "${root}" "${upstreamVersion}"
-        ${node} ${./test-heartbeat-respond-run.mjs} "${root}"
       '';
       passthru =
         (gateway.passthru or {})
@@ -131,11 +111,8 @@ in
             pluginRuntimeOwnerGeneration = "openclaw-nix-plugin-runtime-owner-generation-v1";
             missingPluginAutoInstall = "openclaw-nix-missing-plugin-auto-install-v1";
             mcpOAuthIssuerBinding = "openclaw-nix-mcp-oauth-issuer-binding-v1";
-            claudeDeferredLoopbackTools = "openclaw-nix-claude-deferred-loopback-tools-v2";
             agentScopedCompactionModel = "openclaw-nix-agent-scoped-compaction-model-v1";
             spawnTargetOwnedMcp = "openclaw-nix-spawn-target-owned-mcp-v1";
-            claudeCliConfigDir = "openclaw-nix-claude-cli-config-dir-v1";
-            heartbeatRespondRun = "openclaw-nix-heartbeat-respond-run-v1";
           };
           # Layers that change dist/extensions afterwards (a plugin graft)
           # rerun these on their final tree.
@@ -149,11 +126,8 @@ in
             missingPluginAutoInstall = ./test-missing-plugin-auto-install.mjs;
             mcpOAuthIssuerBinding = ./test-mcp-oauth-issuer-binding.mjs;
             mcpSdkFloor = ./test-mcp-sdk-floor.mjs;
-            claudeDeferredLoopbackTools = ./test-claude-deferred-loopback-tools.mjs;
             agentScopedCompactionModel = agentScopedCompactionTest;
             spawnTargetOwnedMcp = ./test-spawn-target-owned-mcp.mjs;
-            claudeCliConfigDir = ./test-claude-cli-config-dir.mjs;
-            heartbeatRespondRun = ./test-heartbeat-respond-run.mjs;
           };
           # What each patch fixes, its test, upstream status and removal condition.
           hotfixRegister = import ./register.nix;
