@@ -122,8 +122,12 @@ it, each failing the build when a release moves the code it changes:
   file names are content-hashed (`targets-D2B3dd7O.mjs`), so each release moves the code
   they target. Each patch checks the exact text it replaces, found exactly once, in the
   chunk it expects; worker copies are found by content, and sandboxed checks take
-  minified helper names from the call shape. Gates read "from release X on" (`atLeast`),
-  so a new release needs no version edit and inherits every patch.
+  minified helper names from the call shape. From 2026.11.5 the bundler mangles local
+  names too (tsdown `keepNames`, `toplevel: false`), so an anchor on a local variable
+  holds for one build only: match the code's shape with any identifier, or carry a
+  release-gated set of the minified names, and still require each exactly once. Gates
+  read "from release X on" (`atLeast`), so a new release needs no version edit and
+  inherits every patch.
 - **Own source patches** (`ownSourcePatches` in `packages/gateway`, such as the session
   icon picker): applied to the source at `--fuzz=0` before the compile, so a release that
   rewrites their context fails release-watch's build. Re-port the patch at
@@ -208,3 +212,32 @@ one would only show at gateway start.
   overlay stages links (the asset reader skips links), and the reader rejects hard
   links, which Nix store optimisation creates for every identical file. Fixed by two
   build repairs and the seventh hotfix, `patch-control-ui-store-hardlinks.mjs`.
+- 2026.11.5 (2026-11-17) re-ported eleven hotfixes and dropped three, and changed more
+  around the build than any release since 2026.10.1:
+  - The dist bundle mangles local names (above), so nearly every anchor on a local
+    variable failed. Most re-ports match shapes; the plugin runtime owner and skill-tree
+    patches carry release-gated minified names.
+  - Shutdown has no stop drain: a stop aborts active work. The stop-budget hotfix now
+    clamps only the hard exit, in `runAcceptedRequest`'s `armForceExitTimer`
+    ([restart hazards](lessons.md#restart-hazards)).
+  - Heartbeats are retired. `agents.*.heartbeat` and channel `heartbeatVisibility` fail
+    the strict schema and `config validate`, and the heartbeat runner and
+    `heartbeat_respond` are gone. Doctor (`retireHeartbeatWithDoctor`, reached only from
+    `doctor --fix`) converts each heartbeat cron row in place into an ordinary agentTurn
+    automation (same id, name `heartbeat-<agent>`, schedule and anchor;
+    `skipIfScratchEmpty`, no declarationKey), maps the heartbeat config into the job, and
+    imports workspace `HEARTBEAT.md` files into scratch. It reads the old render, so the
+    host removes the keys in the same activation that moves the release. Dropped with
+    it: `heartbeatRespondRun`; also dropped, fixed upstream: the Claude loopback
+    deferral (upstream defers by default) and Claude CLI transcripts under
+    `CLAUDE_CONFIG_DIR`. Qualification needs workspace copies and a cron census
+    ([qualifying on copies](lessons.md#qualifying-on-copies)).
+  - The worker bundle embeds `@openclaw/fs-safe`'s macOS natives, and tsdown's
+    `openclaw:worker-deploy` plugin downloaded each tarball from npm, which the sandbox
+    cannot reach. They are pinned per release (`releases.nix` `workerNativeAssets`,
+    written by `new-release.py` from the lock) and seeded from fixed-output fetches.
+  - `generate-config-options` uses nixpkgs' pnpm: nix-openclaw's pnpm 12.6.0 could not
+    parse 2026.11.5's lobster patch.
+  - Board widgets registered as their own content kind (`registerBoardWidgetContentKind`)
+    are gone: doctor turns a pinned one into an inert "Retired widget" preview, and a
+    plugin calling the API without a feature check fails registration.
