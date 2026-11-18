@@ -339,7 +339,7 @@ total_a = sum(sum(v.get("rows", {}).values()) for v in a.values())
 # receipt per agent; a failed conversion leaves heartbeat rows or pending receipts.
 cb, ca = json.load(open(f"{I}/cron-before.json")), json.load(open(f"{I}/cron-after.json"))
 c2 = json.load(open(f"{I}/cron-after2.json")) if second else {}
-cron = []
+cron, warn = [], []
 for label, c in (("after", ca), ("second pass", c2)) if second else (("after", ca),):
     if c.get("error"): cron.append(f"{label}: cron census failed: {c['error']}")
     left = [j for j, r in c.get("heartbeats", {}).items() if r["kind"] == "heartbeat"]
@@ -359,20 +359,33 @@ if second:
             cron.append(f"second pass changed heartbeat-derived row {j} ({r['name']})")
     for j in set(c2.get("heartbeats", {})) - set(ca.get("heartbeats", {})):
         cron.append(f"second pass created {j} ({c2['heartbeats'][j]['name']})")
-# Doctor's own refusals and partial migrations, in either pass.
+# Doctor's own refusals and partial migrations, in either pass. Doctor wraps its notes
+# in boxes, so match against the text with the box drawing and line breaks folded away.
+def flat(text): return " ".join(re.sub(r"[\u2500-\u257f\u25c6\u25c7]", " ", text).split())
 refusals = ("Default cron partition selection is unresolved",
             "Legacy heartbeat state must become ordinary editable automations",
             "is running; stop the Gateway", "belongs to unconfigured agent",
-            "Multiple legacy monitors", "was not migrated", "was not finalized",
+            "Multiple legacy monitors", "was not finalized",
             "Rerun doctor to retry safely")
-logs = {"doctor.log": log}
+# "<what> was not migrated" is a refusal, except an automation's inference account:
+# 2026.11.5 keeps an ambient-credential route and asks to adopt a stored account
+# (a warning; the job still converts).
+not_migrated = re.compile(r"(?<!inference account) was not migrated")
+logs = {"doctor.log": flat(log)}
 if second and os.path.exists(f"{I}/doctor2.log"):
-    logs["doctor2.log"] = open(f"{I}/doctor2.log", errors="replace").read()
+    logs["doctor2.log"] = flat(open(f"{I}/doctor2.log", errors="replace").read())
 for name, text in logs.items():
     for r in refusals:
         if r in text: cron.append(f"{name}: {r!r}")
-if any(r["kind"] == "heartbeat" for r in cb.get("heartbeats", {}).values()) \
-        and "Retired heartbeat configuration after ordinary automation data was verified." not in log:
+    if not_migrated.search(text): cron.append(f"{name}: 'was not migrated'")
+    for m in re.finditer(r"Automation \S+ \(([0-9a-f-]{36})\): inference account was not migrated", text):
+        warn.append(f"{name}: automation {m.group(1)} keeps an ambient credential (adopt a stored account)")
+# The retirement note only appears when the config Doctor read still had heartbeat keys
+# (an instance with heartbeat rows but no heartbeat config converts them silently).
+cfg_had_heartbeat = '"heartbeat"' in open(f"{I}/doctor-config.before.json", errors="replace").read() \
+    if os.path.exists(f"{I}/doctor-config.before.json") else None
+if any(r["kind"] == "heartbeat" for r in cb.get("heartbeats", {}).values()) and cfg_had_heartbeat is not False \
+        and "Retired heartbeat configuration after ordinary automation data was verified." not in logs["doctor.log"]:
     cron.append("doctor.log: no 'Retired heartbeat configuration after ordinary automation data was verified.'")
 slow = [f"pass {n}: {s} s" for n, s in ((1, secs1), (2, secs2)) if s >= limit]
 
@@ -391,6 +404,7 @@ for line in sorted({l for l in log.splitlines() if "Heartbeat model changed" in 
     print(f"     note: {line.strip()}")
 for s in slow: print(f"     SLOW doctor {s} (limit {limit} s)")
 for c in cron[:12]: print(f"     CRON {c}")
+for w in warn[:8]: print(f"     warning: {w}")
 for k, v in list(changed.items())[:8]: print(f"     schema {k}: {v[0]} -> {v[1]}")
 for k, v in list(lost.items())[:8]: print(f"     LOST {k}: {v[0]} -> {v[1]}")
 for k, v in list(trimmed.items())[:8]: print(f"     trimmed (derived) {k}: {v[0]} -> {v[1]}")
