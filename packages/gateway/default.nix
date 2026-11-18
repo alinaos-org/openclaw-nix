@@ -7,7 +7,9 @@
 # - pnpm: drop the pnpm-12 self-management lock document (Nix supplies pnpm)
 #   and fetch the dependency store for the host platform only;
 # - build: tsx runners, the AI and external-plugin dist steps, esbuild
-#   shutdown ownership, procps for the managed process-group check;
+#   shutdown ownership, procps for the managed process-group check, and the
+#   macOS fs-safe natives the worker bundle embeds (from 2026.11.5 the build
+#   downloads them from npm; releases.nix `workerNativeAssets` pins them);
 # - install: per-plugin dependency trees, the `openclaw` self-reference, CJS
 #   plugin entries as regular files, the managed Codex app-server links, a
 #   plain `bin/openclaw` launcher on the gateway's Node.
@@ -31,6 +33,7 @@
   callPackage,
   runCommand,
   fetchFromGitHub,
+  fetchurl,
   fetchPnpmDeps,
   bashNonInteractive,
   coreutils,
@@ -64,6 +67,23 @@
     "openclaw-nix builds OpenClaw 2026.10.1 and later (got ${upstreamVersion})";
   version = "${upstreamVersion}-${localRevision}";
   node = nodejs_24;
+  # From 2026.11.5 tsdown's openclaw:worker-deploy plugin embeds @openclaw/fs-safe's
+  # darwin natives in the worker bundle, fetching each pinned tarball from npm unless
+  # .artifacts/worker-native-assets holds it under <target>-<version>-<sha256 hex of
+  # the lock integrity>.tgz (scripts/lib/fs-safe-worker-native-assets.mts). The
+  # sandbox has no network, so seed that cache from fixed-output fetches; the plugin
+  # still checks every archive against the lock's integrity.
+  workerNativeAssets = releaseInfo.workerNativeAssets or {};
+  seedWorkerNativeAssets = lib.concatStrings (lib.mapAttrsToList (target: pin: let
+      name = "@openclaw/fs-safe-${target}";
+      tarball = fetchurl {
+        url = "https://registry.npmjs.org/${name}/-/fs-safe-${target}-${pin.version}.tgz";
+        hash = pin.integrity;
+      };
+    in ''
+      install -D -m 0644 ${tarball} .artifacts/worker-native-assets/${target}-${pin.version}-${builtins.hashString "sha256" pin.integrity}.tgz
+    '')
+    workerNativeAssets);
   system = stdenv.hostPlatform.system;
   pnpmDepsHash =
     releaseInfo.pnpmDepsHash.${system}
@@ -405,6 +425,7 @@ in
       # worker, whose own esbuild instance stop() cannot join.
       postPatch =
         (old.postPatch or "")
+        + seedWorkerNativeAssets
         + ''
 
           substituteInPlace scripts/build-diffs-viewer-runtime.mts \

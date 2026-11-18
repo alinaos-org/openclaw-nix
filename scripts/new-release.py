@@ -109,6 +109,8 @@ def main():
         sys.exit(f"package.json packageManager is {manager!r}, not a pinned pnpm")
     print(f"pnpm {pm.group(1)}")
 
+    natives = worker_native_assets(pathlib.Path(src_path))
+
     # 3. releases.nix entry, copied from the current release's.
     m = re.search(r'\n(  "' + re.escape(cur) + r'" = \{\n.*?\n  \};\n)', table_text, re.S)
     if not m:
@@ -127,6 +129,9 @@ def main():
     else:
         # No desktopDebHash: packages/desktop stays on the newest release that has one.
         entry = re.sub(r'    desktopDebHash\.x86_64-linux = "[^"]+";\n', "", entry)
+    entry = WORKER_NATIVES_RE.sub("", entry)
+    if natives:
+        entry = entry.replace("\n  };\n", "\n" + natives + "  };\n", 1)
     # Each release tries the picker patch afresh (step 5).
     entry = PICKER_OFF_RE.sub("", entry)
     table.write_text(table_text.replace(m.group(1), entry + "\n" + m.group(1), 1))
@@ -145,6 +150,35 @@ def main():
         return
     icon_picker(root, table, v)
     pnpm_hash(root, table)
+
+
+WORKER_NATIVES_RE = re.compile(
+    r"    # The macOS fs-safe natives the worker bundle embeds[^\n]*\n    workerNativeAssets = \{\n.*?\n    \};\n", re.S)
+
+
+def worker_native_assets(src):
+    """From 2026.11.5 the build fetches @openclaw/fs-safe's darwin natives from npm
+    (scripts/lib/fs-safe-worker-native-assets.mts); pin them for the sandbox."""
+    if not (src / "scripts/lib/fs-safe-worker-native-assets.mts").exists():
+        return ""
+    targets = re.findall(r'"(darwin-[a-z0-9]+)": "fs-safe-darwin-[a-z0-9]+\.node"',
+                         (src / "src/shared/worker-bundle-hash.ts").read_text())
+    lock = (src / "pnpm-lock.yaml").read_text()
+    fs_safe = re.search(r"\n  '@openclaw/fs-safe@([0-9.]+)':\n    optionalDependencies:\n((?:      .*\n)+)", lock)
+    if not targets or not fs_safe:
+        sys.exit("worker native assets: darwin targets or @openclaw/fs-safe's optional dependencies not found")
+    lines = ["    # The macOS fs-safe natives the worker bundle embeds (packages/gateway/default.nix).",
+             "    workerNativeAssets = {"]
+    for target in targets:
+        ver = re.search(rf"'@openclaw/fs-safe-{target}': ([0-9.]+)", fs_safe.group(2))
+        integ = ver and re.search(
+            rf"\n  '@openclaw/fs-safe-{target}@{re.escape(ver.group(1))}':\n    resolution: \{{integrity: (sha512-[A-Za-z0-9+/=]+)\}}", lock)
+        if not integ:
+            sys.exit(f"worker native assets: no lock pin for @openclaw/fs-safe-{target}")
+        lines += [f"      {target} = {{", f'        version = "{ver.group(1)}";',
+                  f'        integrity = "{integ.group(1)}";', "      };"]
+        print(f"workerNativeAssets {target} {ver.group(1)}")
+    return "\n".join(lines + ["    };"]) + "\n"
 
 
 def desktop_hash(v):
