@@ -283,34 +283,6 @@
     removeWhen = "OpenClaw's lockfile itself requires @modelcontextprotocol/sdk >= 1.31.0 for every package that depends on it; until then raise the floor for a later SDK advisory rather than drop it.";
   };
 
-  claudeDeferredLoopbackTools = {
-    patch = ./patch-claude-deferred-loopback-tools.mjs;
-    marker = "openclaw-nix-claude-deferred-loopback-tools-v2";
-    since = "2026.10.6";
-    fixes = ''
-      Claude CLI runs: the loopback MCP server that carries OpenClaw's tools is marked
-      `alwaysLoad: true`, so Claude Code sends every tool's full schema on every turn
-      instead of deferring it behind ToolSearch, as it does for other MCP servers. On
-      nova that is 27-39 tools and 30-55K characters of schema per turn; a one-word
-      canary on a Merlin lane wrote 78,534 prompt-cache tokens. For the agents listed in
-      OPENCLAW_CLAUDE_DEFERRED_LOOPBACK_AGENTS the entry is built without `alwaysLoad`,
-      so Claude Code's default tool search defers those tools; OpenClaw's Claude prompt
-      already tells the model to load a deferred tool with ToolSearch first. From
-      2026.10.7 ordinary Claude turns are mediated and start Claude with `--tools ""`,
-      which removes ToolSearch, and Claude Code defers nothing without it (it also puts
-      every configured MCP server's tools on this server); for the same agents a run
-      with no native tools gets ToolSearch as its one native tool, in the run's own
-      list so OpenClaw's permission hook allows it, and that ToolSearch skips the exec
-      approval plan (a read-only or allowlist session would deny every search).
-      Unset, the variable changes nothing. A trial switch, not a bug fix: it is here because the prepare step is
-      the only place the entry and the run's tool list are built.
-    '';
-    test = ./test-claude-deferred-loopback-tools.mjs;
-    upstream = null;
-    upstreamStatus = "not reported: upstream's choice, not a bug";
-    removeWhen = "Upstream makes the loopback server's alwaysLoad and the mediated runs' ToolSearch configurable (or defers by default), or the trial ends without adoption.";
-  };
-
   spawnTargetOwnedMcp = {
     patch = ./patch-spawn-target-owned-mcp.mjs;
     marker = "openclaw-nix-spawn-target-owned-mcp-v1";
@@ -332,67 +304,5 @@
     upstream = null;
     upstreamStatus = "not reported: upstream keeps a child within its requester by design. 2026.10.10 adds an operator grant, agents.entries.<id>.subagents.delegateToolsTo, that waives the requester's own tools.deny for named native targets, but only for deny-only requesters on a Gateway-native surface (an inherited allowlist refuses the spawn), and it waives the whole local deny, not only the target's MCP servers";
     removeWhen = "Upstream lets a cross-agent child keep the target agent's own scoped MCP servers (or the host moves to delegateToolsTo and its restrictions fit), or nova stops scoping MCP servers to single agents.";
-  };
-
-  claudeCliConfigDir = {
-    patch = ./patch-claude-cli-config-dir.mjs;
-    marker = "openclaw-nix-claude-cli-config-dir-v1";
-    since = "2026.10.8";
-    fixes = ''
-      Claude CLI sessions: OpenClaw looked for Claude Code's session transcripts only in
-      $HOME/.claude/projects, but Claude Code writes them to $CLAUDE_CONFIG_DIR/projects
-      when that is set. On a gateway that runs Claude with its own config dir (nova's prod
-      and merlin since 2026-10-24) every transcript check missed: with the live Claude
-      process running, a turn whose process fingerprint had changed failed with
-      "Managed CLI live session is no longer reusable. | cli_live_session_changed" (shown
-      as "Your AI session expired"; 11 times on prod 10-25..10-31), and without it the
-      session reset (missing-transcript) and Claude lost the conversation. The project-dir
-      and projects-root resolvers, in the main bundle and the worker bundles, follow
-      CLAUDE_CONFIG_DIR; an explicit homeDir keeps upstream's layout.
-    '';
-    test = ./test-claude-cli-config-dir.mjs;
-    upstream = null;
-    upstreamStatus = "not reported";
-    removeWhen = "Upstream resolves Claude CLI transcripts through CLAUDE_CONFIG_DIR, or nova stops giving its gateways their own Claude config dir.";
-  };
-
-  heartbeatRespondRun = {
-    patch = ./patch-heartbeat-respond-run.mjs;
-    marker = "openclaw-nix-heartbeat-respond-run-v1";
-    since = "2026.11.1";
-    fixes = ''
-      Heartbeats: an enrolled agent is offered heartbeat_respond on every turn, but the
-      embedded runtime accepted it only when messages.[groupChat.]visibleReplies is
-      "message_tool" or, with neither set, on the codex runtime. With "automatic" (nova's
-      prod and merlin, for ordinary group replies) or on another runtime with no setting
-      (rescue), a heartbeat run's call threw "only accepted during a heartbeat run", and the
-      error reached the heartbeat's channel as "Heartbeat Respond failed" (11 rejections on
-      prod on 2026-11-05, one post; the duplicate guard held back the rest). The Claude CLI
-      loopback server never offered the tool. Now a heartbeat run of an enrolled agent, and
-      any isolated heartbeat run, enables it (a non-enrolled agent's shared session keeps its
-      tool schema). An isolated run also gets upstream's tool prompt, plus upstream's fallback
-      for a run without the tool (an explicit tools.allow, a node-placed Claude CLI). An
-      isolated run's Claude CLI turn gets the tool and returns the embedded run's payload for
-      its first accepted response, and that response outlives a CLI failure on the closing
-      turn: no failure post, no lost alert, no second run on a fallback model. The source
-      reply mode still follows the setting: the heartbeat's outcome reads the recorded
-      response, and message_tool_only under "automatic" would only add a forced message tool
-      and tell the model its final text is private. Plain alert text is still delivered,
-      ordinary turns and ordinary group replies do not change, and a Claude CLI heartbeat on a
-      shared session still has no tool (one more tool on one turn invalidates its Claude
-      session).
-
-      Known, left as upstream has them: the tool's scratch field now also works on ticks of
-      embedded and isolated Claude CLI runs, and it replaces the monitor scratch those ticks
-      run from (empty or comments only: the ticks skip) until the checklist sync at the next
-      gateway start restores the Nix file and keeps the replaced text. A notify=true response
-      is not deduplicated against the same text sent with the message tool, which needs an
-      agent holding that tool. The copilot harness accepts the call and discards the response,
-      as it already did under "message_tool"; no instance here uses that runtime.
-    '';
-    test = ./test-heartbeat-respond-run.mjs;
-    upstream = null;
-    upstreamStatus = "not reported";
-    removeWhen = "Upstream accepts heartbeat_respond on every heartbeat run regardless of visibleReplies, and on the Claude CLI loopback.";
   };
 }
