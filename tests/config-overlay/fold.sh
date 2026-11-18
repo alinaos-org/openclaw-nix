@@ -35,7 +35,7 @@ cp compact.json compact.orig
 cat > overlay2.json <<'JSON'
 {"entries": [
   {"path": ["talk"], "op": "delete"},
-  {"path": ["agents", "entries", "studio", "heartbeat"], "op": "delete"},
+  {"path": ["agents", "entries", "studio", "thinkingDefault"], "op": "delete"},
   {"path": ["ui", "prefs", "sidebarEntries"], "op": "set", "value": ["route:cron"]}
 ]}
 JSON
@@ -44,7 +44,7 @@ python3 "$fold" overlay2.json compact.json renames.json exclude.json | tee summa
 cmp compact.json compact.orig
 grep -q 'Folded 0' summary2
 grep -q 'talk (deleted, but the source does not set it' summary2
-grep -q 'agents.entries.studio.heartbeat (deleted, but the source does not set it' summary2
+grep -q 'agents.entries.studio.thinkingDefault (deleted, but the source does not set it' summary2
 grep -q 'Kept in the overlay (1' summary2
 grep -q -- '- ui.prefs.sidebarEntries' summary2
 echo "config-overlay fold: ok"
