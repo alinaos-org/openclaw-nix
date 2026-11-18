@@ -33,6 +33,8 @@
 #      QUAL_SECOND_PASS=0  skip the second doctor pass
 #      QUAL_DOCTOR_LIMIT  seconds a doctor pass may take (default 900, prepare-config's
 #                     `timeout`); a pass at or over it fails
+#      QUAL_RUNTIME_PLUGINS=0  do not copy the live runtime-plugin sets the config names
+#                     (the copy then lacks every materialized plugin, as before 2026.11.5)
 set -euo pipefail
 here=$(dirname "$(readlink -f "$0")")
 # shellcheck source=/dev/null
@@ -206,6 +208,34 @@ for inst in "$@"; do
   live_re=$(sed 's|[].[*^$\\#]|\\&|g' <<<"$live")
   sed "s#${live_re}\\b#$ST#g" "$ST/$config_name" > "$I/doctor-config.json"
   chmod 0600 "$I/doctor-config.json"
+  # Runtime plugins, as the real activation's doctor sees them. prepare-config runs the
+  # doctor on the previous start's render before it stages the new release's plugin
+  # set, and that render's plugins.load.paths name the set the previous start staged
+  # under <state>/runtime-plugins/<set id> (pruning keeps it: it is the newest). The
+  # snapshot skips runtime-plugins/, so copy each set the config names from the live
+  # state (cp -a, as prepare-config stages them). Without them 2026.11.5's doctor finds
+  # no configured plugin package and records every plugin's data/settings upgrade as
+  # unfinished, which the live upgrade would not.
+  if [ "${QUAL_RUNTIME_PLUGINS:-1}" != 0 ]; then
+    plugin_sets=0 plugin_missing=()
+    while IFS= read -r plugin_path; do
+      case "$plugin_path" in "$ST/runtime-plugins/"?*/?*) ;; *) continue ;; esac
+      set_id=${plugin_path#"$ST/runtime-plugins/"}; set_id=${set_id%%/*}
+      if [ ! -e "$ST/runtime-plugins/$set_id" ] && [ -d "$live/runtime-plugins/$set_id" ]; then
+        install -d -m 0700 "$ST/runtime-plugins"
+        cp -a --no-preserve=ownership -- "$live/runtime-plugins/$set_id" "$ST/runtime-plugins/$set_id"
+        plugin_sets=$((plugin_sets + 1))
+      fi
+      [ -d "$plugin_path" ] || plugin_missing+=("$plugin_path")
+    done < <(jq -r '.plugins.load.paths[]? // empty' "$I/doctor-config.json")
+    [ "$plugin_sets" -eq 0 ] || echo "   copied $plugin_sets runtime-plugin set(s) from the live state"
+    if [ "${#plugin_missing[@]}" -gt 0 ]; then
+      printf '   missing: %s\n' "${plugin_missing[@]}" | head -5
+      echo "FAIL $inst: ${#plugin_missing[@]} configured runtime-plugin path(s) are not in the live state either (QUAL_RUNTIME_PLUGINS=0 runs without them)"
+      chmod -R u+w "$I/state" 2>/dev/null || true
+      continue
+    fi
+  fi
   # Workspaces outside the state dir are agent files under a read-only home: doctor
   # writes there (2026.11.5 renames HEARTBEAT.md to claim it, then removes it), and the
   # sandbox fails that with EROFS. Copy each, as prepare-config does on a real start,
@@ -301,11 +331,12 @@ for inst in "$@"; do
     timeout 300 "$CAND" agents list --json > "$I/admission.log" 2>&1 || arc=$?
   echo "   admission rc=$arc"
 
-  python3 - "$I" "$inst" "$rc" "$arc" "$secs1" "$rc2" "$secs2" "$doctor_limit" "${QUAL_SECOND_PASS:-1}" <<'PY'
-import json, os, re, sys
+  python3 - "$I" "$inst" "$rc" "$arc" "$secs1" "$rc2" "$secs2" "$doctor_limit" "${QUAL_SECOND_PASS:-1}" "$ST" <<'PY'
+import json, os, re, sqlite3, sys
 I, inst = sys.argv[1], sys.argv[2]
 rc, arc, secs1, rc2, secs2, limit = map(int, sys.argv[3:9])
 second = sys.argv[9] != "0" and rc == 0
+ST = sys.argv[10]
 b = json.load(open(f"{I}/census-before.json")); a = json.load(open(f"{I}/census-after.json"))
 schema = {k: (b[k].get("user_version"), a.get(k, {}).get("user_version")) for k in b}
 changed = {k: v for k, v in schema.items() if v[0] != v[1]}
@@ -388,8 +419,25 @@ if any(r["kind"] == "heartbeat" for r in cb.get("heartbeats", {}).values()) and 
         and "Retired heartbeat configuration after ordinary automation data was verified." not in logs["doctor.log"]:
     cron.append("doctor.log: no 'Retired heartbeat configuration after ordinary automation data was verified.'")
 slow = [f"pass {n}: {s} s" for n, s in ((1, secs1), (2, secs2)) if s >= limit]
+# Plugin data/settings upgrades the doctor left unfinished (2026.11.5+ ledger). With the
+# runtime plugins in the copy, the live upgrade's doctor should leave none.
+plugin_pending = {}
+try:
+    con = sqlite3.connect(f"file:{ST}/state/openclaw.sqlite?mode=ro", uri=True)
+    if con.execute("select 1 from sqlite_master where type='table' and name='migration_runs'").fetchone():
+        for run_id, status, report in con.execute(
+                "select id, status, report_json from migration_runs where id like 'deferred-plugin-migration:%' "
+                "and status in ('pending', 'deferred') order by id"):
+            r = json.loads(report or "{}")
+            plugin_pending[run_id.split(":", 1)[1]] = {
+                "status": status, "requiresStateMigration": bool(r.get("requiresStateMigration")),
+                "reason": r.get("reason")}
+    con.close()
+except Exception as e:
+    plugin_pending["(ledger)"] = {"status": "unreadable", "reason": str(e)}
 
-ok = rc == 0 and arc == 0 and not lost and not errors and not cron and not slow and (not second or rc2 == 0)
+ok = rc == 0 and arc == 0 and not lost and not errors and not cron and not slow and not plugin_pending \
+    and (not second or rc2 == 0)
 print(f"{'PASS' if ok else 'FAIL'} {inst}: doctor rc={rc} ({secs1} s) "
       + (f"second pass rc={rc2} ({secs2} s) " if second else "")
       + f"admission rc={arc} dbs={len(b)} "
@@ -404,6 +452,9 @@ for line in sorted({l for l in log.splitlines() if "Heartbeat model changed" in 
     print(f"     note: {line.strip()}")
 for s in slow: print(f"     SLOW doctor {s} (limit {limit} s)")
 for c in cron[:12]: print(f"     CRON {c}")
+for p, v in list(plugin_pending.items())[:12]:
+    held = " (gateway holds it: requiresStateMigration)" if v.get("requiresStateMigration") else ""
+    print(f"     PLUGIN {p}: data/settings upgrade {v['status']}{held}: {v.get('reason')}")
 for w in warn[:8]: print(f"     warning: {w}")
 for k, v in list(changed.items())[:8]: print(f"     schema {k}: {v[0]} -> {v[1]}")
 for k, v in list(lost.items())[:8]: print(f"     LOST {k}: {v[0]} -> {v[1]}")
@@ -413,8 +464,11 @@ for k, v in list(retired.items())[:8]: print(f"     retired by the release {k}: 
 for k, v in list(errors.items())[:5]: print(f"     ERROR {k}: {v}")
 json.dump({"inst": inst, "ok": ok, "schema_changes": changed, "lost": lost, "trimmed": trimmed,
            "removed": removed, "retired": retired, "errors": errors, "cron": cron,
+           "plugin_pending": plugin_pending,
            "doctor_seconds": [secs1] + ([secs2] if second else []), "second_pass_rc": rc2 if second else None,
            "rows_before": total_b, "rows_after": total_a}, open(f"{I}/result.json", "w"), indent=1)
 PY
+  # Copied plugin sets keep the store's read-only modes; rm needs them writable.
+  chmod -R u+w "$I/state/$(basename "$live")/runtime-plugins" 2>/dev/null || true
   [ "${QUAL_KEEP:-0}" = 1 ] || rm -rf "${I:?}/state" "${I:?}/home" "${I:?}/workspaces"
 done
