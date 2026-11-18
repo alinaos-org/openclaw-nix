@@ -39,8 +39,9 @@ inspection and refuses those agents meanwhile. Find the owner from data, not cod
    (lease rows dropped), the config's paths rewritten to the copy and its gateway port
    pointed at nothing, and a CLI command that runs the same code in-process (here
    `memory session-backfill --agent <id>`, a preview that writes nothing), in a
-   `systemd-run` scope with `ProtectHome=read-only`. A lease left by the exited process
-   is the leak.
+   `systemd-run --user` unit under a Landlock write fence on the copy (as
+   `qualify-candidate.sh` runs it; a `ProtectHome` scope's user namespace makes 2026.11.5
+   refuse its SQLite staging). A lease left by the exited process is the leak.
 3. In a scratch copy of the package's `dist` (other entries symlinked, top-level files
    copied: the worker resolver refuses a symlinked `package.json`), log
    `new Error().stack` with `Error.stackTraceLimit` raised and the Worker `threadId` at
