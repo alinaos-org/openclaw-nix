@@ -61,7 +61,8 @@ generic scripts their host defaults. If there is no host profile, stop and write
    will run.
 5. **Qualify** each instance on copies of its state, never beside a source build, and
    in parallel only with memory to spare (one at a time below about 8 GB available):
-   `scripts/qualify-candidate.sh <package>/bin/openclaw <instance>`
+   `scripts/qualify-candidate.sh <package>/bin/openclaw <instance>`, with
+   `QUAL_PRE_DOCTOR` for any file the activation deploys that the copy lacks
    ([qualifying on copies](references/lessons.md#qualifying-on-copies)). Then the host's
    contracts in small memory-capped batches, as the host profile lists them.
 6. **Activate** as the host profile says: commit, rebase onto the newest main, wait for

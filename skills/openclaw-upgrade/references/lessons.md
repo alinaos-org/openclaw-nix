@@ -48,10 +48,13 @@ catches it. Host-specific incidents and decisions are in the host profile.
 `scripts/qualify-candidate.sh <candidate-bin> <instance>...` snapshots each instance's
 live state (SQLite online backup of every database, read-only with a busy timeout, so a
 running gateway is fine; caches, logs, media, old backups, runtime-plugin trees, WAL and
-lock files skipped), records schema versions and row counts, runs the candidate's
-`doctor --fix` on the copy in a `ProtectHome=read-only` scope, counts again, and has the
-candidate open the migrated copy. PASS needs doctor and admission to exit 0, no lost
-records and no unreadable database. Never run the candidate against live state.
+lock files skipped) and copies the workspaces its config names outside the state dir,
+records schema versions, row counts and a cron census, runs the candidate's
+`doctor --fix` on the copy in a `ProtectHome=read-only` scope, counts again, runs a
+second doctor pass, and has the candidate open the migrated copy. PASS needs both
+doctor passes and admission to exit 0 within the time limit, no lost records, no
+unreadable database and a clean cron census. Never run the candidate against live
+state.
 
 - The copy drops every `*lease*` table's rows: they name the live gateway, which is
   alive, so doctor would refuse with "An agent database is in use".
@@ -69,6 +72,31 @@ records and no unreadable database. Never run the candidate against live state.
   scratch state.
 - Doctor rewrites the copy's config (`doctor-config.json` against `.before.json`): that
   diff is what it would propose on the live gateway.
+- Workspaces are copied (`workspaces/<n>`, without `.git`, `node_modules` and `media`)
+  and the config pointed at the copies, as prepare-config does. Workspaces under a
+  read-only home made 2026.11.5's doctor fail with EROFS when it claimed `HEARTBEAT.md`
+  (a rename), a false FAIL that also hid the heartbeat migration.
+- `QUAL_PRE_DOCTOR=<cmd>` runs `<cmd> <instance> <instance dir> <state copy>` just
+  before the doctor. Use it to put into the copy what the activation will deploy and
+  the snapshot cannot hold yet (2026.11.5: rescue's new comment-only `HEARTBEAT.md`).
+  Qualify with the same inputs the first start will see: the old render, the
+  workspaces, and the files the activation writes.
+- The row census counts only event, transcript, message and session tables. The cron
+  census (`cron-before.json`, `cron-after.json`) records `cron_jobs` by payload kind
+  and enabled, every heartbeat row (payload `heartbeat`, or the `heartbeat-<agent>` and
+  `Proactive check (<agent>)` jobs 2026.11.5 converts them to), the `automation-default:`
+  receipts by phase and `cron.defaultStoreKey`. It fails when a heartbeat payload row
+  remains, a receipt is not complete, a heartbeat row's id or schedule anchor changed,
+  or doctor's log shows a refusal or a partial migration ("was not migrated", "Rerun
+  doctor to retry safely", "Default cron partition selection is unresolved").
+- The second pass simulates the next upgrade: it puts back every `HEARTBEAT.md` doctor
+  removed from the workspace copies (Nix redeploys them) and reruns the candidate's
+  doctor on the migrated copy with its own rewritten config. It must exit 0 and leave
+  the heartbeat-derived rows (enabled, schedule, payload, delivery) as they were.
+  `QUAL_SECOND_PASS=0` skips it.
+- Each doctor pass is timed and fails at prepare-config's 900 s (`QUAL_DOCTOR_LIMIT`):
+  a first start that slow is killed and leaves `.migration-failed-for-version`. One main
+  gateway's 2026.11.4 migration took 5.6 minutes.
 - It refuses to start without twice the state size plus 20 GB free. Put the copies
   (`OPENCLAW_UPGRADE_SCRATCH_ROOT`) on a filesystem whose snapshots do not keep them: on
   ZFS a deleted copy stays allocated while any snapshot taken during the run holds it.
@@ -99,6 +127,18 @@ then `.migrated-for-version` holding the new version. A `.migration-failed-for-v
 marker means the gateway refuses to start (see [restart hazards](#restart-hazards)).
 Doctor's proposals land in `upgrade-config-drift.json` and
 `upgrade-workspace-drift.json`; see [doctor proposals](#doctor-proposals).
+
+A keep-old instance (`X-SwitchMethod=keep-old`) is not restarted by an activation, so it
+keeps running the old release and migrates only at its own restart, by hand. Any
+release-specific preparation of its state lands at that restart, not at the activation.
+
+A release whose doctor converts state (2026.11.5's heartbeat retirement) converts it
+only once, from the input it finds. Never let the new binary open state its doctor has
+not migrated: on 2026.11.5 a cron service on un-doctored state quarantines the
+heartbeat rows and rewrites the store without them. That rules out a `restore-state
+restore --force` of an old snapshot under the new release (it writes the marker without
+running doctor), a declarative twin or stray CLI on the new binary, and a manual doctor
+against live state.
 
 ## What a version sweep misses
 
@@ -144,7 +184,11 @@ host. Work them alongside the patch layers.
 - Scheduled runs and the outgoing stop budget: `sessions.list` shows only turns already
   running, not a cron job due a minute later. The stop that activation triggers runs
   under the outgoing build's shutdown budget, so a release that changes the drain
-  budget (openclaw-nix's stop-budget hotfix) protects only the stops after it. A cron
+  budget (openclaw-nix's stop-budget hotfix) protects only the stops after it. From
+  2026.11.5 there is no stop drain at all: a stop aborts every in-flight agent, cron and
+  Claude CLI turn at once, so waiting for running sessions is required before every stop
+  or restart, not only an activation (the 11.4 to 11.5 activation's own stop still ran
+  under 11.4's 20 s drain). The hotfix still clamps only the stop's hard exit (180 s). A cron
   turn the drain cuts closes its agent databases with `clean-close receipt:
   active-leases`, and the next start fails readiness with "database configuration
   changed during startup inspection". One clean restart with nothing running fixes it;
