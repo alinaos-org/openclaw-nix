@@ -392,9 +392,9 @@ CI runs it on every pull request.
 ## Control UI over a Nix config
 
 nix-openclaw renders an instance's config and runs the gateway in Nix mode, where every
-config write throws: the Control UI cannot save models, sign-in, heartbeats or thinking
-levels. `homeManagerModules.configOverlay` (with `homeManagerModules.openclaw`,
-nix-openclaw's Home Manager module typed with this release's options) keeps Nix
+config write throws: the Control UI cannot save models, sign-in or thinking levels.
+`homeManagerModules.configOverlay` (with `homeManagerModules.openclaw`, nix-openclaw's
+Home Manager module typed with this release's options) keeps Nix
 authoritative and lets the Control UI save:
 
 ```nix

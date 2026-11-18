@@ -2,7 +2,7 @@
 #
 # nix-openclaw renders each instance's config to `configPath` and starts the
 # gateway in Nix mode, where every config write throws, so the Control UI cannot
-# change models, sign-in, heartbeats or anything else. With
+# change models, sign-in, thinking levels or anything else. With
 # `programs.openclaw.instances.<name>.configOverlay.enable`, the gateway runs from
 # a writable runtime config instead, and before every start the overlay engine
 # keeps the Control UI's changes the policy allows and renders them over the Nix
@@ -60,8 +60,8 @@ in {
           description = ''
             Paths the Control UI may change persistently (`allow`) and must not
             (`deny`; deny wins), in the runtime config's shape. The default keeps
-            models, sign-in, heartbeats, thinking levels and similar preferences,
-            and refuses gateway, plugins, channels, tools, sandbox, secrets and
+            models, sign-in, thinking levels and similar preferences (not
+            heartbeats, which 2026.11.5 retired), and refuses gateway, plugins, channels, tools, sandbox, secrets and
             hooks.
           '';
         };

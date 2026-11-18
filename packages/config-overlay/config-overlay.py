@@ -2,7 +2,7 @@
 """OpenClaw Nix + Control UI config overlay.
 
 Nix renders the base config. The gateway runs with a *writable* runtime config so
-the Control UI (models, provider sign-in, thinking level, heartbeats, ...) can
+the Control UI (models, provider sign-in, thinking level, ...) can
 save. Before every gateway start this tool:
 
   capture  diff(last rendered base -> current runtime file) and keep the changes
