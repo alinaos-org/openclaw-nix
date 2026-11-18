@@ -10,7 +10,7 @@
   "2026.11.5" = {
     rev = "e13cf15ece9bbd969b7362927c315362c90c97ff";
     sourceHash = "sha256-QM9QQndWpExuDos12tU71/LFGRNEOZM82uihPFnPlX8=";
-    pnpmDepsHash.x86_64-linux = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    pnpmDepsHash.x86_64-linux = "sha256-gyRqH+IE2SrSQddiXdgpMkAHJNiGEFJOol1pK1R+Los=";
     desktopDebHash.x86_64-linux = "sha256-SJNAPx41h5M0hD6jVULl7tNYEhPG7p87XkwkbCq7Fio=";
     buildTimestamp = "2026-11-17T03:12:30Z";
     pnpmBootstrapVersion = "12.15.0";
