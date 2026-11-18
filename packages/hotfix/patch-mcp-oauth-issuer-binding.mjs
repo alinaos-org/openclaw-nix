@@ -5,7 +5,9 @@
 // earlier SDK, is still used as-is and bound to the first authorization server that
 // answers, so a resource server that advertises a different one gets the saved
 // client (and its secret, if any) and refresh token. OpenClaw's provider hands its
-// stored values to the SDK unchanged, stamp or not.
+// stored values to the SDK unchanged, stamp or not. From 2026.11.5 the provider
+// calls @modelcontextprotocol/client 2.x auth() (SEP-2352), which does the same: it
+// warns about an unstamped value, stamps it for the server it resolved and uses it.
 //
 // Treat a stored client or token set without an issuer as absent. During a login
 // (redirect allowed) the SDK then registers again and asks for authorization, and
@@ -38,8 +40,11 @@ const FACTORY = "async function createMcpOAuthClientProvider(";
 // The source form and the minified worker copies. clientInformation() reads the
 // store, asks for a redirect when the tokens' own issuer binding fails, then takes
 // store.clientInformation; tokens() returns store.tokens when that binding holds.
+// From 2026.11.5 tokens() first returns nothing (or throws) while another attempt's
+// refresh claim is open, between the assertCurrent() and that return.
 const clientRead = /(async clientInformation\(\)\s*\{\s*(?:const|let)\s+([\w$]+)\s*=\s*await readStore\(\);\s*[\w$]+\.login\?\.assertCurrent\(\)[;,]\s*(?:if\s*\(\s*!canReuseStoredTokens\(\2\)\s*\)\s*|canReuseStoredTokens\(\2\)\s*\|\|\s*)assertAuthorizationRedirectAllowed\(\);\s*(?:const|let)\s+[\w$]+\s*=\s*)\2\.clientInformation;/g;
-const tokensRead = /(async tokens\(\)\s*\{[^]{0,400}?(?:const|let)\s+([\w$]+)\s*=\s*await readStore\(\);\s*(?:[\w$]+\.login\?\.assertCurrent\(\);\s*return\s*|return\s*[\w$]+\.login\?\.assertCurrent\(\)\s*,\s*)canReuseStoredTokens\(\2\)\s*\?\s*)\2\.tokens(\s*:\s*void 0)/g;
+const refreshClaimGuard = String.raw`(?:[\w$]+\.login\?\.assertCurrent\(\);\s*if\s*\(|if\s*\(\s*[\w$]+\.login\?\.assertCurrent\(\)\s*,\s*)\2\.refreshClaim\s*&&\s*\2\.refreshClaim\s*!==\s*[\w$]+\.refreshBoundary\?\.claim\s*\)\s*\{\s*if\s*\(\s*[\w$]+\.allowAuthorizationRedirect\s*\)\s*return;?\s*throw\s+(?:new\s+)?Error\((?:"|\x60)MCP OAuth refresh outcome is uncertain; sign in again\.(?:"|\x60)\);?\s*\}\s*return\s*`;
+const tokensRead = new RegExp(String.raw`(async tokens\(\)\s*\{[^]{0,400}?(?:const|let)\s+([\w$]+)\s*=\s*await readStore\(\);\s*(?:[\w$]+\.login\?\.assertCurrent\(\);\s*return\s*|return\s*[\w$]+\.login\?\.assertCurrent\(\)\s*,\s*|${refreshClaimGuard})canReuseStoredTokens\(\2\)\s*\?\s*)\2\.tokens(\s*:\s*void 0)`, "g");
 const count = (text, needle) => text.split(needle).length - 1;
 
 function* scripts(dir) {

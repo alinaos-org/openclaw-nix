@@ -547,15 +547,17 @@ An entry with no patch is a check on the final tree, such as the
 `checks.hotfix-register` fails evaluation when a patch or test file is unregistered,
 an entry lacks a test reason, an upstream status or a removal condition, or the
 package's advertised markers (`passthru.hotfixes`) differ from the register. The
-register is also `passthru.hotfixRegister`. As of 2026.11.1 (`hotfix.11`) there are
-fifteen patches and one check without a patch (the MCP SDK floor); 2026.10.10 carries
-upstream's fixes for three earlier ones (the agent-database retry, the read-only corpus
-revision and the Control UI's hardlinked store manifests), which were dropped. One of
-them is a per-agent switch rather than a fix (the Claude loopback tools' deferral and,
-from 2026.10.7, the ToolSearch it needs, off unless
-`OPENCLAW_CLAUDE_DEFERRED_LOOPBACK_AGENTS` lists the agent). One is with upstream (the
-plugin runtime owner, an open pull request), and one (the Codex stale-registration edit
-inside `patch-mcp-close-rejection.mjs`) has no test.
+register is also `passthru.hotfixRegister`. As of 2026.11.5 (`hotfix.12`) there are
+twelve patches and one check without a patch (the MCP SDK and client floor).
+2026.10.10 carries upstream's fixes for three earlier ones (the agent-database retry,
+the read-only corpus revision and the Control UI's hardlinked store manifests), and
+2026.11.5 made three more obsolete (the Claude loopback tools' deferral, now upstream's
+default; Claude CLI transcripts under `CLAUDE_CONFIG_DIR`; and `heartbeat_respond` on
+every heartbeat run, whose runner 11.5 retired); all six were dropped. One is with
+upstream (the plugin runtime owner, an open pull request), and one (the Codex
+stale-registration edit inside `patch-mcp-close-rejection.mjs`) has no test. From
+2026.11.5 upstream's dist mangles local names, so anchors match the code's shape or a
+release-gated set of minified names.
 
 Changes reach `main` only through pull requests whose `eval` and `build` checks pass on
 a branch up to date with `main`, with a code owner's review (`.github/CODEOWNERS`).

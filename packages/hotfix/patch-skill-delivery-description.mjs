@@ -16,32 +16,38 @@ assert(root && atLeast(version, "2026.9.8"), "skill delivery description hotfix 
 const dist = path.join(root, "dist");
 
 const MARKER = "/* openclaw-nix-skill-delivery-description-v1 */";
-const headerBefore = "async function prepareSkillResourceDelivery(inputSnapshot, assertCurrent, inputExplicitSelections = [], workspaceDir) {";
-const headerAfter = [
+// From 2026.11.5 on upstream's build mangles local names (tsdown minify, mangle with
+// keepNames), so the parameters and loop variables are single letters that can change
+// with any rebuild. The anchors therefore match the code's shape with any identifiers
+// in those places; each shape must still occur exactly once.
+const header = /^async function prepareSkillResourceDelivery\(\w+, \w+, \w+ = \[\], \w+\) \{$/gm;
+const helper = [
   `function clampSkillDeliveryDescription(text) { ${MARKER}`,
   "\tif (typeof text !== \"string\" || text.length <= 1024) return text;",
   "\tlet cut = text.slice(0, 1021);",
   "\tif (/[\\uD800-\\uDBFF]$/u.test(cut)) cut = cut.slice(0, -1);",
   "\treturn `${cut}...`;",
   "}",
-  headerBefore,
 ].join("\n");
-const fieldBefore = "\t\t\tdescription: skill.description,\n\t\t\trevision: bundle.revision,\n\t\t\tfiles\n\t\t});";
-const fieldAfter = `\t\t\tdescription: clampSkillDeliveryDescription(skill.description), ${MARKER}\n\t\t\trevision: bundle.revision,\n\t\t\tfiles\n\t\t});`;
-const count = (text, needle) => text.split(needle).length - 1;
+// 11.4 and earlier: `description: skill.description, revision: bundle.revision, files`;
+// 11.5: `description: e.description, revision: s.revision, files: r`.
+const field = /^(\t\t\tdescription: )(\w+\.description),(\n\t\t\trevision: \w+\.revision,\n\t\t\tfiles(?:: \w+)?\n\t\t\}\);)$/gm;
+const count = (text, pattern) => typeof pattern === "string" ? text.split(pattern).length - 1 : [...text.matchAll(pattern)].length;
 
 const patchedFiles = [];
 for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")).sort()) {
   const file = path.join(dist, name);
   if (fs.lstatSync(file).isSymbolicLink()) continue;
   const text = fs.readFileSync(file, "utf8");
-  if (count(text, headerBefore) === 0) continue;
-  assert.equal(count(text, headerBefore), 1, `prepareSkillResourceDelivery repeated in ${name}`);
-  assert.equal(count(text, fieldBefore), 1, `skill delivery description anchor changed in ${name}`);
+  if (count(text, header) === 0) continue;
+  assert.equal(count(text, header), 1, `prepareSkillResourceDelivery repeated in ${name}`);
+  assert.equal(count(text, field), 1, `skill delivery description anchor changed in ${name}`);
   assert.equal(count(text, MARKER), 0, `${name} is already patched`);
   // The clamp mirrors this protocol bound; if upstream changes it, re-derive the clamp.
   assert.equal(count(text, "Selected skill catalog exceeds the worker resource contract."), 1, `${name}: delivery schema check moved`);
-  fs.writeFileSync(file, text.replace(headerBefore, headerAfter).replace(fieldBefore, fieldAfter));
+  fs.writeFileSync(file, text
+    .replace(header, (line) => `${helper}\n${line}`)
+    .replace(field, (_, lead, value, rest) => `${lead}clampSkillDeliveryDescription(${value}), ${MARKER}${rest}`));
   patchedFiles.push(name);
 }
 assert(patchedFiles.some((name) => /^resources-.*\.mjs$/.test(name)), "skill resources chunk not patched");

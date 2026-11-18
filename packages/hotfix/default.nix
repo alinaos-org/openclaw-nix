@@ -12,7 +12,7 @@
   stdenvNoCC,
   gateway,
   # Bump when the patch set changes for the same gateway.
-  revision ? "hotfix.11",
+  revision ? "hotfix.12",
 }: let
   # A correction release (2026.7.1-2) is its base release's code, so the patches'
   # release gates read the base.
@@ -41,7 +41,8 @@ in
         # surface as an unhandled rejection and stop the gateway.
         ${node} ${./patch-mcp-close-rejection.mjs} "${root}" "${upstreamVersion}"
 
-        # Shutdown: bound the non-restart stop drain and force-exit timer.
+        # Shutdown: clamp a stop's hard exit (and, through 2026.10.5, its drain);
+        # every restart keeps upstream's budget.
         ${node} ${./patch-stop-budget.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-stop-budget.mjs} "${root}"
 
@@ -59,9 +60,9 @@ in
         ${node} ${./test-skill-delivery-description.mjs} "${root}"
         ${node} ${./test-node-bootstrap-layout.mjs} "${root}"
 
-        # Codex: request Daybreak Blue per turn (cyberAccessProgram) for the agents in
-        # OPENCLAW_CODEX_DAYBREAK_BLUE_AGENTS and for the cyber-failover retry, whose
-        # default moves off the retiring gpt-daybreak-blue-latest alias to gpt-6-sol.
+        # Codex: listed agents (OPENCLAW_CODEX_DAYBREAK_BLUE_AGENTS) request Daybreak
+        # Blue per turn; through 2026.11.4 also the cyber-failover retry and its
+        # gpt-6-sol default, which 2026.11.5 does natively.
         ${node} ${./patch-codex-cyber-access-program.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-codex-cyber-access-program.mjs} "${root}"
 
@@ -81,13 +82,13 @@ in
         # presented to an authorization server the SDK cannot bind it to.
         ${node} ${./patch-mcp-oauth-issuer-binding.mjs} "${root}" "${upstreamVersion}"
         ${node} ${./test-mcp-oauth-issuer-binding.mjs} "${root}"
-        # Every @modelcontextprotocol/sdk copy has that binding (1.31.0 or later).
+        # Every @modelcontextprotocol/sdk copy has that binding (1.31.0 or later), and
+        # every @modelcontextprotocol/client copy is 2.3.1 or later.
         ${node} ${./test-mcp-sdk-floor.mjs} "${root}"
 
-        # Compaction and the pre-compaction memory flush: resolve
-        # agents.entries.<id>.compaction[.memoryFlush].model ahead of the shared
-        # agents.defaults override, and carry agentId into the two retry/call sites
-        # that used to drop it when rebuilding their own params object.
+        # Compaction: resolve agents.entries.<id>.compaction.model ahead of the shared
+        # agents.defaults override, and carry agentId into the compactPrepared retry
+        # (before 2026.11.5 also the memory-flush model).
         ${node} ${./patch-agent-scoped-compaction-model.mjs} "${root}" "${upstreamVersion}"
         ${node} ${agentScopedCompactionTest} "${root}"
 

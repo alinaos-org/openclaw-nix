@@ -1,3 +1,381 @@
+// Exercises patch-agent-scoped-compaction-model.mjs against the release the real tree at
+// `root` was patched for (its receipt's upstreamVersion picks the suite).
+//
+// From release 2026.11.5 on (currentSuite): Part 1 builds bounded fixtures that reproduce every
+// 2026.11.5 anchor byte-for-byte (upstream's own per-agent compaction object, the mangled
+// readable resolveEmbeddedCompactionTarget and compactPrepared retry, and their sqlite-store and
+// worker-chunk duplicates), runs the real patch script against them, then imports the patched
+// fixtures and drives the patched functions with synthetic config: no OpenClaw boot, no
+// model/API calls. Further runs on fresh copies prove the patch fails loudly on a second
+// application, a target that disappeared, an extra copy of a target, a target in an unexpected
+// chunk and a re-minified import alias. Part 2 drives the actual packaged, already-patched tree:
+// the real OpenClawSchema and AgentEntryBaseSchema (agents.entries.<id>.compaction.model is
+// admitted beside upstream's maxSummaryChars; the retired per-agent and default memoryFlush.model
+// stay rejected), the real resolveEmbeddedCompactionTarget imported from its chunk, and
+// structural checks on the compact-*.mjs retry and the worker-pool duplicates, which assume a
+// live worker_threads/bundler init graph the plain ESM loader never runs standalone.
+//
+// Before 2026.11.5 (legacySuite): the 2026.10.7-shaped fixtures and Part 2 checks that also cover
+// the per-agent memory-flush model, which those releases still read from config.
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+
+const patchScript = new URL("./patch-agent-scoped-compaction-model.mjs", import.meta.url).pathname;
+const MARKER = "openclaw-nix-agent-scoped-compaction-model-v1";
+const atLeast = (version, minimum) => {
+  const a = String(version).split(".").map(Number);
+  const b = minimum.split(".").map(Number);
+  for (let i = 0; i < b.length; i++) {
+    if ((a[i] || 0) !== b[i]) return (a[i] || 0) > b[i];
+  }
+  return true;
+};
+const ONYX_MODEL = "abliteration/abliterated-model-large-flash";
+
+// Real chunks by content: the one file in `dir` whose name matches `name` and whose text
+// carries `needle`, and a module's export alias read from its own export clause.
+const realFileIn = (realDist, dir, name, needle) => {
+  const found = fs
+    .readdirSync(path.join(realDist, dir), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && name.test(entry.name))
+    .map((entry) => path.join(realDist, dir, entry.name))
+    .filter((file) => fs.readFileSync(file, "utf8").includes(needle));
+  assert.equal(found.length, 1, `expected one ${dir}/${name} chunk carrying ${needle.slice(0, 80)}, got ${found.map((f) => path.relative(realDist, f)).join(", ") || "none"}`);
+  return found[0];
+};
+const exportAlias = (source, local) => {
+  const clauses = [...source.matchAll(/export\s*\{([^}]*)\}/g)].flatMap((m) => m[1].split(","));
+  const spec = clauses.map((c) => c.trim().split(/\s+as\s+/)).find(([name]) => name === local);
+  return spec ? (spec[1] ?? spec[0]) : undefined;
+};
+
+// ============================================================================================
+// From 2026.11.5: compaction model only
+// ============================================================================================
+async function currentSuite(root) {
+  const VERSION = "2026.11.5";
+  // ------------------------------------------------------------------------------------------
+  // Part 1: bounded fixtures
+  // ------------------------------------------------------------------------------------------
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "oc-compaction-hotfix-"));
+  const fixtureDist = path.join(fixtureRoot, "dist");
+  fs.mkdirSync(path.join(fixtureDist, "worker"), { recursive: true });
+  fs.mkdirSync(path.join(fixtureDist, "config-doctor"), { recursive: true });
+  const write = (relPath, content) => fs.writeFileSync(path.join(fixtureDist, relPath), content);
+
+  // Hashes no release has shipped: the patch must find every target by content alone.
+  const F = {
+    schema: "zod-schema.core-Fx8Schm1.mjs",
+    target: "compaction-runtime-context-Fx8Trgt1.mjs",
+    retry: "compact-Fx8Rtry1.mjs",
+    workerTarget: "worker/worker-chunk-Fx8Trgt2.mjs",
+    workerRetry: "worker/worker-chunk-Fx8Rtry2.mjs",
+  };
+
+  // --- Schema fixture: upstream's own per-agent compaction object, exactly as 2026.11.5 prints it
+  // (a trailing space after `({`, the JSDoc line, then the field at column zero). Structural only;
+  // Part 2 parses with the real schema. ---
+  const schemaFixtureBody =
+    "const AgentEntryBaseSchema = strictObject({\n" +
+    "\tid: string(),\n" +
+    "\tcompaction: strictObject({ \n" +
+    "\t/** Override the default persisted client-side summary character ceiling. */\n" +
+    "maxSummaryChars: AgentCompactionMaxSummaryCharsSchema.optional() }).optional(),\n" +
+    "\tparams: record(string(), unknown()).optional(),\n" +
+    "\truntime: AgentRuntimeSchema\n" +
+    "});\n";
+  write(F.schema, schemaFixtureBody);
+  // The feishu config-doctor bundle carries its own full copy of the same schema.
+  write("config-doctor/feishu.js", schemaFixtureBody);
+
+  // --- Readable compaction-target chunk: 2026.11.5's mangled resolveEmbeddedCompactionTarget
+  // (params `e`, provider `t`, model `n`, override `r`), with stubs for its imports. ---
+  write(
+    F.target,
+    [
+      "function resolveEmbeddedCompactionTarget(e) {",
+      "\tconst t = e.provider?.trim() || e.defaultProvider;",
+      "\tconst n = e.modelId?.trim() || e.defaultModel;",
+      "\tconst r = e.modelSelectionLocked ? void 0 : e.config?.agents?.defaults?.compaction?.model?.trim();",
+      "\tconst assembleTarget = (n, r) => {",
+      "\t\tconst i = n !== t ? void 0 : e.authProfileId ?? void 0;",
+      "\t\treturn {",
+      "\t\t\tprovider: n,",
+      "\t\t\tmodel: r,",
+      "\t\t\tauthProfileId: i",
+      "\t\t};",
+      "\t};",
+      "\tif (!r) return assembleTarget(t, n);",
+      '\tconst i = r.indexOf("/");',
+      "\tif (i > 0) return assembleTarget(r.slice(0, i).trim(), r.slice(i + 1).trim() || e.defaultModel);",
+      "\treturn assembleTarget(t, r);",
+      "}",
+      "export { resolveEmbeddedCompactionTarget as a };",
+      "",
+    ].join("\n"),
+  );
+
+  // --- Readable fallback/retry call site (compact-*.mjs's "compactPrepared", params `c`) ---
+  write(
+    F.retry,
+    [
+      `import { a as resolveEmbeddedCompactionTarget } from "./${F.target}";`,
+      'const DEFAULT_PROVIDER = "openai";',
+      'const DEFAULT_MODEL = "gpt-6-astra";',
+      "async function compactPreparedRetry(c) {",
+      "\t\t\t\tconst e = resolveEmbeddedCompactionTarget({",
+      "\t\t\t\t\tconfig: c.config,",
+      "\t\t\t\t\tprovider: c.provider,",
+      "\t\t\t\t\tmodelId: c.model,",
+      "\t\t\t\t\tauthProfileId: c.authProfileId,",
+      "\t\t\t\t\tmodelSelectionLocked: c.modelSelectionLocked,",
+      "\t\t\t\t\tdefaultProvider: DEFAULT_PROVIDER,",
+      "\t\t\t\t\tdefaultModel: DEFAULT_MODEL",
+      "\t\t\t\t});",
+      "\treturn e;",
+      "}",
+      "export { compactPreparedRetry };",
+      "",
+    ].join("\n"),
+  );
+
+  // --- sqlite-store.worker.mjs: the N-named target, the _t-named retry and the inlined schema
+  // anchor (never executed), so the minified variant gets the same behavioral proof. ---
+  write(
+    "worker/sqlite-store.worker.mjs",
+    [
+      "function resolveEmbeddedCompactionTarget(N){let Fe=N.provider?.trim()||N.defaultProvider,Re=N.modelId?.trim()||N.defaultModel,Ye=N.modelSelectionLocked?void 0:N.config?.agents?.defaults?.compaction?.model?.trim(),assembleTarget=(Re,Ye)=>{let Xe=Re===Fe?N.authProfileId??void 0:void 0;return{provider:Re,model:Ye,authProfileId:Xe}};if(!Ye)return assembleTarget(Fe,Re);let Xe=Ye.indexOf(`/`);if(Xe>0)return assembleTarget(Ye.slice(0,Xe).trim(),Ye.slice(Xe+1).trim()||N.defaultModel);return assembleTarget(Fe,Ye)}",
+      "const DEFAULT_PROVIDER=`openai`,DEFAULT_MODEL$1=`gpt-6-astra`;",
+      "async function compactPreparedRetry(_t){let e=resolveEmbeddedCompactionTarget({config:_t.config,provider:_t.provider,modelId:_t.model,authProfileId:_t.authProfileId,modelSelectionLocked:_t.modelSelectionLocked,defaultProvider:DEFAULT_PROVIDER,defaultModel:DEFAULT_MODEL$1});return e}",
+      "const __schemaAnchor=\"compaction:strictObject({maxSummaryChars:AgentCompactionMaxSummaryCharsSchema.optional()}).optional(),params:record(string$3(),unknown()).optional(),runtime:AgentRuntimeSchema})\";",
+      "export {resolveEmbeddedCompactionTarget,compactPreparedRetry};",
+      "",
+    ].join("\n"),
+  );
+
+  // --- Worker-chunk duplicates: the target (export `o`) and the retry that imports it as `pn`
+  // with DEFAULT_PROVIDER/DEFAULT_MODEL as z/B. ---
+  write(
+    F.workerTarget,
+    "function resolveEmbeddedCompactionTarget(e){let t=e.provider?.trim()||e.defaultProvider,r=e.modelId?.trim()||e.defaultModel,i=e.modelSelectionLocked?void 0:e.config?.agents?.defaults?.compaction?.model?.trim(),assembleTarget=(n,r)=>({provider:n,model:r});if(!i)return assembleTarget(t,r);let a=i.indexOf(`/`);return a>0?assembleTarget(i.slice(0,a),i.slice(a+1)):assembleTarget(t,i)}export{resolveEmbeddedCompactionTarget as o};\n",
+  );
+  write(
+    F.workerRetry,
+    `import{o as pn,r as mn}from"./${path.basename(F.workerTarget)}";const z=\`openai\`,B=\`gpt-6-astra\`;async function compactPrepared(c){let e=pn({config:c.config,provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:z,defaultModel:B});return e}export{compactPrepared as t};\n`,
+  );
+  // The import above names an export (`r`) the fixture never defines; give it one so the
+  // module links when imported.
+  fs.appendFileSync(path.join(fixtureDist, F.workerTarget), "const mn=0;export{mn as r};\n");
+
+  // --- Failure modes, each on a fresh copy of the unpatched fixtures. ---
+  const runPatch = (target) => execFileSync(process.execPath, [patchScript, target, VERSION], { stdio: "pipe", encoding: "utf8" });
+  const expectPatchFailure = (label, mutate, pattern) => {
+    const copy = fs.mkdtempSync(path.join(os.tmpdir(), "oc-compaction-hotfix-neg-"));
+    fs.cpSync(fixtureRoot, copy, { recursive: true });
+    mutate(path.join(copy, "dist"));
+    let stderr = "";
+    assert.throws(() => {
+      try {
+        runPatch(copy);
+      } catch (error) {
+        stderr = String(error.stderr);
+        throw error;
+      }
+    }, `${label}: the patch applied anyway`);
+    assert.match(stderr, pattern, `${label}: the patch failed for another reason:\n${stderr}`);
+    assert.equal(fs.existsSync(path.join(copy, ".agent-scoped-compaction-model-hotfix.json")), false, `${label}: a refused run wrote a receipt`);
+    fs.rmSync(copy, { recursive: true, force: true });
+    console.log(`ok - ${label}: patch refused`);
+  };
+  expectPatchFailure("target disappeared", (d) => fs.rmSync(path.join(d, F.target)), /compaction-target-readable: expected 1 anchor\(s\) in compaction-runtime-context-\*\.mjs, found 0; found in nowhere/);
+  expectPatchFailure("extra worker copy", (d) => fs.copyFileSync(path.join(d, F.workerTarget), path.join(d, "worker/worker-chunk-Fx8Dupe9.mjs")), /compaction-target-worker-chunk: expected 1 anchor\(s\) in worker\/worker-chunk-\*\.mjs, found 2/);
+  expectPatchFailure("unexpected chunk", (d) => {
+    fs.mkdirSync(path.join(d, "agents"));
+    fs.renameSync(path.join(d, F.retry), path.join(d, "agents/compact-Fx8Rtry1.mjs"));
+  }, /compaction-retry-readable: anchor found in unexpected file agents\/compact-Fx8Rtry1\.mjs/);
+  expectPatchFailure("re-minified alias", (d) => {
+    const file = path.join(d, F.workerRetry);
+    fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("o as pn,", "s as pn,"));
+  }, /compaction-retry-worker-chunk: worker\/worker-chunk-Fx8Rtry2\.mjs no longer carries o as pn,/);
+  // An upstream that dropped its own per-agent compaction object fails the build instead of
+  // gaining a second, hand-made one.
+  expectPatchFailure("upstream compaction object missing", (d) => {
+    for (const file of [F.schema, "config-doctor/feishu.js"]) {
+      const full = path.join(d, file);
+      fs.writeFileSync(full, fs.readFileSync(full, "utf8").replace(/\tcompaction: strictObject\(\{ \n[^\n]*\n[^\n]*\n/, ""));
+    }
+  }, /schema-agent-entry-compaction: expected 1 anchor\(s\) in zod-schema\.core-\*\.mjs, found 0/);
+
+  // --- Run the real patch script against the fixtures ---
+  execFileSync(process.execPath, [patchScript, fixtureRoot, VERSION], { stdio: "inherit" });
+
+  // A second application refuses up front instead of stacking a second copy of every edit.
+  {
+    const before = fs.readFileSync(path.join(fixtureDist, F.target), "utf8");
+    assert.throws(() => runPatch(fixtureRoot), (error) => /hotfix already applied/.test(String(error.stderr)), "a second run applied again");
+    assert.equal(fs.readFileSync(path.join(fixtureDist, F.target), "utf8"), before, "a refused second run changed a file");
+    console.log("ok - a second application refuses and leaves the tree unchanged");
+  }
+
+  const receipt = JSON.parse(fs.readFileSync(path.join(fixtureRoot, ".agent-scoped-compaction-model-hotfix.json"), "utf8"));
+  assert.equal(receipt.id, MARKER);
+  assert.equal(receipt.upstreamVersion, VERSION);
+  assert.equal(receipt.changes.length, 9, `expected 9 anchor replacements, got ${receipt.changes.length}`);
+  const touchedFiles = new Set(receipt.changes.map((c) => c.file));
+  assert.equal(touchedFiles.size, 7, `expected 7 distinct files touched, got ${touchedFiles.size}`);
+
+  // --- Schema: `model` joined upstream's own per-agent compaction object; no second key. ---
+  for (const schemaFile of [F.schema, "config-doctor/feishu.js"]) {
+    const source = fs.readFileSync(path.join(fixtureDist, schemaFile), "utf8");
+    assert.equal(source.split("compaction:").length - 1, 1, `${schemaFile}: a second compaction key was added`);
+    assert.ok(source.includes(`maxSummaryChars: AgentCompactionMaxSummaryCharsSchema.optional(),\n\tmodel: string().optional() /* ${MARKER} */ }).optional(),`), `${schemaFile}: model missing from upstream's compaction object`);
+    assert.ok(!source.includes("memoryFlush"), `${schemaFile}: the memory flush is upstream's session model now; no per-agent memoryFlush field`);
+  }
+  {
+    const source = fs.readFileSync(path.join(fixtureDist, "worker/sqlite-store.worker.mjs"), "utf8");
+    assert.ok(source.includes(`compaction:strictObject({maxSummaryChars:AgentCompactionMaxSummaryCharsSchema.optional(),model:string$3().optional()/*${MARKER}*/}).optional(),params:`), "sqlite-store.worker.mjs: inlined schema missing model");
+  }
+
+  const importFixture = (relPath) => import(pathToFileURL(path.join(fixtureDist, relPath)).href);
+  const readableTarget = await importFixture(F.target);
+  const readableRetry = await importFixture(F.retry);
+  await runCompactionTargetScenarios("readable chunk", { resolveEmbeddedCompactionTarget: readableTarget.a, compactPreparedRetry: readableRetry.compactPreparedRetry });
+  const sqliteWorker = await importFixture("worker/sqlite-store.worker.mjs");
+  await runCompactionTargetScenarios("sqlite-store.worker.mjs (N-named)", sqliteWorker);
+  const workerTarget = await importFixture(F.workerTarget);
+  const workerRetry = await importFixture(F.workerRetry);
+  await runCompactionTargetScenarios("worker-chunk (e-named, pn retry)", { resolveEmbeddedCompactionTarget: workerTarget.o, compactPreparedRetry: workerRetry.t });
+
+  fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  console.log(`Part 1 (bounded fixtures): all scenarios passed across ${touchedFiles.size} files (${receipt.changes.length} anchors)`);
+
+  // ------------------------------------------------------------------------------------------
+  // Part 2: the actual packaged, already-patched gateway tree
+  // ------------------------------------------------------------------------------------------
+  const realDist = path.join(root, "dist");
+  const realReceipt = JSON.parse(fs.readFileSync(path.join(root, ".agent-scoped-compaction-model-hotfix.json"), "utf8"));
+  assert.equal(realReceipt.id, MARKER);
+  assert.equal(realReceipt.changes.length, 9, `expected 9 anchor replacements in the real tree, got ${realReceipt.changes.length}`);
+  assert.equal(new Set(realReceipt.changes.map((c) => c.file)).size, 7, "expected 7 distinct files patched in the real tree");
+  const realFile = (dir, name, needle) => realFileIn(realDist, dir, name, needle);
+  const importExport = async (file, local) => {
+    const alias = exportAlias(fs.readFileSync(file, "utf8"), local);
+    assert.ok(alias, `${path.relative(realDist, file)} does not export ${local}`);
+    return (await import(pathToFileURL(file).href))[alias];
+  };
+
+  // --- Native schema: the real AgentEntryBaseSchema and the whole OpenClawSchema, as config
+  // validation runs them. ---
+  {
+    const AgentEntryBaseSchema = await importExport(realFile(".", /^zod-schema\.core-.*\.mjs$/, "const AgentEntryBaseSchema = strictObject({"), "AgentEntryBaseSchema");
+    const parsed = AgentEntryBaseSchema.parse({ id: "onyx", compaction: { model: ONYX_MODEL, maxSummaryChars: 5000 } });
+    assert.equal(parsed.compaction.model, ONYX_MODEL);
+    assert.equal(parsed.compaction.maxSummaryChars, 5000, "upstream's own maxSummaryChars must survive beside model");
+    assert.throws(() => AgentEntryBaseSchema.parse({ id: "onyx", compaction: { model: ONYX_MODEL, memoryFlush: { model: ONYX_MODEL } } }), /unrecognized/i, "the real schema must reject a per-agent memoryFlush: upstream retired the flush model");
+    assert.throws(() => AgentEntryBaseSchema.parse({ id: "onyx", compaction: { model: 7 } }), "a non-string model must still fail");
+
+    const OpenClawSchema = await importExport(realFile(".", /^zod-schema-.*\.mjs$/, "const OpenClawSchema = "), "OpenClawSchema");
+    const config = {
+      agents: {
+        defaults: { compaction: { model: "sonnet", memoryFlush: { softThresholdTokens: 4000 } } },
+        entries: { onyx: { compaction: { model: ONYX_MODEL } } },
+      },
+    };
+    const ok = OpenClawSchema.safeParse(config);
+    assert.ok(ok.success, `real OpenClawSchema rejected agents.entries.onyx.compaction.model: ${JSON.stringify(ok.error?.issues)}`);
+    const legacyShape = structuredClone(config);
+    legacyShape.agents.entries.onyx.compaction.memoryFlush = { model: ONYX_MODEL };
+    const refused = OpenClawSchema.safeParse(legacyShape);
+    assert.ok(!refused.success && refused.error.issues.some((i) => i.code === "unrecognized_keys" && i.keys.includes("memoryFlush")), "real OpenClawSchema must reject the legacy per-agent memoryFlush shape");
+    console.log("ok - real AgentEntryBaseSchema and OpenClawSchema admit compaction.model beside maxSummaryChars and reject a per-agent memoryFlush");
+  }
+
+  // --- Real resolveEmbeddedCompactionTarget, imported from its own chunk. ---
+  {
+    const resolveEmbeddedCompactionTarget = await importExport(realFile(".", /^compaction-runtime-context-.*\.mjs$/, "function resolveEmbeddedCompactionTarget("), "resolveEmbeddedCompactionTarget");
+    await runCompactionTargetScenarios("real compaction-runtime-context chunk", { resolveEmbeddedCompactionTarget });
+  }
+
+  // --- Structural checks: the readable retry and the worker-pool duplicates. ---
+  {
+    realFile(".", /^compact-.*\.mjs$/, `\t\t\t\tconst e = resolveEmbeddedCompactionTarget({\n\t\t\t\t\tconfig: c.config,\n\t\t\t\t\tagentId: c.agentId, /* ${MARKER} */\n`);
+    // The retry's params object carries the session agent (agentId: s.agentId ?? d.sessionAgentId).
+    realFile(".", /^compact-.*\.mjs$/, "const compactPrepared = async () => {");
+
+    const sqliteWorkerSource = fs.readFileSync(path.join(realDist, "worker/sqlite-store.worker.mjs"), "utf8");
+    for (const [needle, what] of [
+      [`maxSummaryChars:AgentCompactionMaxSummaryCharsSchema.optional(),model:string$3().optional()/*${MARKER}*/}).optional(),params:`, "inlined schema missing the per-agent compaction model"],
+      ["Ye=N.modelSelectionLocked?void 0:(N.agentId?N.config?.agents?.entries?.[N.agentId]?.compaction?.model?.trim():void 0)??", "compaction target does not read the per-agent override"],
+      ["resolveEmbeddedCompactionTarget({config:_t.config,agentId:_t.agentId,", "compaction retry does not carry agentId"],
+    ]) {
+      assert.equal(sqliteWorkerSource.split(needle).length - 1, 1, `real sqlite-store.worker.mjs: ${what}`);
+    }
+
+    const workerChunk = /^worker-chunk-.*\.mjs$/;
+    const targetFile = realFile("worker", workerChunk, "i=e.modelSelectionLocked?void 0:(e.agentId?e.config?.agents?.entries?.[e.agentId]?.compaction?.model?.trim():void 0)??");
+    const retrySource = fs.readFileSync(realFile("worker", workerChunk, "pn({config:c.config,agentId:c.agentId,"), "utf8");
+    // `pn` must be the target chunk's resolveEmbeddedCompactionTarget, read from both sides.
+    const imported = retrySource.match(/import\{[^}]*\bo as pn\b[^}]*\}from"\.\/([^"]+)"/);
+    assert.ok(imported, "real worker-chunk retry no longer imports pn as export o");
+    assert.equal(imported[1], path.basename(targetFile), "real worker-chunk retry imports pn from a chunk other than the patched target");
+    assert.equal(exportAlias(fs.readFileSync(targetFile, "utf8"), "resolveEmbeddedCompactionTarget"), "o", "real worker-chunk target no longer exports resolveEmbeddedCompactionTarget as o");
+
+    const feishuSource = fs.readFileSync(path.join(realDist, "config-doctor/feishu.js"), "utf8");
+    assert.ok(feishuSource.includes(`model: string().optional() /* ${MARKER} */ }).optional(),`), "real config-doctor/feishu.js: inlined schema missing the per-agent compaction model");
+    console.log("ok - structural checks on the real compact-*.mjs retry, sqlite-store.worker.mjs, the worker-chunk pair and config-doctor/feishu.js");
+  }
+
+  console.log(`Agent-scoped compaction model override: Part 1 + Part 2 passed (${realReceipt.changes.length} anchors across ${new Set(realReceipt.changes.map((c) => c.file)).size} files in the real tree)`);
+}
+
+// Shared compaction-target scenarios, for the fixtures and the real chunk alike.
+function compactionConfig() {
+  return {
+    agents: {
+      defaults: { compaction: { model: "anthropic/claude-sonnet-5" } },
+      entries: {
+        onyx: { compaction: { model: ONYX_MODEL, maxSummaryChars: 5000 } },
+        // Upstream's own per-agent object with no model: the shared default still applies.
+        herald: { compaction: { maxSummaryChars: 8000 } },
+      },
+    },
+  };
+}
+async function runCompactionTargetScenarios(label, { resolveEmbeddedCompactionTarget, compactPreparedRetry }) {
+  const config = compactionConfig();
+  const resolve = (params) => resolveEmbeddedCompactionTarget({ config, defaultProvider: "openai", defaultModel: "gpt-6-astra", ...params });
+
+  // 1. ONYX's per-agent override wins over the shared Sonnet default.
+  const onyx = resolve({ agentId: "onyx", provider: "abliteration", modelId: "abliterated-model" });
+  assert.equal(onyx.provider, "abliteration", `${label}: onyx should resolve to abliteration, got ${onyx.provider}`);
+  assert.equal(onyx.model, "abliterated-model-large-flash", `${label}: onyx should resolve its own compaction model`);
+  // 2. An agent whose compaction object names no model, an agent with no entry and a caller
+  // with no agentId all keep the shared default.
+  for (const agentId of ["herald", "main", undefined]) {
+    const other = resolve({ agentId });
+    assert.equal(other.provider, "anthropic", `${label}: ${agentId ?? "no agentId"} should fall back to the shared default`);
+    assert.equal(other.model, "claude-sonnet-5", `${label}: ${agentId ?? "no agentId"} should fall back to the shared default model`);
+  }
+  // 3. A locked model selection ignores both the per-agent and the default override.
+  const locked = resolve({ agentId: "onyx", provider: "abliteration", modelId: "abliterated-model", modelSelectionLocked: true });
+  assert.equal(locked.provider, "abliteration", `${label}: locked selection must not escape to any override`);
+  assert.equal(locked.model, "abliterated-model", `${label}: locked selection must keep its own model`);
+  // 4. The fallback/retry path, which used to drop agentId, resolves onyx's own override too.
+  if (compactPreparedRetry) {
+    const retried = await compactPreparedRetry({ agentId: "onyx", config, provider: "abliteration", model: "abliterated-model", modelSelectionLocked: false });
+    assert.equal(retried.provider, "abliteration", `${label}: fallback/retry escaped to the shared default instead of onyx's override`);
+    assert.equal(retried.model, "abliterated-model-large-flash", `${label}: fallback/retry resolved the wrong model`);
+  }
+  console.log(`ok - ${label}: compaction target scenarios (onyx override, default fallback, locked fence${compactPreparedRetry ? ", retry no-escape" : ""})`);
+}
+
+// ============================================================================================
+// Before 2026.11.5: compaction and memory-flush model (legacy anchor set)
+// ============================================================================================
 // Two tiers. Part 1 builds bounded fixtures that reproduce every anchor the patch targets
 // (verified byte-for-byte against the installed 2026.10.7-nix.4-hotfix.7 store before this
 // test was written, and unchanged in 2026.10.8), runs the real patch script against them, then imports the patched
@@ -27,649 +405,647 @@
 // loader never runs -- so Part 2 checks their patched anchors structurally against the real
 // file text instead. Every real chunk is located by what it contains (and every import by its
 // export clause), not by its hashed name.
-import assert from "node:assert/strict";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { execFileSync } from "node:child_process";
-import { pathToFileURL } from "node:url";
+async function legacySuite() {
 
-const patchScript = new URL("./patch-agent-scoped-compaction-model.mjs", import.meta.url).pathname;
-const MARKER = "openclaw-nix-agent-scoped-compaction-model-v1";
+  // ============================================================================================
+  // Part 1: bounded fixtures
+  // ============================================================================================
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "oc-compaction-hotfix-"));
+  const fixtureDist = path.join(fixtureRoot, "dist");
+  fs.mkdirSync(path.join(fixtureDist, "worker"), { recursive: true });
+  fs.mkdirSync(path.join(fixtureDist, "config-doctor"), { recursive: true });
 
-// ============================================================================================
-// Part 1: bounded fixtures
-// ============================================================================================
-const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "oc-compaction-hotfix-"));
-const fixtureDist = path.join(fixtureRoot, "dist");
-fs.mkdirSync(path.join(fixtureDist, "worker"), { recursive: true });
-fs.mkdirSync(path.join(fixtureDist, "config-doctor"), { recursive: true });
+  function write(relPath, content) {
+    fs.writeFileSync(path.join(fixtureDist, relPath), content);
+  }
 
-function write(relPath, content) {
-  fs.writeFileSync(path.join(fixtureDist, relPath), content);
-}
+  // Hashes no release has shipped: the patch must find every target by content alone.
+  const F = {
+    schema: "zod-schema.core-Fx7Schm1.mjs",
+    target: "context-engine-maintenance-Fx7Trgt1.mjs",
+    retry: "compact-Fx7Rtry1.mjs",
+    plan: "memory-flush-plan-Fx7Plan1.mjs",
+    prepare: "memory-flush-prepare-Fx7Prep1.mjs",
+    workerTarget: "worker/worker-chunk-Fx7Trgt2.mjs",
+    workerRetry: "worker/worker-chunk-Fx7Rtry2.mjs",
+    workerPlan: "worker/worker-chunk-Fx7Plan2.mjs",
+    workerPrepare: "worker/worker-chunk-Fx7Prep2.mjs",
+  };
 
-// Hashes no release has shipped: the patch must find every target by content alone.
-const F = {
-  schema: "zod-schema.core-Fx7Schm1.mjs",
-  target: "context-engine-maintenance-Fx7Trgt1.mjs",
-  retry: "compact-Fx7Rtry1.mjs",
-  plan: "memory-flush-plan-Fx7Plan1.mjs",
-  prepare: "memory-flush-prepare-Fx7Prep1.mjs",
-  workerTarget: "worker/worker-chunk-Fx7Trgt2.mjs",
-  workerRetry: "worker/worker-chunk-Fx7Rtry2.mjs",
-  workerPlan: "worker/worker-chunk-Fx7Plan2.mjs",
-  workerPrepare: "worker/worker-chunk-Fx7Prep2.mjs",
-};
+  // --- Schema fixture: the exact two-line anchor the patch inserts into AgentEntryBaseSchema ---
+  const schemaFixtureBody =
+    "const AgentEntryBaseSchema = strictObject({\n" +
+    "\tid: string(),\n" +
+    "\tparams: record(string(), unknown()).optional(),\n" +
+    "\truntime: AgentRuntimeSchema\n" +
+    "});\n";
+  write(F.schema, schemaFixtureBody);
+  // The feishu config-doctor bundle carries its own full copy of the same schema instead of
+  // importing the shared chunk (every other config-doctor bundle imports it); never executed
+  // here, only checked structurally after patching.
+  write("config-doctor/feishu.js", schemaFixtureBody);
 
-// --- Schema fixture: the exact two-line anchor the patch inserts into AgentEntryBaseSchema ---
-const schemaFixtureBody =
-  "const AgentEntryBaseSchema = strictObject({\n" +
-  "\tid: string(),\n" +
-  "\tparams: record(string(), unknown()).optional(),\n" +
-  "\truntime: AgentRuntimeSchema\n" +
-  "});\n";
-write(F.schema, schemaFixtureBody);
-// The feishu config-doctor bundle carries its own full copy of the same schema instead of
-// importing the shared chunk (every other config-doctor bundle imports it); never executed
-// here, only checked structurally after patching.
-write("config-doctor/feishu.js", schemaFixtureBody);
+  // --- Readable compaction-target chunk (verbatim resolveEmbeddedCompactionTarget / resolveCompactionTargetRuntime) ---
+  write(
+    F.target,
+    [
+      "function resolveEmbeddedCompactionTarget(params) {",
+      "\tconst provider = params.provider?.trim() || params.defaultProvider;",
+      "\tconst model = params.modelId?.trim() || params.defaultModel;",
+      "\tconst override = params.modelSelectionLocked ? void 0 : params.config?.agents?.defaults?.compaction?.model?.trim();",
+      "\tconst assembleTarget = (targetProvider, targetModel) => {",
+      "\t\tconst authProfileId = targetProvider !== provider ? void 0 : params.authProfileId ?? void 0;",
+      "\t\treturn {",
+      "\t\t\tprovider: targetProvider,",
+      "\t\t\t...resolveCompactionTargetRuntime(targetProvider, params.harnessRuntime),",
+      "\t\t\tmodel: targetModel,",
+      "\t\t\tauthProfileId",
+      "\t\t};",
+      "\t};",
+      "\tif (!override) return assembleTarget(provider, model);",
+      '\tconst slashIdx = override.indexOf("/");',
+      "\tif (slashIdx > 0) return assembleTarget(override.slice(0, slashIdx).trim(), override.slice(slashIdx + 1).trim() || params.defaultModel);",
+      "\tconst config = params.config ?? {};",
+      "\tconst currentProvider = provider?.trim();",
+      "\tif (currentProvider && hasBareConfiguredModelForProvider({ cfg: config, provider: currentProvider, model: override })) return assembleTarget(currentProvider, override);",
+      "\tconst inferredLiteralProvider = inferUniqueProviderFromConfiguredModels({ cfg: config, model: override, allowManifestNormalization: false });",
+      "\tif (inferredLiteralProvider) return assembleTarget(inferredLiteralProvider, override);",
+      '\tconst defaultProvider = provider || "openai";',
+      "\tconst aliasKey = normalizeLowercaseStringOrEmpty(splitTrailingAuthProfile(override).model);",
+      "\tconst alias = listModelAliasCandidates(config).some(({ alias: candidate }) => normalizeLowercaseStringOrEmpty(candidate) === aliasKey) ? buildModelAliasIndex({ cfg: config, defaultProvider, allowPluginNormalization: params.allowPluginNormalization, manifestPlugins: params.manifestPlugins }).byAlias.get(aliasKey) : void 0;",
+      "\treturn assembleTarget(alias?.ref.provider ?? provider, alias?.ref.model ?? override);",
+      "}",
+      "function resolveCompactionTargetRuntime(provider, harnessRuntime) {",
+      "\tif (!provider) return {};",
+      "\tconst selectedHarnessRuntime = normalizeOptionalAgentRuntimeId(harnessRuntime);",
+      '\tconst useNativeHarnessRuntime = selectedHarnessRuntime !== "openclaw" && !isDefaultAgentRuntimeId(selectedHarnessRuntime);',
+      "\tconst runtimeProvider = resolveSelectedOpenAIRuntimeProvider({ provider });",
+      "\tconst routedRuntimeProvider = runtimeProvider === provider ? void 0 : runtimeProvider;",
+      "\treturn {",
+      "\t\truntimeProvider: routedRuntimeProvider,",
+      "\t\tcontextProvider: useNativeHarnessRuntime ? routedRuntimeProvider : void 0,",
+      "\t\t...useNativeHarnessRuntime ? { nativeHarnessCompaction: true } : {}",
+      "\t};",
+      "}",
+      "function hasBareConfiguredModelForProvider() { return false; }",
+      "function inferUniqueProviderFromConfiguredModels() { return undefined; }",
+      'function normalizeLowercaseStringOrEmpty(v) { return (v ?? "").toLowerCase(); }',
+      "function splitTrailingAuthProfile(v) { return { model: v }; }",
+      "function listModelAliasCandidates() { return []; }",
+      "function buildModelAliasIndex() { return { byAlias: new Map() }; }",
+      "function normalizeOptionalAgentRuntimeId(v) { return v; }",
+      'function isDefaultAgentRuntimeId(v) { return v === "openclaw" || v === undefined; }',
+      "function resolveSelectedOpenAIRuntimeProvider({ provider }) { return provider; }",
+      "export { resolveEmbeddedCompactionTarget, resolveCompactionTargetRuntime };",
+      "",
+    ].join("\n"),
+  );
 
-// --- Readable compaction-target chunk (verbatim resolveEmbeddedCompactionTarget / resolveCompactionTargetRuntime) ---
-write(
-  F.target,
-  [
-    "function resolveEmbeddedCompactionTarget(params) {",
-    "\tconst provider = params.provider?.trim() || params.defaultProvider;",
-    "\tconst model = params.modelId?.trim() || params.defaultModel;",
-    "\tconst override = params.modelSelectionLocked ? void 0 : params.config?.agents?.defaults?.compaction?.model?.trim();",
-    "\tconst assembleTarget = (targetProvider, targetModel) => {",
-    "\t\tconst authProfileId = targetProvider !== provider ? void 0 : params.authProfileId ?? void 0;",
-    "\t\treturn {",
-    "\t\t\tprovider: targetProvider,",
-    "\t\t\t...resolveCompactionTargetRuntime(targetProvider, params.harnessRuntime),",
-    "\t\t\tmodel: targetModel,",
-    "\t\t\tauthProfileId",
-    "\t\t};",
-    "\t};",
-    "\tif (!override) return assembleTarget(provider, model);",
-    '\tconst slashIdx = override.indexOf("/");',
-    "\tif (slashIdx > 0) return assembleTarget(override.slice(0, slashIdx).trim(), override.slice(slashIdx + 1).trim() || params.defaultModel);",
-    "\tconst config = params.config ?? {};",
-    "\tconst currentProvider = provider?.trim();",
-    "\tif (currentProvider && hasBareConfiguredModelForProvider({ cfg: config, provider: currentProvider, model: override })) return assembleTarget(currentProvider, override);",
-    "\tconst inferredLiteralProvider = inferUniqueProviderFromConfiguredModels({ cfg: config, model: override, allowManifestNormalization: false });",
-    "\tif (inferredLiteralProvider) return assembleTarget(inferredLiteralProvider, override);",
-    '\tconst defaultProvider = provider || "openai";',
-    "\tconst aliasKey = normalizeLowercaseStringOrEmpty(splitTrailingAuthProfile(override).model);",
-    "\tconst alias = listModelAliasCandidates(config).some(({ alias: candidate }) => normalizeLowercaseStringOrEmpty(candidate) === aliasKey) ? buildModelAliasIndex({ cfg: config, defaultProvider, allowPluginNormalization: params.allowPluginNormalization, manifestPlugins: params.manifestPlugins }).byAlias.get(aliasKey) : void 0;",
-    "\treturn assembleTarget(alias?.ref.provider ?? provider, alias?.ref.model ?? override);",
-    "}",
-    "function resolveCompactionTargetRuntime(provider, harnessRuntime) {",
-    "\tif (!provider) return {};",
-    "\tconst selectedHarnessRuntime = normalizeOptionalAgentRuntimeId(harnessRuntime);",
-    '\tconst useNativeHarnessRuntime = selectedHarnessRuntime !== "openclaw" && !isDefaultAgentRuntimeId(selectedHarnessRuntime);',
-    "\tconst runtimeProvider = resolveSelectedOpenAIRuntimeProvider({ provider });",
-    "\tconst routedRuntimeProvider = runtimeProvider === provider ? void 0 : runtimeProvider;",
-    "\treturn {",
-    "\t\truntimeProvider: routedRuntimeProvider,",
-    "\t\tcontextProvider: useNativeHarnessRuntime ? routedRuntimeProvider : void 0,",
-    "\t\t...useNativeHarnessRuntime ? { nativeHarnessCompaction: true } : {}",
-    "\t};",
-    "}",
-    "function hasBareConfiguredModelForProvider() { return false; }",
-    "function inferUniqueProviderFromConfiguredModels() { return undefined; }",
-    'function normalizeLowercaseStringOrEmpty(v) { return (v ?? "").toLowerCase(); }',
-    "function splitTrailingAuthProfile(v) { return { model: v }; }",
-    "function listModelAliasCandidates() { return []; }",
-    "function buildModelAliasIndex() { return { byAlias: new Map() }; }",
-    "function normalizeOptionalAgentRuntimeId(v) { return v; }",
-    'function isDefaultAgentRuntimeId(v) { return v === "openclaw" || v === undefined; }',
-    "function resolveSelectedOpenAIRuntimeProvider({ provider }) { return provider; }",
-    "export { resolveEmbeddedCompactionTarget, resolveCompactionTargetRuntime };",
-    "",
-  ].join("\n"),
-);
+  // --- Readable fallback/retry call site (compact-*.mjs's "compactPrepared") ---
+  write(
+    F.retry,
+    [
+      `import { resolveEmbeddedCompactionTarget } from "./${F.target}";`,
+      'const DEFAULT_PROVIDER = "openai";',
+      'const DEFAULT_MODEL = "gpt-6-astra";',
+      "async function compactPreparedRetry(params) {",
+      "\t\t\t\tconst resolvedCompactionTarget = resolveEmbeddedCompactionTarget({",
+      "\t\t\t\t\tconfig: params.config,",
+      "\t\t\t\t\tprovider: params.provider,",
+      "\t\t\t\t\tmodelId: params.model,",
+      "\t\t\t\t\tauthProfileId: params.authProfileId,",
+      "\t\t\t\t\tmodelSelectionLocked: params.modelSelectionLocked,",
+      "\t\t\t\t\tdefaultProvider: DEFAULT_PROVIDER,",
+      "\t\t\t\t\tdefaultModel: DEFAULT_MODEL",
+      "\t\t\t\t});",
+      "\treturn resolvedCompactionTarget;",
+      "}",
+      "export { compactPreparedRetry };",
+      "",
+    ].join("\n"),
+  );
 
-// --- Readable fallback/retry call site (compact-*.mjs's "compactPrepared") ---
-write(
-  F.retry,
-  [
-    `import { resolveEmbeddedCompactionTarget } from "./${F.target}";`,
-    'const DEFAULT_PROVIDER = "openai";',
-    'const DEFAULT_MODEL = "gpt-6-astra";',
-    "async function compactPreparedRetry(params) {",
-    "\t\t\t\tconst resolvedCompactionTarget = resolveEmbeddedCompactionTarget({",
-    "\t\t\t\t\tconfig: params.config,",
-    "\t\t\t\t\tprovider: params.provider,",
-    "\t\t\t\t\tmodelId: params.model,",
-    "\t\t\t\t\tauthProfileId: params.authProfileId,",
-    "\t\t\t\t\tmodelSelectionLocked: params.modelSelectionLocked,",
-    "\t\t\t\t\tdefaultProvider: DEFAULT_PROVIDER,",
-    "\t\t\t\t\tdefaultModel: DEFAULT_MODEL",
-    "\t\t\t\t});",
-    "\treturn resolvedCompactionTarget;",
-    "}",
-    "export { compactPreparedRetry };",
-    "",
-  ].join("\n"),
-);
+  // --- Readable memory-flush timing + resolution chunk: the real structure (resolveMemoryFlushPlan
+  // indirection, the tools-arm slot-owner and overlap checks, the final per-arm model line) so the
+  // two new final-model anchors land on the same anchors the real file carries, and the per-agent
+  // override's precedence over both arms is behaviorally provable here too, not only in Part 2. ---
+  write(
+    F.plan,
+    [
+      "const DEFAULT_MEMORY_FLUSH_SOFT_TOKENS = 4000;",
+      "const DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES = 2097152;",
+      "const DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR = 20000;",
+      'function asNonNegativeFiniteNumber(v) { return typeof v === "number" && v >= 0 ? v : undefined; }',
+      'function parseNonNegativeByteSize(v) { return typeof v === "number" ? v : undefined; }',
+      "function resolveEffectiveCompactionReserveTokens({ reserveTokens }) { return reserveTokens; }",
+      "function resolveMemoryFlushTiming(params) {",
+      "\tconst defaults = params.cfg?.agents?.defaults?.compaction?.memoryFlush;",
+      "\tif (defaults?.enabled === false) return null;",
+      "\tlet softThresholdTokens = Math.floor(asNonNegativeFiniteNumber(defaults?.softThresholdTokens) ?? DEFAULT_MEMORY_FLUSH_SOFT_TOKENS);",
+      "\tconst forceFlushTranscriptBytes = parseNonNegativeByteSize(defaults?.forceFlushTranscriptBytes) ?? DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES;",
+      "\tlet reserveTokensFloor = DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR;",
+      "\tconst contextWindowTokens = Math.floor(asNonNegativeFiniteNumber(params.contextWindowTokens) ?? 0);",
+      "\tif (contextWindowTokens > 0) {",
+      "\t\treserveTokensFloor = resolveEffectiveCompactionReserveTokens({",
+      "\t\t\tcontextTokenBudget: contextWindowTokens,",
+      "\t\t\treserveTokens: reserveTokensFloor",
+      "\t\t});",
+      "\t\tsoftThresholdTokens = Math.min(softThresholdTokens, Math.floor((contextWindowTokens - reserveTokensFloor) / 2));",
+      "\t}",
+      "\tconst model = defaults?.model?.trim() || void 0;",
+      "\treturn {",
+      "\t\tsoftThresholdTokens,",
+      "\t\tforceFlushTranscriptBytes,",
+      "\t\treserveTokensFloor,",
+      "\t\t...model ? { model } : {}",
+      "\t};",
+      "}",
+      "function isToolsMemoryFlushPlan(plan) { return plan.persistenceToolNames !== undefined; }",
+      "let fakeFlushPlanResolver;",
+      "function __setFakeFlushPlanResolver(fn) { fakeFlushPlanResolver = fn; }",
+      "function resolveMemoryFlushPlan(params) {",
+      "\tif (!fakeFlushPlanResolver) return null;",
+      "\tconst plan = fakeFlushPlanResolver.resolve(params);",
+      "\tif (!plan) return null;",
+      "\treturn { plan, pluginId: fakeFlushPlanResolver.pluginId, selectedSlotOwner: fakeFlushPlanResolver.selectedSlotOwner === true };",
+      "}",
+      "function resolveMemoryFlushPlanForRun(params) {",
+      "\tconst timing = resolveMemoryFlushTiming(params);",
+      "\tif (!timing) return null;",
+      "\tconst resolution = resolveMemoryFlushPlan(params);",
+      "\tif (resolution && isToolsMemoryFlushPlan(resolution.plan) && !resolution.selectedSlotOwner) return null;",
+      "\tif (!resolution) return null;",
+      "\treturn {",
+      "\t\t...resolution,",
+      "\t\tplan: {",
+      "\t\t\t...resolution.plan,",
+      "\t\t\tsoftThresholdTokens: resolution.plan.softThresholdTokens ?? timing.softThresholdTokens,",
+      "\t\t\tforceFlushTranscriptBytes: resolution.plan.forceFlushTranscriptBytes ?? timing.forceFlushTranscriptBytes,",
+      "\t\t\treserveTokensFloor: resolution.plan.reserveTokensFloor ?? timing.reserveTokensFloor,",
+      "\t\t\tmodel: isToolsMemoryFlushPlan(resolution.plan) ? resolution.plan.model ?? timing.model : resolution.plan.model",
+      "\t\t}",
+      "\t};",
+      "}",
+      "export { resolveMemoryFlushTiming, resolveMemoryFlushPlanForRun, isToolsMemoryFlushPlan, __setFakeFlushPlanResolver };",
+      "",
+    ].join("\n"),
+  );
 
-// --- Readable memory-flush timing + resolution chunk: the real structure (resolveMemoryFlushPlan
-// indirection, the tools-arm slot-owner and overlap checks, the final per-arm model line) so the
-// two new final-model anchors land on the same anchors the real file carries, and the per-agent
-// override's precedence over both arms is behaviorally provable here too, not only in Part 2. ---
-write(
-  F.plan,
-  [
-    "const DEFAULT_MEMORY_FLUSH_SOFT_TOKENS = 4000;",
-    "const DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES = 2097152;",
-    "const DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR = 20000;",
-    'function asNonNegativeFiniteNumber(v) { return typeof v === "number" && v >= 0 ? v : undefined; }',
-    'function parseNonNegativeByteSize(v) { return typeof v === "number" ? v : undefined; }',
-    "function resolveEffectiveCompactionReserveTokens({ reserveTokens }) { return reserveTokens; }",
-    "function resolveMemoryFlushTiming(params) {",
-    "\tconst defaults = params.cfg?.agents?.defaults?.compaction?.memoryFlush;",
-    "\tif (defaults?.enabled === false) return null;",
-    "\tlet softThresholdTokens = Math.floor(asNonNegativeFiniteNumber(defaults?.softThresholdTokens) ?? DEFAULT_MEMORY_FLUSH_SOFT_TOKENS);",
-    "\tconst forceFlushTranscriptBytes = parseNonNegativeByteSize(defaults?.forceFlushTranscriptBytes) ?? DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES;",
-    "\tlet reserveTokensFloor = DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR;",
-    "\tconst contextWindowTokens = Math.floor(asNonNegativeFiniteNumber(params.contextWindowTokens) ?? 0);",
-    "\tif (contextWindowTokens > 0) {",
-    "\t\treserveTokensFloor = resolveEffectiveCompactionReserveTokens({",
-    "\t\t\tcontextTokenBudget: contextWindowTokens,",
-    "\t\t\treserveTokens: reserveTokensFloor",
-    "\t\t});",
-    "\t\tsoftThresholdTokens = Math.min(softThresholdTokens, Math.floor((contextWindowTokens - reserveTokensFloor) / 2));",
-    "\t}",
-    "\tconst model = defaults?.model?.trim() || void 0;",
-    "\treturn {",
-    "\t\tsoftThresholdTokens,",
-    "\t\tforceFlushTranscriptBytes,",
-    "\t\treserveTokensFloor,",
-    "\t\t...model ? { model } : {}",
-    "\t};",
-    "}",
-    "function isToolsMemoryFlushPlan(plan) { return plan.persistenceToolNames !== undefined; }",
-    "let fakeFlushPlanResolver;",
-    "function __setFakeFlushPlanResolver(fn) { fakeFlushPlanResolver = fn; }",
-    "function resolveMemoryFlushPlan(params) {",
-    "\tif (!fakeFlushPlanResolver) return null;",
-    "\tconst plan = fakeFlushPlanResolver.resolve(params);",
-    "\tif (!plan) return null;",
-    "\treturn { plan, pluginId: fakeFlushPlanResolver.pluginId, selectedSlotOwner: fakeFlushPlanResolver.selectedSlotOwner === true };",
-    "}",
-    "function resolveMemoryFlushPlanForRun(params) {",
-    "\tconst timing = resolveMemoryFlushTiming(params);",
-    "\tif (!timing) return null;",
-    "\tconst resolution = resolveMemoryFlushPlan(params);",
-    "\tif (resolution && isToolsMemoryFlushPlan(resolution.plan) && !resolution.selectedSlotOwner) return null;",
-    "\tif (!resolution) return null;",
-    "\treturn {",
-    "\t\t...resolution,",
-    "\t\tplan: {",
-    "\t\t\t...resolution.plan,",
-    "\t\t\tsoftThresholdTokens: resolution.plan.softThresholdTokens ?? timing.softThresholdTokens,",
-    "\t\t\tforceFlushTranscriptBytes: resolution.plan.forceFlushTranscriptBytes ?? timing.forceFlushTranscriptBytes,",
-    "\t\t\treserveTokensFloor: resolution.plan.reserveTokensFloor ?? timing.reserveTokensFloor,",
-    "\t\t\tmodel: isToolsMemoryFlushPlan(resolution.plan) ? resolution.plan.model ?? timing.model : resolution.plan.model",
-    "\t\t}",
-    "\t};",
-    "}",
-    "export { resolveMemoryFlushTiming, resolveMemoryFlushPlanForRun, isToolsMemoryFlushPlan, __setFakeFlushPlanResolver };",
-    "",
-  ].join("\n"),
-);
+  // --- Readable memory-flush model consumption call site (memory-flush-prepare-*.mjs).
+  // A local resolveDefaultAgentId stub stands in for the real agent-scope-config resolver
+  // already imported there; the point under test is only that the real call site now falls
+  // back to it exactly as the rest of the function already does two lines below. ---
+  write(
+    F.prepare,
+    [
+      `import { resolveMemoryFlushPlanForRun } from "./${F.plan}";`,
+      'function resolveDefaultAgentId(cfg) { return cfg?.agents?.defaultAgentId; }',
+      "async function prepareMemoryFlushAttempt(params) {",
+      "\tconst resolution = resolveMemoryFlushPlanForRun({",
+      "\t\tcfg: params.cfg,",
+      "\t\tnowMs: Date.now(),",
+      "\t\tcontextWindowTokens: params.contextWindowTokens",
+      "\t});",
+      "\tif (!resolution) return null;",
+      "\treturn resolution.plan;",
+      "}",
+      "export { prepareMemoryFlushAttempt };",
+      "",
+    ].join("\n"),
+  );
 
-// --- Readable memory-flush model consumption call site (memory-flush-prepare-*.mjs).
-// A local resolveDefaultAgentId stub stands in for the real agent-scope-config resolver
-// already imported there; the point under test is only that the real call site now falls
-// back to it exactly as the rest of the function already does two lines below. ---
-write(
-  F.prepare,
-  [
-    `import { resolveMemoryFlushPlanForRun } from "./${F.plan}";`,
-    'function resolveDefaultAgentId(cfg) { return cfg?.agents?.defaultAgentId; }',
-    "async function prepareMemoryFlushAttempt(params) {",
-    "\tconst resolution = resolveMemoryFlushPlanForRun({",
-    "\t\tcfg: params.cfg,",
-    "\t\tnowMs: Date.now(),",
-    "\t\tcontextWindowTokens: params.contextWindowTokens",
-    "\t});",
-    "\tif (!resolution) return null;",
-    "\treturn resolution.plan;",
-    "}",
-    "export { prepareMemoryFlushAttempt };",
-    "",
-  ].join("\n"),
-);
+  // --- "Ot"-named worker-pool duplicate (sqlite-store.worker.mjs): same esbuild short-name
+  // scheme as the readable chunk in this release, carrying all five functions this patch
+  // touches (plus the inlined schema's own anchor, never executed) so the minified variant
+  // gets the same full behavioral proof as the readable one. ---
+  write(
+    "worker/sqlite-store.worker.mjs",
+    [
+      "function resolveEmbeddedCompactionTarget(Ot){let Kt=Ot.provider?.trim()||Ot.defaultProvider,Zt=Ot.modelId?.trim()||Ot.defaultModel,_n=Ot.modelSelectionLocked?void 0:Ot.config?.agents?.defaults?.compaction?.model?.trim(),assembleTarget=(Zt,_n)=>{let Dn=Zt===Kt?Ot.authProfileId??void 0:void 0;return{provider:Zt,...resolveCompactionTargetRuntime(Zt,Ot.harnessRuntime),model:_n,authProfileId:Dn}};if(!_n)return assembleTarget(Kt,Zt);let Dn=_n.indexOf(`/`);if(Dn>0)return assembleTarget(_n.slice(0,Dn).trim(),_n.slice(Dn+1).trim()||Ot.defaultModel);let kn=Ot.config??{},Pn=Kt?.trim();if(Pn&&hasBareConfiguredModelForProvider({cfg:kn,provider:Pn,model:_n}))return assembleTarget(Pn,_n);let Fn=inferUniqueProviderFromConfiguredModels({cfg:kn,model:_n,allowManifestNormalization:!1});if(Fn)return assembleTarget(Fn,_n);let Ln=Kt||`openai`,Jn=normalizeLowercaseStringOrEmpty(splitTrailingAuthProfile(_n).model),cr=listModelAliasCandidates(kn).some(({alias:Ot})=>normalizeLowercaseStringOrEmpty(Ot)===Jn)?buildModelAliasIndex({cfg:kn,defaultProvider:Ln,allowPluginNormalization:Ot.allowPluginNormalization,manifestPlugins:Ot.manifestPlugins}).byAlias.get(Jn):void 0;return assembleTarget(cr?.ref.provider??Kt,cr?.ref.model??_n)}",
+      "function resolveCompactionTargetRuntime(Ot,Kt){if(!Ot)return{};let Zt=normalizeOptionalAgentRuntimeId(Kt),_n=Zt!==`openclaw`&&!isDefaultAgentRuntimeId(Zt),Dn=resolveSelectedOpenAIRuntimeProvider({provider:Ot}),kn=Dn===Ot?void 0:Dn;return{runtimeProvider:kn,contextProvider:_n?kn:void 0,..._n?{nativeHarnessCompaction:!0}:{}}}",
+      "function hasBareConfiguredModelForProvider(){return false}",
+      "function inferUniqueProviderFromConfiguredModels(){return undefined}",
+      'function normalizeLowercaseStringOrEmpty(v){return (v??"").toLowerCase()}',
+      "function splitTrailingAuthProfile(v){return {model:v}}",
+      "function listModelAliasCandidates(){return []}",
+      "function buildModelAliasIndex(){return {byAlias:new Map()}}",
+      "function normalizeOptionalAgentRuntimeId(v){return v}",
+      "function isDefaultAgentRuntimeId(v){return v===`openclaw`||v===undefined}",
+      "function resolveSelectedOpenAIRuntimeProvider({provider}){return provider}",
+      "const DEFAULT_PROVIDER=`openai`,DEFAULT_MODEL$1=`gpt-6-astra`;",
+      "async function compactPreparedRetry(pr){const resolvedCompactionTarget=resolveEmbeddedCompactionTarget({config:pr.config,provider:pr.provider,modelId:pr.model,authProfileId:pr.authProfileId,modelSelectionLocked:pr.modelSelectionLocked,defaultProvider:DEFAULT_PROVIDER,defaultModel:DEFAULT_MODEL$1});return resolvedCompactionTarget}",
+      "const DEFAULT_MEMORY_FLUSH_SOFT_TOKENS=4000,DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES=2097152,DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR=20000;",
+      "function asNonNegativeFiniteNumber(v){return typeof v===`number`&&v>=0?v:undefined}",
+      "function parseNonNegativeByteSize(v){return typeof v===`number`?v:undefined}",
+      "function resolveEffectiveCompactionReserveTokens({reserveTokens}){return reserveTokens}",
+      "function resolveMemoryFlushTiming(Ot){let Kt=Ot.cfg?.agents?.defaults?.compaction?.memoryFlush;if(Kt?.enabled===!1)return null;let Zt=Math.floor(asNonNegativeFiniteNumber(Kt?.softThresholdTokens)??DEFAULT_MEMORY_FLUSH_SOFT_TOKENS),_n=parseNonNegativeByteSize(Kt?.forceFlushTranscriptBytes)??DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES,Dn=DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR,kn=Math.floor(asNonNegativeFiniteNumber(Ot.contextWindowTokens)??0);kn>0&&(Dn=resolveEffectiveCompactionReserveTokens({contextTokenBudget:kn,reserveTokens:Dn}),Zt=Math.min(Zt,Math.floor((kn-Dn)/2)));let Pn=Kt?.model?.trim()||void 0;return{softThresholdTokens:Zt,forceFlushTranscriptBytes:_n,reserveTokensFloor:Dn,...Pn?{model:Pn}:{}}}function isToolsMemoryFlushPlan(Ot){return Ot.persistenceToolNames!==void 0}",
+      "let fakeFlushPlanResolver;function __setFakeFlushPlanResolver(Ot){fakeFlushPlanResolver=Ot}function resolveMemoryFlushPlan(Ot){if(!fakeFlushPlanResolver)return null;let Kt=fakeFlushPlanResolver.resolve(Ot);if(!Kt)return null;return{plan:Kt,pluginId:fakeFlushPlanResolver.pluginId,selectedSlotOwner:fakeFlushPlanResolver.selectedSlotOwner===!0}}",
+      "function resolveMemoryFlushPlanForRun(Ot){let Kt=resolveMemoryFlushTiming(Ot);if(!Kt)return null;let Zt=resolveMemoryFlushPlan(Ot);if(Zt&&isToolsMemoryFlushPlan(Zt.plan)&&!Zt.selectedSlotOwner)return null;if(!Zt)return null;if(isToolsMemoryFlushPlan(Zt.plan)){}return{...Zt,plan:{...Zt.plan,softThresholdTokens:Zt.plan.softThresholdTokens??Kt.softThresholdTokens,forceFlushTranscriptBytes:Zt.plan.forceFlushTranscriptBytes??Kt.forceFlushTranscriptBytes,reserveTokensFloor:Zt.plan.reserveTokensFloor??Kt.reserveTokensFloor,model:isToolsMemoryFlushPlan(Zt.plan)?Zt.plan.model??Kt.model:Zt.plan.model}}}function memoryFlushResultIsSilent(Ot){return false}",
+      "function resolveDefaultAgentId(Ot){return Ot?.agents?.defaultAgentId}",
+      "async function prepareMemoryFlushAttempt(Ot){let Kt=resolveMemoryFlushPlanForRun({cfg:Ot.cfg,nowMs:Date.now(),contextWindowTokens:Ot.contextWindowTokens});if(!Kt)return null;return Kt.plan}",
+      // Inlined-schema anchor, never executed: proves the generic patch applies to the same
+      // string sqlite-store.worker.mjs's real AgentEntryBaseSchema carries.
+      "const __schemaAnchor=\"params:record$2(string$3(),unknown()).optional(),runtime:AgentRuntimeSchema})\";",
+      "export {resolveEmbeddedCompactionTarget,compactPreparedRetry,resolveMemoryFlushTiming,resolveMemoryFlushPlanForRun,prepareMemoryFlushAttempt,__setFakeFlushPlanResolver};",
+      "",
+    ].join("\n"),
+  );
 
-// --- "Ot"-named worker-pool duplicate (sqlite-store.worker.mjs): same esbuild short-name
-// scheme as the readable chunk in this release, carrying all five functions this patch
-// touches (plus the inlined schema's own anchor, never executed) so the minified variant
-// gets the same full behavioral proof as the readable one. ---
-write(
-  "worker/sqlite-store.worker.mjs",
-  [
-    "function resolveEmbeddedCompactionTarget(Ot){let Kt=Ot.provider?.trim()||Ot.defaultProvider,Zt=Ot.modelId?.trim()||Ot.defaultModel,_n=Ot.modelSelectionLocked?void 0:Ot.config?.agents?.defaults?.compaction?.model?.trim(),assembleTarget=(Zt,_n)=>{let Dn=Zt===Kt?Ot.authProfileId??void 0:void 0;return{provider:Zt,...resolveCompactionTargetRuntime(Zt,Ot.harnessRuntime),model:_n,authProfileId:Dn}};if(!_n)return assembleTarget(Kt,Zt);let Dn=_n.indexOf(`/`);if(Dn>0)return assembleTarget(_n.slice(0,Dn).trim(),_n.slice(Dn+1).trim()||Ot.defaultModel);let kn=Ot.config??{},Pn=Kt?.trim();if(Pn&&hasBareConfiguredModelForProvider({cfg:kn,provider:Pn,model:_n}))return assembleTarget(Pn,_n);let Fn=inferUniqueProviderFromConfiguredModels({cfg:kn,model:_n,allowManifestNormalization:!1});if(Fn)return assembleTarget(Fn,_n);let Ln=Kt||`openai`,Jn=normalizeLowercaseStringOrEmpty(splitTrailingAuthProfile(_n).model),cr=listModelAliasCandidates(kn).some(({alias:Ot})=>normalizeLowercaseStringOrEmpty(Ot)===Jn)?buildModelAliasIndex({cfg:kn,defaultProvider:Ln,allowPluginNormalization:Ot.allowPluginNormalization,manifestPlugins:Ot.manifestPlugins}).byAlias.get(Jn):void 0;return assembleTarget(cr?.ref.provider??Kt,cr?.ref.model??_n)}",
-    "function resolveCompactionTargetRuntime(Ot,Kt){if(!Ot)return{};let Zt=normalizeOptionalAgentRuntimeId(Kt),_n=Zt!==`openclaw`&&!isDefaultAgentRuntimeId(Zt),Dn=resolveSelectedOpenAIRuntimeProvider({provider:Ot}),kn=Dn===Ot?void 0:Dn;return{runtimeProvider:kn,contextProvider:_n?kn:void 0,..._n?{nativeHarnessCompaction:!0}:{}}}",
-    "function hasBareConfiguredModelForProvider(){return false}",
-    "function inferUniqueProviderFromConfiguredModels(){return undefined}",
-    'function normalizeLowercaseStringOrEmpty(v){return (v??"").toLowerCase()}',
-    "function splitTrailingAuthProfile(v){return {model:v}}",
-    "function listModelAliasCandidates(){return []}",
-    "function buildModelAliasIndex(){return {byAlias:new Map()}}",
-    "function normalizeOptionalAgentRuntimeId(v){return v}",
-    "function isDefaultAgentRuntimeId(v){return v===`openclaw`||v===undefined}",
-    "function resolveSelectedOpenAIRuntimeProvider({provider}){return provider}",
-    "const DEFAULT_PROVIDER=`openai`,DEFAULT_MODEL$1=`gpt-6-astra`;",
-    "async function compactPreparedRetry(pr){const resolvedCompactionTarget=resolveEmbeddedCompactionTarget({config:pr.config,provider:pr.provider,modelId:pr.model,authProfileId:pr.authProfileId,modelSelectionLocked:pr.modelSelectionLocked,defaultProvider:DEFAULT_PROVIDER,defaultModel:DEFAULT_MODEL$1});return resolvedCompactionTarget}",
-    "const DEFAULT_MEMORY_FLUSH_SOFT_TOKENS=4000,DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES=2097152,DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR=20000;",
-    "function asNonNegativeFiniteNumber(v){return typeof v===`number`&&v>=0?v:undefined}",
-    "function parseNonNegativeByteSize(v){return typeof v===`number`?v:undefined}",
-    "function resolveEffectiveCompactionReserveTokens({reserveTokens}){return reserveTokens}",
-    "function resolveMemoryFlushTiming(Ot){let Kt=Ot.cfg?.agents?.defaults?.compaction?.memoryFlush;if(Kt?.enabled===!1)return null;let Zt=Math.floor(asNonNegativeFiniteNumber(Kt?.softThresholdTokens)??DEFAULT_MEMORY_FLUSH_SOFT_TOKENS),_n=parseNonNegativeByteSize(Kt?.forceFlushTranscriptBytes)??DEFAULT_MEMORY_FLUSH_FORCE_TRANSCRIPT_BYTES,Dn=DEFAULT_AGENT_COMPACTION_RESERVE_TOKENS_FLOOR,kn=Math.floor(asNonNegativeFiniteNumber(Ot.contextWindowTokens)??0);kn>0&&(Dn=resolveEffectiveCompactionReserveTokens({contextTokenBudget:kn,reserveTokens:Dn}),Zt=Math.min(Zt,Math.floor((kn-Dn)/2)));let Pn=Kt?.model?.trim()||void 0;return{softThresholdTokens:Zt,forceFlushTranscriptBytes:_n,reserveTokensFloor:Dn,...Pn?{model:Pn}:{}}}function isToolsMemoryFlushPlan(Ot){return Ot.persistenceToolNames!==void 0}",
-    "let fakeFlushPlanResolver;function __setFakeFlushPlanResolver(Ot){fakeFlushPlanResolver=Ot}function resolveMemoryFlushPlan(Ot){if(!fakeFlushPlanResolver)return null;let Kt=fakeFlushPlanResolver.resolve(Ot);if(!Kt)return null;return{plan:Kt,pluginId:fakeFlushPlanResolver.pluginId,selectedSlotOwner:fakeFlushPlanResolver.selectedSlotOwner===!0}}",
-    "function resolveMemoryFlushPlanForRun(Ot){let Kt=resolveMemoryFlushTiming(Ot);if(!Kt)return null;let Zt=resolveMemoryFlushPlan(Ot);if(Zt&&isToolsMemoryFlushPlan(Zt.plan)&&!Zt.selectedSlotOwner)return null;if(!Zt)return null;if(isToolsMemoryFlushPlan(Zt.plan)){}return{...Zt,plan:{...Zt.plan,softThresholdTokens:Zt.plan.softThresholdTokens??Kt.softThresholdTokens,forceFlushTranscriptBytes:Zt.plan.forceFlushTranscriptBytes??Kt.forceFlushTranscriptBytes,reserveTokensFloor:Zt.plan.reserveTokensFloor??Kt.reserveTokensFloor,model:isToolsMemoryFlushPlan(Zt.plan)?Zt.plan.model??Kt.model:Zt.plan.model}}}function memoryFlushResultIsSilent(Ot){return false}",
-    "function resolveDefaultAgentId(Ot){return Ot?.agents?.defaultAgentId}",
-    "async function prepareMemoryFlushAttempt(Ot){let Kt=resolveMemoryFlushPlanForRun({cfg:Ot.cfg,nowMs:Date.now(),contextWindowTokens:Ot.contextWindowTokens});if(!Kt)return null;return Kt.plan}",
-    // Inlined-schema anchor, never executed: proves the generic patch applies to the same
-    // string sqlite-store.worker.mjs's real AgentEntryBaseSchema carries.
-    "const __schemaAnchor=\"params:record$2(string$3(),unknown()).optional(),runtime:AgentRuntimeSchema})\";",
-    "export {resolveEmbeddedCompactionTarget,compactPreparedRetry,resolveMemoryFlushTiming,resolveMemoryFlushPlanForRun,prepareMemoryFlushAttempt,__setFakeFlushPlanResolver};",
-    "",
-  ].join("\n"),
-);
+  // --- Structural-only fixtures: single-purpose worker chunks, each with exactly one or more
+  // patched anchors. These confirm the patch's minified anchors still match real output; the
+  // readable and sqlite-store.worker.mjs fixtures above already prove the transformed logic
+  // behaves. Never imported. ---
+  write(
+    F.workerTarget,
+    "function resolveEmbeddedCompactionTarget(e){let t=e.provider,i=e.modelSelectionLocked?void 0:e.config?.agents?.defaults?.compaction?.model?.trim(),assembleTarget=()=>{};return i}\n",
+  );
+  write(
+    F.workerRetry,
+    "const G=`openai`,W=`gpt-6-astra`;\nfunction Qt(x){return x}\nasync function compactPrepared(s){return Qt({config:s.config,provider:s.provider,modelId:s.model,authProfileId:s.authProfileId,modelSelectionLocked:s.modelSelectionLocked,defaultProvider:G,defaultModel:W})}\n",
+  );
+  write(
+    F.workerPlan,
+    "function resolveMemoryFlushTiming(e){let n=e.cfg?.agents?.defaults?.compaction?.memoryFlush;if(n?.enabled===!1)return null;let r=0,i=0,a=0;let c=n?.model?.trim()||void 0;return{softThresholdTokens:r,forceFlushTranscriptBytes:i,reserveTokensFloor:a,...c?{model:c}:{}}}function isToolsMemoryFlushPlan(e){return e.persistenceToolNames!==void 0}function resolveMemoryFlushPlan(e){return null}function resolveMemoryFlushPlanForRun(e){let t=resolveMemoryFlushTiming(e);if(!t)return null;let n=resolveMemoryFlushPlan(e);if(n&&isToolsMemoryFlushPlan(n.plan)&&!n.selectedSlotOwner)return null;if(!n)return null;if(isToolsMemoryFlushPlan(n.plan)){}return{...n,plan:{...n.plan,softThresholdTokens:n.plan.softThresholdTokens??t.softThresholdTokens,forceFlushTranscriptBytes:n.plan.forceFlushTranscriptBytes??t.forceFlushTranscriptBytes,reserveTokensFloor:n.plan.reserveTokensFloor??t.reserveTokensFloor,model:isToolsMemoryFlushPlan(n.plan)?n.plan.model??t.model:n.plan.model}}}function memoryFlushResultIsSilent(e){return false}\n",
+  );
+  // Third worker-pool duplicate of prepareMemoryFlushAttempt; `a` stands in for the chunk's own
+  // resolveDefaultAgentId import alias. Never imported.
+  write(
+    F.workerPrepare,
+    "function a(cfg){return cfg?.agents?.defaultAgentId}\nfunction k(x){return x}\nasync function prepareMemoryFlushAttempt(e){let t=k({cfg:e.cfg,nowMs:Date.now(),contextWindowTokens:e.contextWindowTokens});if(!t)return null;let{sessionKey:r,sessionEntry:i,followupRun:o}=e;let s=o.run.agentId??a(e.cfg),c=0;return t}\n",
+  );
 
-// --- Structural-only fixtures: single-purpose worker chunks, each with exactly one or more
-// patched anchors. These confirm the patch's minified anchors still match real output; the
-// readable and sqlite-store.worker.mjs fixtures above already prove the transformed logic
-// behaves. Never imported. ---
-write(
-  F.workerTarget,
-  "function resolveEmbeddedCompactionTarget(e){let t=e.provider,i=e.modelSelectionLocked?void 0:e.config?.agents?.defaults?.compaction?.model?.trim(),assembleTarget=()=>{};return i}\n",
-);
-write(
-  F.workerRetry,
-  "const G=`openai`,W=`gpt-6-astra`;\nfunction Qt(x){return x}\nasync function compactPrepared(s){return Qt({config:s.config,provider:s.provider,modelId:s.model,authProfileId:s.authProfileId,modelSelectionLocked:s.modelSelectionLocked,defaultProvider:G,defaultModel:W})}\n",
-);
-write(
-  F.workerPlan,
-  "function resolveMemoryFlushTiming(e){let n=e.cfg?.agents?.defaults?.compaction?.memoryFlush;if(n?.enabled===!1)return null;let r=0,i=0,a=0;let c=n?.model?.trim()||void 0;return{softThresholdTokens:r,forceFlushTranscriptBytes:i,reserveTokensFloor:a,...c?{model:c}:{}}}function isToolsMemoryFlushPlan(e){return e.persistenceToolNames!==void 0}function resolveMemoryFlushPlan(e){return null}function resolveMemoryFlushPlanForRun(e){let t=resolveMemoryFlushTiming(e);if(!t)return null;let n=resolveMemoryFlushPlan(e);if(n&&isToolsMemoryFlushPlan(n.plan)&&!n.selectedSlotOwner)return null;if(!n)return null;if(isToolsMemoryFlushPlan(n.plan)){}return{...n,plan:{...n.plan,softThresholdTokens:n.plan.softThresholdTokens??t.softThresholdTokens,forceFlushTranscriptBytes:n.plan.forceFlushTranscriptBytes??t.forceFlushTranscriptBytes,reserveTokensFloor:n.plan.reserveTokensFloor??t.reserveTokensFloor,model:isToolsMemoryFlushPlan(n.plan)?n.plan.model??t.model:n.plan.model}}}function memoryFlushResultIsSilent(e){return false}\n",
-);
-// Third worker-pool duplicate of prepareMemoryFlushAttempt; `a` stands in for the chunk's own
-// resolveDefaultAgentId import alias. Never imported.
-write(
-  F.workerPrepare,
-  "function a(cfg){return cfg?.agents?.defaultAgentId}\nfunction k(x){return x}\nasync function prepareMemoryFlushAttempt(e){let t=k({cfg:e.cfg,nowMs:Date.now(),contextWindowTokens:e.contextWindowTokens});if(!t)return null;let{sessionKey:r,sessionEntry:i,followupRun:o}=e;let s=o.run.agentId??a(e.cfg),c=0;return t}\n",
-);
+  // --- Failure modes, each on a fresh copy of the unpatched fixtures: the patch must refuse a
+  // target that disappeared, an extra copy of a target, and a target in an unexpected chunk. ---
+  const runPatch = (target) => execFileSync(process.execPath, [patchScript, target, "2026.10.7"], { stdio: "pipe", encoding: "utf8" });
+  const expectPatchFailure = (label, mutate, pattern) => {
+    const copy = fs.mkdtempSync(path.join(os.tmpdir(), "oc-compaction-hotfix-neg-"));
+    fs.cpSync(fixtureRoot, copy, { recursive: true });
+    mutate(path.join(copy, "dist"));
+    let stderr = "";
+    assert.throws(() => {
+      try {
+        runPatch(copy);
+      } catch (error) {
+        stderr = String(error.stderr);
+        throw error;
+      }
+    }, `${label}: the patch applied anyway`);
+    assert.match(stderr, pattern, `${label}: the patch failed for another reason:\n${stderr}`);
+    assert.equal(fs.existsSync(path.join(copy, ".agent-scoped-compaction-model-hotfix.json")), false, `${label}: a refused run wrote a receipt`);
+    fs.rmSync(copy, { recursive: true, force: true });
+    console.log(`ok - ${label}: patch refused`);
+  };
+  expectPatchFailure("target disappeared", (d) => fs.rmSync(path.join(d, F.target)), /compaction-target-readable: expected 1 anchor\(s\) in context-engine-maintenance-\*\.mjs, found 0; found in nowhere/);
+  expectPatchFailure("extra worker copy", (d) => fs.copyFileSync(path.join(d, F.workerPlan), path.join(d, "worker/worker-chunk-Fx7Dupe9.mjs")), /memory-flush-timing-worker-chunk: expected 1 anchor\(s\) in worker\/worker-chunk-\*\.mjs, found 2/);
+  expectPatchFailure("unexpected chunk", (d) => {
+    fs.mkdirSync(path.join(d, "agents"));
+    fs.renameSync(path.join(d, F.plan), path.join(d, "agents/memory-flush-plan-Fx7Plan1.mjs"));
+  }, /memory-flush-timing-readable: anchor found in unexpected file agents\/memory-flush-plan-Fx7Plan1\.mjs/);
+  expectPatchFailure("re-minified alias", (d) => {
+    const file = path.join(d, F.workerPrepare);
+    fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("??a(e.cfg)", "??b(e.cfg)"));
+  }, /memory-flush-prepare-call-worker-chunk: worker\/worker-chunk-Fx7Prep2\.mjs no longer carries/);
 
-// --- Failure modes, each on a fresh copy of the unpatched fixtures: the patch must refuse a
-// target that disappeared, an extra copy of a target, and a target in an unexpected chunk. ---
-const runPatch = (target) => execFileSync(process.execPath, [patchScript, target, "2026.10.7"], { stdio: "pipe", encoding: "utf8" });
-const expectPatchFailure = (label, mutate, pattern) => {
-  const copy = fs.mkdtempSync(path.join(os.tmpdir(), "oc-compaction-hotfix-neg-"));
-  fs.cpSync(fixtureRoot, copy, { recursive: true });
-  mutate(path.join(copy, "dist"));
-  let stderr = "";
-  assert.throws(() => {
-    try {
-      runPatch(copy);
-    } catch (error) {
-      stderr = String(error.stderr);
-      throw error;
-    }
-  }, `${label}: the patch applied anyway`);
-  assert.match(stderr, pattern, `${label}: the patch failed for another reason:\n${stderr}`);
-  assert.equal(fs.existsSync(path.join(copy, ".agent-scoped-compaction-model-hotfix.json")), false, `${label}: a refused run wrote a receipt`);
-  fs.rmSync(copy, { recursive: true, force: true });
-  console.log(`ok - ${label}: patch refused`);
-};
-expectPatchFailure("target disappeared", (d) => fs.rmSync(path.join(d, F.target)), /compaction-target-readable: expected 1 anchor\(s\) in context-engine-maintenance-\*\.mjs, found 0; found in nowhere/);
-expectPatchFailure("extra worker copy", (d) => fs.copyFileSync(path.join(d, F.workerPlan), path.join(d, "worker/worker-chunk-Fx7Dupe9.mjs")), /memory-flush-timing-worker-chunk: expected 1 anchor\(s\) in worker\/worker-chunk-\*\.mjs, found 2/);
-expectPatchFailure("unexpected chunk", (d) => {
-  fs.mkdirSync(path.join(d, "agents"));
-  fs.renameSync(path.join(d, F.plan), path.join(d, "agents/memory-flush-plan-Fx7Plan1.mjs"));
-}, /memory-flush-timing-readable: anchor found in unexpected file agents\/memory-flush-plan-Fx7Plan1\.mjs/);
-expectPatchFailure("re-minified alias", (d) => {
-  const file = path.join(d, F.workerPrepare);
-  fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("??a(e.cfg)", "??b(e.cfg)"));
-}, /memory-flush-prepare-call-worker-chunk: worker\/worker-chunk-Fx7Prep2\.mjs no longer carries/);
+  // --- Run the real patch script against the fixtures ---
+  execFileSync(process.execPath, [patchScript, fixtureRoot, "2026.10.7"], { stdio: "inherit" });
 
-// --- Run the real patch script against the fixtures ---
-execFileSync(process.execPath, [patchScript, fixtureRoot, "2026.10.7"], { stdio: "inherit" });
+  // A second application refuses up front instead of stacking a second copy of every edit.
+  {
+    const before = fs.readFileSync(path.join(fixtureDist, F.plan), "utf8");
+    assert.throws(() => runPatch(fixtureRoot), (error) => /hotfix already applied/.test(String(error.stderr)), "a second run applied again");
+    assert.equal(fs.readFileSync(path.join(fixtureDist, F.plan), "utf8"), before, "a refused second run changed a file");
+    console.log("ok - a second application refuses and leaves the tree unchanged");
+  }
 
-// A second application refuses up front instead of stacking a second copy of every edit.
-{
-  const before = fs.readFileSync(path.join(fixtureDist, F.plan), "utf8");
-  assert.throws(() => runPatch(fixtureRoot), (error) => /hotfix already applied/.test(String(error.stderr)), "a second run applied again");
-  assert.equal(fs.readFileSync(path.join(fixtureDist, F.plan), "utf8"), before, "a refused second run changed a file");
-  console.log("ok - a second application refuses and leaves the tree unchanged");
-}
+  const receipt = JSON.parse(fs.readFileSync(path.join(fixtureRoot, ".agent-scoped-compaction-model-hotfix.json"), "utf8"));
+  assert.equal(receipt.id, MARKER);
+  assert.equal(receipt.changes.length, 24, `expected 24 anchor replacements, got ${receipt.changes.length}`);
+  const touchedFiles = new Set(receipt.changes.map((c) => c.file));
+  assert.equal(touchedFiles.size, 11, `expected 11 distinct files touched, got ${touchedFiles.size}`);
 
-const receipt = JSON.parse(fs.readFileSync(path.join(fixtureRoot, ".agent-scoped-compaction-model-hotfix.json"), "utf8"));
-assert.equal(receipt.id, MARKER);
-assert.equal(receipt.changes.length, 24, `expected 24 anchor replacements, got ${receipt.changes.length}`);
-const touchedFiles = new Set(receipt.changes.map((c) => c.file));
-assert.equal(touchedFiles.size, 11, `expected 11 distinct files touched, got ${touchedFiles.size}`);
+  const importFixture = (relPath) => import(pathToFileURL(path.join(fixtureDist, relPath)).href);
 
-const importFixture = (relPath) => import(pathToFileURL(path.join(fixtureDist, relPath)).href);
+  // --- Schema: the per-agent compaction field landed inside AgentEntryBaseSchema, in both the
+  // shared chunk and the feishu config-doctor bundle's own copy ---
+  for (const schemaFile of [F.schema, "config-doctor/feishu.js"]) {
+    const schemaSource = fs.readFileSync(path.join(fixtureDist, schemaFile), "utf8");
+    assert.ok(schemaSource.includes(`compaction: strictObject({`), `${schemaFile}: compaction field missing`);
+    assert.ok(schemaSource.includes(`memoryFlush: strictObject({ model: string().optional() }).optional()`), `${schemaFile}: memoryFlush field missing`);
+    assert.ok(schemaSource.includes(MARKER), `${schemaFile}: marker missing`);
+    assert.ok(schemaSource.indexOf("compaction: strictObject(") < schemaSource.indexOf("runtime: AgentRuntimeSchema"), `${schemaFile}: compaction field is not inside AgentEntryBaseSchema`);
+  }
 
-// --- Schema: the per-agent compaction field landed inside AgentEntryBaseSchema, in both the
-// shared chunk and the feishu config-doctor bundle's own copy ---
-for (const schemaFile of [F.schema, "config-doctor/feishu.js"]) {
-  const schemaSource = fs.readFileSync(path.join(fixtureDist, schemaFile), "utf8");
-  assert.ok(schemaSource.includes(`compaction: strictObject({`), `${schemaFile}: compaction field missing`);
-  assert.ok(schemaSource.includes(`memoryFlush: strictObject({ model: string().optional() }).optional()`), `${schemaFile}: memoryFlush field missing`);
-  assert.ok(schemaSource.includes(MARKER), `${schemaFile}: marker missing`);
-  assert.ok(schemaSource.indexOf("compaction: strictObject(") < schemaSource.indexOf("runtime: AgentRuntimeSchema"), `${schemaFile}: compaction field is not inside AgentEntryBaseSchema`);
-}
-
-function abliterationConfig() {
-  return {
-    agents: {
-      defaults: { compaction: { model: "anthropic/claude-sonnet-5", memoryFlush: { model: "anthropic/claude-sonnet-5" } } },
-      entries: {
-        onyx: { compaction: { model: "abliteration/abliterated-model-large-flash", memoryFlush: { model: "abliteration/abliterated-model-large-flash" } } },
+  function abliterationConfig() {
+    return {
+      agents: {
+        defaults: { compaction: { model: "anthropic/claude-sonnet-5", memoryFlush: { model: "anthropic/claude-sonnet-5" } } },
+        entries: {
+          onyx: { compaction: { model: "abliteration/abliterated-model-large-flash", memoryFlush: { model: "abliteration/abliterated-model-large-flash" } } },
+        },
       },
-    },
-  };
-}
-
-async function runCompactionTargetScenarios(label, { resolveEmbeddedCompactionTarget, compactPreparedRetry }) {
-  const config = abliterationConfig();
-
-  // 1. ONYX's per-agent override wins over the shared Sonnet default.
-  const onyx = resolveEmbeddedCompactionTarget({
-    agentId: "onyx",
-    config,
-    defaultProvider: "openai",
-    defaultModel: "gpt-6-astra",
-  });
-  assert.equal(onyx.provider, "abliteration", `${label}: onyx should resolve to abliteration, got ${onyx.provider}`);
-  assert.equal(onyx.model, "abliterated-model-large-flash", `${label}: onyx should resolve its own model`);
-
-  // 2. An agent with no entries.<id>.compaction override still gets the global Sonnet default.
-  const herald = resolveEmbeddedCompactionTarget({
-    agentId: "herald",
-    config,
-    defaultProvider: "openai",
-    defaultModel: "gpt-6-astra",
-  });
-  assert.equal(herald.provider, "anthropic", `${label}: herald should fall back to the shared default`);
-  assert.equal(herald.model, "claude-sonnet-5", `${label}: herald should fall back to the shared default model`);
-
-  // 2b. No agentId at all (e.g. a caller that never identifies an agent) also falls back, not undefined behavior.
-  const anonymous = resolveEmbeddedCompactionTarget({ config, defaultProvider: "openai", defaultModel: "gpt-6-astra" });
-  assert.equal(anonymous.provider, "anthropic", `${label}: missing agentId should still resolve the shared default`);
-
-  // 3. A locked model selection ignores both the per-agent and the default override.
-  const locked = resolveEmbeddedCompactionTarget({
-    agentId: "onyx",
-    provider: "abliteration",
-    modelId: "abliterated-model",
-    modelSelectionLocked: true,
-    config,
-    defaultProvider: "openai",
-    defaultModel: "gpt-6-astra",
-  });
-  assert.equal(locked.provider, "abliteration", `${label}: locked selection must not escape to any override`);
-  assert.equal(locked.model, "abliterated-model", `${label}: locked selection must keep its own model`);
-
-  // 4. The fallback/retry path (used to drop agentId when rebuilding its own params) must not
-  // escape to the shared default: it now resolves onyx's own override, exactly as the primary
-  // resolution path does.
-  const retried = await compactPreparedRetry({
-    agentId: "onyx",
-    config,
-    modelSelectionLocked: false,
-  });
-  assert.equal(retried.provider, "abliteration", `${label}: fallback/retry escaped to the shared default instead of onyx's override`);
-  assert.equal(retried.model, "abliterated-model-large-flash", `${label}: fallback/retry resolved the wrong model`);
-
-  console.log(`ok - ${label}: compaction target scenarios (onyx override, default fallback, locked fence, retry no-escape)`);
-}
-
-async function runMemoryFlushScenarios(label, { resolveMemoryFlushPlanForRun, __setFakeFlushPlanResolver }) {
-  const config = abliterationConfig();
-  const fileArmPlan = { resolve: () => ({ relativePath: "memory.md", systemPrompt: "x" }), pluginId: "fake-memory" };
-  const toolsArmPlanNoModel = { resolve: () => ({ persistenceToolNames: ["remember"] }), pluginId: "fake-memory", selectedSlotOwner: true };
-  const toolsArmPlanWithModel = { resolve: () => ({ persistenceToolNames: ["remember"], model: "plugin/own-model" }), pluginId: "fake-memory", selectedSlotOwner: true };
-
-  // 5. The per-agent override wins on the file arm, which previously ignored the per-agent
-  // (and the shared default) model unconditionally.
-  __setFakeFlushPlanResolver(fileArmPlan);
-  const onyxFile = resolveMemoryFlushPlanForRun({ cfg: config, agentId: "onyx", nowMs: Date.now(), contextWindowTokens: 100000 });
-  assert.equal(onyxFile.plan.model, "abliteration/abliterated-model-large-flash", `${label}: onyx file-arm override did not win`);
-
-  // 6. An agent with no override on the file arm keeps the exact prior behavior: the file arm
-  // never consulted the shared default either, so the model stays unset.
-  const heraldFile = resolveMemoryFlushPlanForRun({ cfg: config, agentId: "herald", nowMs: Date.now(), contextWindowTokens: 100000 });
-  assert.equal(heraldFile.plan.model, undefined, `${label}: herald file-arm model should stay unset, exactly as before any override existed`);
-
-  // 7. The per-agent override wins on the tools arm even when the plugin names its own model.
-  __setFakeFlushPlanResolver(toolsArmPlanWithModel);
-  const onyxToolsOwnModel = resolveMemoryFlushPlanForRun({ cfg: config, agentId: "onyx", nowMs: Date.now(), contextWindowTokens: 100000 });
-  assert.equal(onyxToolsOwnModel.plan.model, "abliteration/abliterated-model-large-flash", `${label}: onyx tools-arm override must beat the plugin's own model`);
-
-  // 8. No override: the plugin's own model still wins on the tools arm, exactly as before.
-  const heraldToolsOwnModel = resolveMemoryFlushPlanForRun({ cfg: config, agentId: "herald", nowMs: Date.now(), contextWindowTokens: 100000 });
-  assert.equal(heraldToolsOwnModel.plan.model, "plugin/own-model", `${label}: herald tools-arm should keep the plugin's own model unchanged`);
-
-  // 9. Plugin names no model on the tools arm: the per-agent override still wins over the
-  // shared default fallback.
-  __setFakeFlushPlanResolver(toolsArmPlanNoModel);
-  const onyxToolsNoModel = resolveMemoryFlushPlanForRun({ cfg: config, agentId: "onyx", nowMs: Date.now(), contextWindowTokens: 100000 });
-  assert.equal(onyxToolsNoModel.plan.model, "abliteration/abliterated-model-large-flash", `${label}: onyx tools-arm (no plugin model) override did not win`);
-
-  // 10. No override, no plugin model: falls back to the shared default, exactly as before.
-  const heraldToolsNoModel = resolveMemoryFlushPlanForRun({ cfg: config, agentId: "herald", nowMs: Date.now(), contextWindowTokens: 100000 });
-  assert.equal(heraldToolsNoModel.plan.model, "anthropic/claude-sonnet-5", `${label}: herald tools-arm (no plugin model) should keep the shared default`);
-
-  // 11. The pre-existing defaults.enabled:false behavior for agents with no override is
-  // unchanged (the schema admits no per-agent .enabled at all; see the schema test above).
-  const defaultDisabledConfig = abliterationConfig();
-  defaultDisabledConfig.agents.defaults.compaction.memoryFlush.enabled = false;
-  const defaultDisabled = resolveMemoryFlushPlanForRun({ cfg: defaultDisabledConfig, agentId: "herald", nowMs: Date.now(), contextWindowTokens: 100000 });
-  assert.equal(defaultDisabled, null, `${label}: default enabled:false must still disable memory flush for agents without an override`);
-  // ...and an agent with its own model override is fenced by the same default-level flag too:
-  // the schema has no per-agent .enabled to fence it independently.
-  const onyxUnderDefaultDisabled = resolveMemoryFlushPlanForRun({ cfg: defaultDisabledConfig, agentId: "onyx", nowMs: Date.now(), contextWindowTokens: 100000 });
-  assert.equal(onyxUnderDefaultDisabled, null, `${label}: default enabled:false must fence every agent; there is no per-agent .enabled to opt back in`);
-
-  __setFakeFlushPlanResolver(undefined);
-  console.log(`ok - ${label}: memory-flush scenarios (file/tools arms, plugin model/no model, onyx override, default fallback, default fence unchanged)`);
-}
-
-async function runAgentDefaultFallbackScenario(label, { prepareMemoryFlushAttempt, __setFakeFlushPlanResolver }) {
-  __setFakeFlushPlanResolver({ resolve: () => ({ relativePath: 'memory.md' }), pluginId: 'fake-memory' });
-  // 12. The real call site defaults a missing followupRun.run.agentId with
-  // resolveDefaultAgentId(cfg), the same resolver the rest of prepareMemoryFlushAttempt already
-  // falls back to; the per-agent override lookup must see that same default, not a bare
-  // possibly-undefined agentId, or an agent whose run omits an explicit agentId never reaches
-  // its own override.
-  const config = abliterationConfig();
-  config.agents.defaultAgentId = "onyx";
-  const plan = await prepareMemoryFlushAttempt({ cfg: config, contextWindowTokens: 100000, followupRun: { run: {} } });
-  assert.equal(plan.model, "abliteration/abliterated-model-large-flash", `${label}: omitted agentId should still resolve onyx's override through resolveDefaultAgentId(cfg)`);
-
-  // 13. An explicit agentId on the run is still used as-is, not overridden by the default.
-  const config2 = abliterationConfig();
-  config2.agents.defaultAgentId = "onyx";
-  const heraldPlan = await prepareMemoryFlushAttempt({ cfg: config2, contextWindowTokens: 100000, followupRun: { run: { agentId: "herald" } } });
-  assert.equal(heraldPlan.model, undefined, `${label}: an explicit agentId must not be overridden by resolveDefaultAgentId(cfg); herald's file-arm model stays unset, exactly as before any override existed`);
-
-  __setFakeFlushPlanResolver(undefined);
-  console.log(`ok - ${label}: prepareMemoryFlushAttempt resolves a missing agentId with resolveDefaultAgentId(cfg)`);
-}
-
-const readableTarget = await importFixture(F.target);
-const readableRetry = await importFixture(F.retry);
-await runCompactionTargetScenarios("readable chunk", {
-  resolveEmbeddedCompactionTarget: readableTarget.resolveEmbeddedCompactionTarget,
-  compactPreparedRetry: readableRetry.compactPreparedRetry,
-});
-
-const readableMemoryFlushPlan = await importFixture(F.plan);
-const readableMemoryFlushPrepare = await importFixture(F.prepare);
-await runMemoryFlushScenarios("readable chunk", readableMemoryFlushPlan);
-await runAgentDefaultFallbackScenario("readable chunk", { ...readableMemoryFlushPrepare, __setFakeFlushPlanResolver: readableMemoryFlushPlan.__setFakeFlushPlanResolver });
-
-const sqliteWorker = await importFixture("worker/sqlite-store.worker.mjs");
-await runCompactionTargetScenarios("sqlite-store.worker.mjs (Ot-named)", {
-  resolveEmbeddedCompactionTarget: sqliteWorker.resolveEmbeddedCompactionTarget,
-  compactPreparedRetry: sqliteWorker.compactPreparedRetry,
-});
-await runMemoryFlushScenarios("sqlite-store.worker.mjs (Ot-named)", sqliteWorker);
-await runAgentDefaultFallbackScenario("sqlite-store.worker.mjs (Ot-named)", sqliteWorker);
-
-
-// --- Structural-only proof for the single-purpose worker chunks and the two previously-
-// unpatched copies: the marker landed, so the patch's minified anchors still matched real
-// output and the transformation applied. ---
-const structuralExpectations = {
-  [F.workerTarget]: ["agents?.entries?.["], // the per-agent compaction-target lookup itself
-  [F.workerRetry]: ["agentId:s.agentId"], // threads agentId into the retry call so the lookup above can see it
-  [F.workerPlan]: [
-    "agents?.entries?.[", // the per-agent memory-flush lookup itself
-    "agentOverrideModel??(isToolsMemoryFlushPlan(n.plan)?n.plan.model??t.model:n.plan.model)", // the final per-arm precedence fix
-  ],
-  [F.workerPrepare]: ["agentId:e.followupRun.run.agentId??a(e.cfg)"], // the third prepareMemoryFlushAttempt duplicate now threads agentId with the same default
-};
-for (const [file, expectations] of Object.entries(structuralExpectations)) {
-  const source = fs.readFileSync(path.join(fixtureDist, file), "utf8");
-  assert.ok(source.includes(MARKER), `${file}: marker missing after patching`);
-  for (const expected of expectations) {
-    assert.ok(source.includes(expected), `${file}: expected "${expected}" missing after patching`);
+    };
   }
-}
-console.log("ok - structural anchors matched in every single-purpose or previously-unpatched worker chunk");
 
-fs.rmSync(fixtureRoot, { recursive: true, force: true });
-console.log(`Part 1 (bounded fixtures): all scenarios passed across ${touchedFiles.size} files (${receipt.changes.length} anchors)`);
+  async function runCompactionTargetScenarios(label, { resolveEmbeddedCompactionTarget, compactPreparedRetry }) {
+    const config = abliterationConfig();
 
-// ============================================================================================
-// Part 2: the actual packaged, already-patched gateway tree
-// ============================================================================================
-const root = process.argv[2];
-const realDist = path.join(root, "dist");
-const realReceipt = JSON.parse(fs.readFileSync(path.join(root, ".agent-scoped-compaction-model-hotfix.json"), "utf8"));
-assert.equal(realReceipt.id, MARKER);
-assert.equal(realReceipt.changes.length, 24, `expected 24 anchor replacements in the real tree, got ${realReceipt.changes.length}`);
-assert.equal(new Set(realReceipt.changes.map((c) => c.file)).size, 11, "expected 11 distinct files patched in the real tree");
+    // 1. ONYX's per-agent override wins over the shared Sonnet default.
+    const onyx = resolveEmbeddedCompactionTarget({
+      agentId: "onyx",
+      config,
+      defaultProvider: "openai",
+      defaultModel: "gpt-6-astra",
+    });
+    assert.equal(onyx.provider, "abliteration", `${label}: onyx should resolve to abliteration, got ${onyx.provider}`);
+    assert.equal(onyx.model, "abliterated-model-large-flash", `${label}: onyx should resolve its own model`);
 
-// Real chunks by content: the one file in `dir` whose name matches `name` and whose text
-// carries `needle`, and a module's export alias read from its own export clause.
-const realFile = (dir, name, needle) => {
-  const found = fs
-    .readdirSync(path.join(realDist, dir), { withFileTypes: true })
-    .filter((entry) => entry.isFile() && name.test(entry.name))
-    .map((entry) => path.join(realDist, dir, entry.name))
-    .filter((file) => fs.readFileSync(file, "utf8").includes(needle));
-  assert.equal(found.length, 1, `expected one ${dir}/${name} chunk carrying ${needle.slice(0, 80)}, got ${found.map((f) => path.relative(realDist, f)).join(", ") || "none"}`);
-  return found[0];
-};
-const importExport = async (file, local) => {
-  const clauses = [...fs.readFileSync(file, "utf8").matchAll(/export\s*\{([^}]*)\}/g)].flatMap((m) => m[1].split(","));
-  const spec = clauses.map((c) => c.trim().split(/\s+as\s+/)).find(([name]) => name === local);
-  assert.ok(spec, `${path.relative(realDist, file)} does not export ${local}`);
-  return (await import(pathToFileURL(file).href))[spec[1] ?? spec[0]];
-};
-const realSource = (dir, name, needle) => fs.readFileSync(realFile(dir, name, needle), "utf8");
+    // 2. An agent with no entries.<id>.compaction override still gets the global Sonnet default.
+    const herald = resolveEmbeddedCompactionTarget({
+      agentId: "herald",
+      config,
+      defaultProvider: "openai",
+      defaultModel: "gpt-6-astra",
+    });
+    assert.equal(herald.provider, "anthropic", `${label}: herald should fall back to the shared default`);
+    assert.equal(herald.model, "claude-sonnet-5", `${label}: herald should fall back to the shared default model`);
 
-// --- Native schema: the real AgentEntryBaseSchema (not a hand-copied shape) accepts the new
-// per-agent fields and still rejects everything the schema was never asked to carry. ---
-{
-  const schemaFile = realFile(".", /^zod-schema\.core-.*\.mjs$/, "const AgentEntryBaseSchema = strictObject({");
-  const AgentEntryBaseSchema = await importExport(schemaFile, "AgentEntryBaseSchema");
-  const parsed = AgentEntryBaseSchema.parse({
-    id: "onyx",
-    compaction: { model: "abliteration/abliterated-model-large-flash", memoryFlush: { model: "abliteration/abliterated-model-large-flash" } },
+    // 2b. No agentId at all (e.g. a caller that never identifies an agent) also falls back, not undefined behavior.
+    const anonymous = resolveEmbeddedCompactionTarget({ config, defaultProvider: "openai", defaultModel: "gpt-6-astra" });
+    assert.equal(anonymous.provider, "anthropic", `${label}: missing agentId should still resolve the shared default`);
+
+    // 3. A locked model selection ignores both the per-agent and the default override.
+    const locked = resolveEmbeddedCompactionTarget({
+      agentId: "onyx",
+      provider: "abliteration",
+      modelId: "abliterated-model",
+      modelSelectionLocked: true,
+      config,
+      defaultProvider: "openai",
+      defaultModel: "gpt-6-astra",
+    });
+    assert.equal(locked.provider, "abliteration", `${label}: locked selection must not escape to any override`);
+    assert.equal(locked.model, "abliterated-model", `${label}: locked selection must keep its own model`);
+
+    // 4. The fallback/retry path (used to drop agentId when rebuilding its own params) must not
+    // escape to the shared default: it now resolves onyx's own override, exactly as the primary
+    // resolution path does.
+    const retried = await compactPreparedRetry({
+      agentId: "onyx",
+      config,
+      modelSelectionLocked: false,
+    });
+    assert.equal(retried.provider, "abliteration", `${label}: fallback/retry escaped to the shared default instead of onyx's override`);
+    assert.equal(retried.model, "abliterated-model-large-flash", `${label}: fallback/retry resolved the wrong model`);
+
+    console.log(`ok - ${label}: compaction target scenarios (onyx override, default fallback, locked fence, retry no-escape)`);
+  }
+
+  async function runMemoryFlushScenarios(label, { resolveMemoryFlushPlanForRun, __setFakeFlushPlanResolver }) {
+    const config = abliterationConfig();
+    const fileArmPlan = { resolve: () => ({ relativePath: "memory.md", systemPrompt: "x" }), pluginId: "fake-memory" };
+    const toolsArmPlanNoModel = { resolve: () => ({ persistenceToolNames: ["remember"] }), pluginId: "fake-memory", selectedSlotOwner: true };
+    const toolsArmPlanWithModel = { resolve: () => ({ persistenceToolNames: ["remember"], model: "plugin/own-model" }), pluginId: "fake-memory", selectedSlotOwner: true };
+
+    // 5. The per-agent override wins on the file arm, which previously ignored the per-agent
+    // (and the shared default) model unconditionally.
+    __setFakeFlushPlanResolver(fileArmPlan);
+    const onyxFile = resolveMemoryFlushPlanForRun({ cfg: config, agentId: "onyx", nowMs: Date.now(), contextWindowTokens: 100000 });
+    assert.equal(onyxFile.plan.model, "abliteration/abliterated-model-large-flash", `${label}: onyx file-arm override did not win`);
+
+    // 6. An agent with no override on the file arm keeps the exact prior behavior: the file arm
+    // never consulted the shared default either, so the model stays unset.
+    const heraldFile = resolveMemoryFlushPlanForRun({ cfg: config, agentId: "herald", nowMs: Date.now(), contextWindowTokens: 100000 });
+    assert.equal(heraldFile.plan.model, undefined, `${label}: herald file-arm model should stay unset, exactly as before any override existed`);
+
+    // 7. The per-agent override wins on the tools arm even when the plugin names its own model.
+    __setFakeFlushPlanResolver(toolsArmPlanWithModel);
+    const onyxToolsOwnModel = resolveMemoryFlushPlanForRun({ cfg: config, agentId: "onyx", nowMs: Date.now(), contextWindowTokens: 100000 });
+    assert.equal(onyxToolsOwnModel.plan.model, "abliteration/abliterated-model-large-flash", `${label}: onyx tools-arm override must beat the plugin's own model`);
+
+    // 8. No override: the plugin's own model still wins on the tools arm, exactly as before.
+    const heraldToolsOwnModel = resolveMemoryFlushPlanForRun({ cfg: config, agentId: "herald", nowMs: Date.now(), contextWindowTokens: 100000 });
+    assert.equal(heraldToolsOwnModel.plan.model, "plugin/own-model", `${label}: herald tools-arm should keep the plugin's own model unchanged`);
+
+    // 9. Plugin names no model on the tools arm: the per-agent override still wins over the
+    // shared default fallback.
+    __setFakeFlushPlanResolver(toolsArmPlanNoModel);
+    const onyxToolsNoModel = resolveMemoryFlushPlanForRun({ cfg: config, agentId: "onyx", nowMs: Date.now(), contextWindowTokens: 100000 });
+    assert.equal(onyxToolsNoModel.plan.model, "abliteration/abliterated-model-large-flash", `${label}: onyx tools-arm (no plugin model) override did not win`);
+
+    // 10. No override, no plugin model: falls back to the shared default, exactly as before.
+    const heraldToolsNoModel = resolveMemoryFlushPlanForRun({ cfg: config, agentId: "herald", nowMs: Date.now(), contextWindowTokens: 100000 });
+    assert.equal(heraldToolsNoModel.plan.model, "anthropic/claude-sonnet-5", `${label}: herald tools-arm (no plugin model) should keep the shared default`);
+
+    // 11. The pre-existing defaults.enabled:false behavior for agents with no override is
+    // unchanged (the schema admits no per-agent .enabled at all; see the schema test above).
+    const defaultDisabledConfig = abliterationConfig();
+    defaultDisabledConfig.agents.defaults.compaction.memoryFlush.enabled = false;
+    const defaultDisabled = resolveMemoryFlushPlanForRun({ cfg: defaultDisabledConfig, agentId: "herald", nowMs: Date.now(), contextWindowTokens: 100000 });
+    assert.equal(defaultDisabled, null, `${label}: default enabled:false must still disable memory flush for agents without an override`);
+    // ...and an agent with its own model override is fenced by the same default-level flag too:
+    // the schema has no per-agent .enabled to fence it independently.
+    const onyxUnderDefaultDisabled = resolveMemoryFlushPlanForRun({ cfg: defaultDisabledConfig, agentId: "onyx", nowMs: Date.now(), contextWindowTokens: 100000 });
+    assert.equal(onyxUnderDefaultDisabled, null, `${label}: default enabled:false must fence every agent; there is no per-agent .enabled to opt back in`);
+
+    __setFakeFlushPlanResolver(undefined);
+    console.log(`ok - ${label}: memory-flush scenarios (file/tools arms, plugin model/no model, onyx override, default fallback, default fence unchanged)`);
+  }
+
+  async function runAgentDefaultFallbackScenario(label, { prepareMemoryFlushAttempt, __setFakeFlushPlanResolver }) {
+    __setFakeFlushPlanResolver({ resolve: () => ({ relativePath: 'memory.md' }), pluginId: 'fake-memory' });
+    // 12. The real call site defaults a missing followupRun.run.agentId with
+    // resolveDefaultAgentId(cfg), the same resolver the rest of prepareMemoryFlushAttempt already
+    // falls back to; the per-agent override lookup must see that same default, not a bare
+    // possibly-undefined agentId, or an agent whose run omits an explicit agentId never reaches
+    // its own override.
+    const config = abliterationConfig();
+    config.agents.defaultAgentId = "onyx";
+    const plan = await prepareMemoryFlushAttempt({ cfg: config, contextWindowTokens: 100000, followupRun: { run: {} } });
+    assert.equal(plan.model, "abliteration/abliterated-model-large-flash", `${label}: omitted agentId should still resolve onyx's override through resolveDefaultAgentId(cfg)`);
+
+    // 13. An explicit agentId on the run is still used as-is, not overridden by the default.
+    const config2 = abliterationConfig();
+    config2.agents.defaultAgentId = "onyx";
+    const heraldPlan = await prepareMemoryFlushAttempt({ cfg: config2, contextWindowTokens: 100000, followupRun: { run: { agentId: "herald" } } });
+    assert.equal(heraldPlan.model, undefined, `${label}: an explicit agentId must not be overridden by resolveDefaultAgentId(cfg); herald's file-arm model stays unset, exactly as before any override existed`);
+
+    __setFakeFlushPlanResolver(undefined);
+    console.log(`ok - ${label}: prepareMemoryFlushAttempt resolves a missing agentId with resolveDefaultAgentId(cfg)`);
+  }
+
+  const readableTarget = await importFixture(F.target);
+  const readableRetry = await importFixture(F.retry);
+  await runCompactionTargetScenarios("readable chunk", {
+    resolveEmbeddedCompactionTarget: readableTarget.resolveEmbeddedCompactionTarget,
+    compactPreparedRetry: readableRetry.compactPreparedRetry,
   });
-  assert.equal(parsed.compaction.model, "abliteration/abliterated-model-large-flash");
-  assert.equal(parsed.compaction.memoryFlush.model, "abliteration/abliterated-model-large-flash");
-  assert.throws(
-    () => AgentEntryBaseSchema.parse({ id: "onyx", compaction: { memoryFlush: { model: "x", enabled: false } } }),
-    /unrecognized/i,
-    "the real schema must still reject memoryFlush.enabled: nothing in this hotfix asked for it",
-  );
-  console.log("ok - real AgentEntryBaseSchema accepts the per-agent model fields and rejects memoryFlush.enabled");
-}
 
-// --- Real resolver chain: resolveMemoryFlushPlanForRun imported directly from the patched
-// packaged module, driven through every precedence scenario with a fake memory provider
-// registered through the real plugin-registration-context scope (no scheduler, HTTP route or
-// session side effects -- see the header comment). ---
-{
-  const withPluginRegistrationContext = await importExport(realFile(".", /^runtime-.*\.mjs$/, "function withPluginRegistrationContext("), "withPluginRegistrationContext");
-  const resolveMemoryFlushPlanForRun = await importExport(realFile(".", /^memory-flush-plan-.*\.mjs$/, "function resolveMemoryFlushPlanForRun(params)"), "resolveMemoryFlushPlanForRun");
+  const readableMemoryFlushPlan = await importFixture(F.plan);
+  const readableMemoryFlushPrepare = await importFixture(F.prepare);
+  await runMemoryFlushScenarios("readable chunk", readableMemoryFlushPlan);
+  await runAgentDefaultFallbackScenario("readable chunk", { ...readableMemoryFlushPrepare, __setFakeFlushPlanResolver: readableMemoryFlushPlan.__setFakeFlushPlanResolver });
 
-  const config = abliterationConfig();
-  const run = (capability, agentId, cfg = config) => {
-    const fakeRegistry = { memoryCapabilities: [{ pluginId: "fake-memory", capability, memorySlotSelected: true }] };
-    return withPluginRegistrationContext(fakeRegistry, "fake-memory", () =>
-      resolveMemoryFlushPlanForRun({ cfg, agentId, nowMs: Date.now(), contextWindowTokens: 100000 }),
+  const sqliteWorker = await importFixture("worker/sqlite-store.worker.mjs");
+  await runCompactionTargetScenarios("sqlite-store.worker.mjs (Ot-named)", {
+    resolveEmbeddedCompactionTarget: sqliteWorker.resolveEmbeddedCompactionTarget,
+    compactPreparedRetry: sqliteWorker.compactPreparedRetry,
+  });
+  await runMemoryFlushScenarios("sqlite-store.worker.mjs (Ot-named)", sqliteWorker);
+  await runAgentDefaultFallbackScenario("sqlite-store.worker.mjs (Ot-named)", sqliteWorker);
+
+
+  // --- Structural-only proof for the single-purpose worker chunks and the two previously-
+  // unpatched copies: the marker landed, so the patch's minified anchors still matched real
+  // output and the transformation applied. ---
+  const structuralExpectations = {
+    [F.workerTarget]: ["agents?.entries?.["], // the per-agent compaction-target lookup itself
+    [F.workerRetry]: ["agentId:s.agentId"], // threads agentId into the retry call so the lookup above can see it
+    [F.workerPlan]: [
+      "agents?.entries?.[", // the per-agent memory-flush lookup itself
+      "agentOverrideModel??(isToolsMemoryFlushPlan(n.plan)?n.plan.model??t.model:n.plan.model)", // the final per-arm precedence fix
+    ],
+    [F.workerPrepare]: ["agentId:e.followupRun.run.agentId??a(e.cfg)"], // the third prepareMemoryFlushAttempt duplicate now threads agentId with the same default
+  };
+  for (const [file, expectations] of Object.entries(structuralExpectations)) {
+    const source = fs.readFileSync(path.join(fixtureDist, file), "utf8");
+    assert.ok(source.includes(MARKER), `${file}: marker missing after patching`);
+    for (const expected of expectations) {
+      assert.ok(source.includes(expected), `${file}: expected "${expected}" missing after patching`);
+    }
+  }
+  console.log("ok - structural anchors matched in every single-purpose or previously-unpatched worker chunk");
+
+  fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  console.log(`Part 1 (bounded fixtures): all scenarios passed across ${touchedFiles.size} files (${receipt.changes.length} anchors)`);
+
+  // ============================================================================================
+  // Part 2: the actual packaged, already-patched gateway tree
+  // ============================================================================================
+  const root = process.argv[2];
+  const realDist = path.join(root, "dist");
+  const realReceipt = JSON.parse(fs.readFileSync(path.join(root, ".agent-scoped-compaction-model-hotfix.json"), "utf8"));
+  assert.equal(realReceipt.id, MARKER);
+  assert.equal(realReceipt.changes.length, 24, `expected 24 anchor replacements in the real tree, got ${realReceipt.changes.length}`);
+  assert.equal(new Set(realReceipt.changes.map((c) => c.file)).size, 11, "expected 11 distinct files patched in the real tree");
+
+  // Real chunks by content: the one file in `dir` whose name matches `name` and whose text
+  // carries `needle`, and a module's export alias read from its own export clause.
+  const realFile = (dir, name, needle) => {
+    const found = fs
+      .readdirSync(path.join(realDist, dir), { withFileTypes: true })
+      .filter((entry) => entry.isFile() && name.test(entry.name))
+      .map((entry) => path.join(realDist, dir, entry.name))
+      .filter((file) => fs.readFileSync(file, "utf8").includes(needle));
+    assert.equal(found.length, 1, `expected one ${dir}/${name} chunk carrying ${needle.slice(0, 80)}, got ${found.map((f) => path.relative(realDist, f)).join(", ") || "none"}`);
+    return found[0];
+  };
+  const importExport = async (file, local) => {
+    const clauses = [...fs.readFileSync(file, "utf8").matchAll(/export\s*\{([^}]*)\}/g)].flatMap((m) => m[1].split(","));
+    const spec = clauses.map((c) => c.trim().split(/\s+as\s+/)).find(([name]) => name === local);
+    assert.ok(spec, `${path.relative(realDist, file)} does not export ${local}`);
+    return (await import(pathToFileURL(file).href))[spec[1] ?? spec[0]];
+  };
+  const realSource = (dir, name, needle) => fs.readFileSync(realFile(dir, name, needle), "utf8");
+
+  // --- Native schema: the real AgentEntryBaseSchema (not a hand-copied shape) accepts the new
+  // per-agent fields and still rejects everything the schema was never asked to carry. ---
+  {
+    const schemaFile = realFile(".", /^zod-schema\.core-.*\.mjs$/, "const AgentEntryBaseSchema = strictObject({");
+    const AgentEntryBaseSchema = await importExport(schemaFile, "AgentEntryBaseSchema");
+    const parsed = AgentEntryBaseSchema.parse({
+      id: "onyx",
+      compaction: { model: "abliteration/abliterated-model-large-flash", memoryFlush: { model: "abliteration/abliterated-model-large-flash" } },
+    });
+    assert.equal(parsed.compaction.model, "abliteration/abliterated-model-large-flash");
+    assert.equal(parsed.compaction.memoryFlush.model, "abliteration/abliterated-model-large-flash");
+    assert.throws(
+      () => AgentEntryBaseSchema.parse({ id: "onyx", compaction: { memoryFlush: { model: "x", enabled: false } } }),
+      /unrecognized/i,
+      "the real schema must still reject memoryFlush.enabled: nothing in this hotfix asked for it",
     );
-  };
-
-  const fileArm = { flushPlanResolver: () => ({ relativePath: "memory.md", systemPrompt: "x" }) };
-  const toolsArmNoModel = { flushPlanResolver: () => ({ persistenceToolNames: ["remember"] }) };
-  const toolsArmWithModel = { flushPlanResolver: () => ({ persistenceToolNames: ["remember"], model: "plugin/own-model" }) };
-
-  assert.equal(run(fileArm, "onyx")?.plan.model, "abliteration/abliterated-model-large-flash", "real: onyx file-arm override did not win");
-  assert.equal(run(fileArm, "herald")?.plan.model, undefined, "real: herald file-arm model should stay unset, exactly as before any override existed");
-  assert.equal(run(toolsArmWithModel, "onyx")?.plan.model, "abliteration/abliterated-model-large-flash", "real: onyx tools-arm override must beat the plugin's own model");
-  assert.equal(run(toolsArmWithModel, "herald")?.plan.model, "plugin/own-model", "real: herald tools-arm should keep the plugin's own model unchanged");
-  assert.equal(run(toolsArmNoModel, "onyx")?.plan.model, "abliteration/abliterated-model-large-flash", "real: onyx tools-arm (no plugin model) override did not win");
-  assert.equal(run(toolsArmNoModel, "herald")?.plan.model, "anthropic/claude-sonnet-5", "real: herald tools-arm (no plugin model) should keep the shared default");
-
-  const noPluginRegistered = withPluginRegistrationContext({ memoryCapabilities: [] }, "fake-memory", () =>
-    resolveMemoryFlushPlanForRun({ cfg: config, agentId: "onyx", nowMs: Date.now(), contextWindowTokens: 100000 }),
-  );
-  assert.equal(noPluginRegistered, null, "real: no memory plugin registered must resolve to null");
-
-  const defaultDisabledConfig = abliterationConfig();
-  defaultDisabledConfig.agents.defaults.compaction.memoryFlush.enabled = false;
-  assert.equal(run(toolsArmNoModel, "onyx", defaultDisabledConfig), null, "real: default enabled:false must fence every agent, including one with its own override");
-
-  console.log("ok - real resolveMemoryFlushPlanForRun: file/tools arms, plugin model/no model, onyx override, default fallback, no plugin, default fence");
-}
-
-// --- The worker-pool duplicates (sqlite-store.worker.mjs and the worker/worker-chunk-*.mjs
-// copies) assume a live worker_threads/bundler init graph the plain ESM loader never runs
-// standalone, so these are checked structurally against the real patched file text instead:
-// each patched form must sit in exactly one chunk of its kind. ---
-{
-  const sqliteWorkerSource = fs.readFileSync(path.join(realDist, "worker/sqlite-store.worker.mjs"), "utf8");
-  for (const [needle, what] of [
-    ["compaction:strictObject({model:string$3().optional(),memoryFlush:strictObject({model:string$3().optional()}).optional()}).optional()", "inlined schema missing the per-agent compaction field"],
-    ["_n=Ot.modelSelectionLocked?void 0:(Ot.agentId?Ot.config?.agents?.entries?.[Ot.agentId]?.compaction?.model?.trim():void 0)??", "compaction target does not read the per-agent override"],
-    ["resolveEmbeddedCompactionTarget({config:pr.config,agentId:pr.agentId,", "compaction retry does not carry agentId"],
-    ["let Pn=qn?.model?.trim()||Kt?.model?.trim()||void 0;", "memory-flush timing does not read the per-agent override"],
-    ["model:agentOverrideModel??(isToolsMemoryFlushPlan(Zt.plan)?Zt.plan.model??Kt.model:Zt.plan.model)", "final per-arm model precedence fix missing"],
-    [`resolveMemoryFlushPlanForRun({cfg:Ot.cfg,agentId:Ot.followupRun.run.agentId??resolveDefaultAgentId(Ot.cfg),/*${MARKER}*/`, "prepareMemoryFlushAttempt does not default agentId with resolveDefaultAgentId(cfg)"],
-  ]) {
-    assert.equal(sqliteWorkerSource.split(needle).length - 1, 1, `real sqlite-store.worker.mjs: ${what}`);
+    console.log("ok - real AgentEntryBaseSchema accepts the per-agent model fields and rejects memoryFlush.enabled");
   }
 
-  const workerChunk = /^worker-chunk-.*\.mjs$/;
-  realFile("worker", workerChunk, "i=e.modelSelectionLocked?void 0:(e.agentId?e.config?.agents?.entries?.[e.agentId]?.compaction?.model?.trim():void 0)??");
-  // The worker chunks' minified aliases follow the release (the patch's `minified` table).
-  const [major, minor, patch] = String(realReceipt.upstreamVersion).split(".").map(Number);
-  const v1010 = major > 2026 || (major === 2026 && (minor > 10 || (minor === 10 && patch >= 10)));
-  realFile("worker", workerChunk, `${v1010 ? "Zt" : "Qt"}({config:s.config,agentId:s.agentId,`);
-  const workerPlanSource = realSource("worker", workerChunk, "model:agentOverrideModel??(isToolsMemoryFlushPlan(n.plan)?n.plan.model??t.model:n.plan.model)");
-  assert.ok(workerPlanSource.includes("let c=qo?.model?.trim()||n?.model?.trim()||void 0;"), "real worker-chunk memory-flush timing does not read the per-agent override");
-  realFile("worker", workerChunk, `agentId:e.followupRun.run.agentId??${v1010 ? "o" : "a"}(e.cfg)`);
+  // --- Real resolver chain: resolveMemoryFlushPlanForRun imported directly from the patched
+  // packaged module, driven through every precedence scenario with a fake memory provider
+  // registered through the real plugin-registration-context scope (no scheduler, HTTP route or
+  // session side effects -- see the header comment). ---
+  {
+    const withPluginRegistrationContext = await importExport(realFile(".", /^runtime-.*\.mjs$/, "function withPluginRegistrationContext("), "withPluginRegistrationContext");
+    const resolveMemoryFlushPlanForRun = await importExport(realFile(".", /^memory-flush-plan-.*\.mjs$/, "function resolveMemoryFlushPlanForRun(params)"), "resolveMemoryFlushPlanForRun");
 
-  const feishuSource = fs.readFileSync(path.join(realDist, "config-doctor/feishu.js"), "utf8");
-  assert.ok(feishuSource.includes("compaction: strictObject({") && feishuSource.includes(MARKER), "real config-doctor/feishu.js: inlined schema missing the per-agent compaction field");
+    const config = abliterationConfig();
+    const run = (capability, agentId, cfg = config) => {
+      const fakeRegistry = { memoryCapabilities: [{ pluginId: "fake-memory", capability, memorySlotSelected: true }] };
+      return withPluginRegistrationContext(fakeRegistry, "fake-memory", () =>
+        resolveMemoryFlushPlanForRun({ cfg, agentId, nowMs: Date.now(), contextWindowTokens: 100000 }),
+      );
+    };
 
-  realFile(".", /^context-engine-maintenance-.*\.mjs$/, "params.agentId ? params.config?.agents?.entries?.[params.agentId]?.compaction?.model?.trim() : void 0");
-  realFile(".", /^compact-.*\.mjs$/, `agentId: params.agentId, /* ${MARKER} */`);
-  realFile(".", /^memory-flush-prepare-.*\.mjs$/, "agentId: params.followupRun.run.agentId ?? resolveDefaultAgentId(params.cfg)");
+    const fileArm = { flushPlanResolver: () => ({ relativePath: "memory.md", systemPrompt: "x" }) };
+    const toolsArmNoModel = { flushPlanResolver: () => ({ persistenceToolNames: ["remember"] }) };
+    const toolsArmWithModel = { flushPlanResolver: () => ({ persistenceToolNames: ["remember"], model: "plugin/own-model" }) };
 
-  console.log("ok - structural checks on the real readable chunks, the worker-pool duplicates and the two previously-unpatched copies (sqlite-store.worker.mjs schema, the worker-chunk prepareMemoryFlushAttempt)");
+    assert.equal(run(fileArm, "onyx")?.plan.model, "abliteration/abliterated-model-large-flash", "real: onyx file-arm override did not win");
+    assert.equal(run(fileArm, "herald")?.plan.model, undefined, "real: herald file-arm model should stay unset, exactly as before any override existed");
+    assert.equal(run(toolsArmWithModel, "onyx")?.plan.model, "abliteration/abliterated-model-large-flash", "real: onyx tools-arm override must beat the plugin's own model");
+    assert.equal(run(toolsArmWithModel, "herald")?.plan.model, "plugin/own-model", "real: herald tools-arm should keep the plugin's own model unchanged");
+    assert.equal(run(toolsArmNoModel, "onyx")?.plan.model, "abliteration/abliterated-model-large-flash", "real: onyx tools-arm (no plugin model) override did not win");
+    assert.equal(run(toolsArmNoModel, "herald")?.plan.model, "anthropic/claude-sonnet-5", "real: herald tools-arm (no plugin model) should keep the shared default");
+
+    const noPluginRegistered = withPluginRegistrationContext({ memoryCapabilities: [] }, "fake-memory", () =>
+      resolveMemoryFlushPlanForRun({ cfg: config, agentId: "onyx", nowMs: Date.now(), contextWindowTokens: 100000 }),
+    );
+    assert.equal(noPluginRegistered, null, "real: no memory plugin registered must resolve to null");
+
+    const defaultDisabledConfig = abliterationConfig();
+    defaultDisabledConfig.agents.defaults.compaction.memoryFlush.enabled = false;
+    assert.equal(run(toolsArmNoModel, "onyx", defaultDisabledConfig), null, "real: default enabled:false must fence every agent, including one with its own override");
+
+    console.log("ok - real resolveMemoryFlushPlanForRun: file/tools arms, plugin model/no model, onyx override, default fallback, no plugin, default fence");
+  }
+
+  // --- The worker-pool duplicates (sqlite-store.worker.mjs and the worker/worker-chunk-*.mjs
+  // copies) assume a live worker_threads/bundler init graph the plain ESM loader never runs
+  // standalone, so these are checked structurally against the real patched file text instead:
+  // each patched form must sit in exactly one chunk of its kind. ---
+  {
+    const sqliteWorkerSource = fs.readFileSync(path.join(realDist, "worker/sqlite-store.worker.mjs"), "utf8");
+    for (const [needle, what] of [
+      ["compaction:strictObject({model:string$3().optional(),memoryFlush:strictObject({model:string$3().optional()}).optional()}).optional()", "inlined schema missing the per-agent compaction field"],
+      ["_n=Ot.modelSelectionLocked?void 0:(Ot.agentId?Ot.config?.agents?.entries?.[Ot.agentId]?.compaction?.model?.trim():void 0)??", "compaction target does not read the per-agent override"],
+      ["resolveEmbeddedCompactionTarget({config:pr.config,agentId:pr.agentId,", "compaction retry does not carry agentId"],
+      ["let Pn=qn?.model?.trim()||Kt?.model?.trim()||void 0;", "memory-flush timing does not read the per-agent override"],
+      ["model:agentOverrideModel??(isToolsMemoryFlushPlan(Zt.plan)?Zt.plan.model??Kt.model:Zt.plan.model)", "final per-arm model precedence fix missing"],
+      [`resolveMemoryFlushPlanForRun({cfg:Ot.cfg,agentId:Ot.followupRun.run.agentId??resolveDefaultAgentId(Ot.cfg),/*${MARKER}*/`, "prepareMemoryFlushAttempt does not default agentId with resolveDefaultAgentId(cfg)"],
+    ]) {
+      assert.equal(sqliteWorkerSource.split(needle).length - 1, 1, `real sqlite-store.worker.mjs: ${what}`);
+    }
+
+    const workerChunk = /^worker-chunk-.*\.mjs$/;
+    realFile("worker", workerChunk, "i=e.modelSelectionLocked?void 0:(e.agentId?e.config?.agents?.entries?.[e.agentId]?.compaction?.model?.trim():void 0)??");
+    // The worker chunks' minified aliases follow the release (the patch's `minified` table).
+    const [major, minor, patch] = String(realReceipt.upstreamVersion).split(".").map(Number);
+    const v1010 = major > 2026 || (major === 2026 && (minor > 10 || (minor === 10 && patch >= 10)));
+    realFile("worker", workerChunk, `${v1010 ? "Zt" : "Qt"}({config:s.config,agentId:s.agentId,`);
+    const workerPlanSource = realSource("worker", workerChunk, "model:agentOverrideModel??(isToolsMemoryFlushPlan(n.plan)?n.plan.model??t.model:n.plan.model)");
+    assert.ok(workerPlanSource.includes("let c=qo?.model?.trim()||n?.model?.trim()||void 0;"), "real worker-chunk memory-flush timing does not read the per-agent override");
+    realFile("worker", workerChunk, `agentId:e.followupRun.run.agentId??${v1010 ? "o" : "a"}(e.cfg)`);
+
+    const feishuSource = fs.readFileSync(path.join(realDist, "config-doctor/feishu.js"), "utf8");
+    assert.ok(feishuSource.includes("compaction: strictObject({") && feishuSource.includes(MARKER), "real config-doctor/feishu.js: inlined schema missing the per-agent compaction field");
+
+    realFile(".", /^context-engine-maintenance-.*\.mjs$/, "params.agentId ? params.config?.agents?.entries?.[params.agentId]?.compaction?.model?.trim() : void 0");
+    realFile(".", /^compact-.*\.mjs$/, `agentId: params.agentId, /* ${MARKER} */`);
+    realFile(".", /^memory-flush-prepare-.*\.mjs$/, "agentId: params.followupRun.run.agentId ?? resolveDefaultAgentId(params.cfg)");
+
+    console.log("ok - structural checks on the real readable chunks, the worker-pool duplicates and the two previously-unpatched copies (sqlite-store.worker.mjs schema, the worker-chunk prepareMemoryFlushAttempt)");
+  }
+
+  console.log(`Agent-scoped compaction/memory-flush model override: Part 1 + Part 2 passed (${realReceipt.changes.length} anchors across ${new Set(realReceipt.changes.map((c) => c.file)).size} files in the real tree)`);
 }
 
-console.log(`Agent-scoped compaction/memory-flush model override: Part 1 + Part 2 passed (${realReceipt.changes.length} anchors across ${new Set(realReceipt.changes.map((c) => c.file)).size} files in the real tree)`);
+const root = process.argv[2];
+const { upstreamVersion } = JSON.parse(fs.readFileSync(path.join(root, ".agent-scoped-compaction-model-hotfix.json"), "utf8"));
+if (atLeast(upstreamVersion, "2026.11.5")) await currentSuite(root);
+else await legacySuite();

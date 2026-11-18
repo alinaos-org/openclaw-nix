@@ -16,15 +16,27 @@ assert(root && atLeast(version, "2026.9.8"), "skill-tree store hardlink hotfix i
 const dist = path.join(root, "dist");
 
 const MARKER = "/* openclaw-nix-skill-tree-store-hardlinks-v1 */";
-const headerBefore = "async function readSkillBundleTree(directory, includePath, options) {";
+// From 2026.11.5 on the gateway chunks ship with minified locals; the shape is the same.
+// The walk result and the read result are both "a" there: the read's const shadows the walk.
+const [directory, includePath, options, symlinks, walked, safeRoot, entry, read] = atLeast(version, "2026.11.5")
+  ? ["e", "t", "n", "r", "a", "o", "t", "a"]
+  : ["directory", "includePath", "options", "symlinks", "walked", "safeRoot", "entry", "read"];
+const headerBefore = `async function readSkillBundleTree(${directory}, ${includePath}, ${options}) {`;
 const headerAfter = [
   `function isImmutableNixStoreRoot(rootReal) { ${MARKER}`,
   "\treturn typeof rootReal === \"string\" && rootReal.startsWith(\"/nix/store/\");",
   "}",
   headerBefore,
 ].join("\n");
-const readBefore = "const read = await safeRoot.read(entry.relativePath, {\n\t\t\thardlinks: \"reject\",\n\t\t\tsymlinks,\n\t\t\tmaxBytes: SKILL_LIBRARY_MAX_FILE_BYTES\n\t\t})";
-const readAfter = `const read = await safeRoot.read(entry.relativePath, {\n\t\t\thardlinks: isImmutableNixStoreRoot(safeRoot.rootReal) ? "allow" : "reject", ${MARKER}\n\t\t\tsymlinks,\n\t\t\tmaxBytes: SKILL_LIBRARY_MAX_FILE_BYTES\n\t\t})`;
+const readBefore = `const ${read} = await ${safeRoot}.read(${entry}.relativePath, {\n\t\t\thardlinks: "reject",\n\t\t\tsymlinks${symlinks === "symlinks" ? "" : `: ${symlinks}`},\n\t\t\tmaxBytes: SKILL_LIBRARY_MAX_FILE_BYTES\n\t\t})`;
+const readAfter = readBefore.replace(`hardlinks: "reject",`, `hardlinks: isImmutableNixStoreRoot(${safeRoot}.rootReal) ? "allow" : "reject", ${MARKER}`);
+// The minified names are only trusted when they bind the same values as the readable ones.
+const alsoRequires = [
+  `const ${symlinks} = ${options}?.symlinks ?? "reject";`,
+  `const ${safeRoot} = await root(${directory}).catch(`,
+  `for (const ${entry} of ${walked}.entries) {`,
+  `path.relative(${safeRoot}.rootReal, ${read}.realPath)`,
+];
 const count = (text, needle) => text.split(needle).length - 1;
 
 const patchedFiles = [];
@@ -36,7 +48,7 @@ for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")
   assert.equal(count(text, headerBefore), 1, `readSkillBundleTree repeated in ${name}`);
   assert.equal(count(text, readBefore), 1, `skill tree read anchor changed in ${name}`);
   assert.equal(count(text, MARKER), 0, `${name} is already patched`);
-  assert(text.includes("path.relative(safeRoot.rootReal, read.realPath)"), `${name}: safeRoot.rootReal is no longer the resolved root`);
+  for (const needle of alsoRequires) assert.equal(count(text, needle), 1, `${name}: skill tree reader changed shape (${needle})`);
   fs.writeFileSync(file, text.replace(headerBefore, headerAfter).replace(readBefore, readAfter));
   patchedFiles.push(name);
 }

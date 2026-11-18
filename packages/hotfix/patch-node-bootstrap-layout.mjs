@@ -20,45 +20,79 @@ const [root, source, version] = process.argv.slice(2);
 const atLeast = (version, minimum) => { const a = String(version).split(".").map(Number), b = minimum.split(".").map(Number); for (let i = 0; i < b.length; i++) if ((a[i] || 0) !== b[i]) return (a[i] || 0) > b[i]; return true; };
 assert(root && source && atLeast(version, "2026.9.8"), "node-bootstrap layout hotfix is qualified from 2026.9.8");
 const dist = path.join(root, "dist");
+const MARKER = "/* openclaw-nix-node-bootstrap-layout-v1 */";
 
-// The packer is the module that defines BOOTSTRAP_LAUNCHER_FILES: the top-level
-// node-bootstrap-artifact chunk through 9.9, a worker thread from 10.1
-// (gateway/worker-environments/node-bootstrap-artifact.worker.js, which imports the
-// inventory from ../../ instead of ./).
+// Through 11.4 the packer packs a fixed BOOTSTRAP_LAUNCHER_FILES list plus the
+// literal scripts/ entries of package.json files. From 11.5 on it drops that list
+// and packs every literal package.json files entry under scripts/ or ending in
+// .[cm]?[jt]s ("runtimeFiles"), which adds root helpers such as cli-invocation.mjs,
+// the .d.mts declarations and src/infra/directory-walk.ts.
+const packageFilesSelection = atLeast(version, "2026.11.5");
+const launcherAnchor = "const BOOTSTRAP_LAUNCHER_FILES = [";
+const runtimeFilesAnchor = /const [\w$]+ = \([\w$]+\.files \?\? \[\]\)\.filter\(\(([\w$]+)\) => \(\1\.startsWith\("scripts\/"\) \|\| \/\\\.\[cm\]\?\[jt\]s\$\/u\.test\(\1\)\) && !\1\.startsWith\("!"\) && !\1\.includes\("\*"\) && !\1\.endsWith\("\/"\)\);/g;
+const count = (text, anchor) => typeof anchor === "string" ? text.split(anchor).length - 1 : [...text.matchAll(anchor)].length;
+const packerAnchor = packageFilesSelection ? runtimeFilesAnchor : launcherAnchor;
+
+// The packer is the top-level node-bootstrap-artifact chunk through 9.9, a worker
+// thread from 10.1 (gateway/worker-environments/node-bootstrap-artifact.worker.js,
+// which imports the inventory from ../../ instead of ./), and from 11.5 the
+// node-bootstrap-artifact-build chunk that worker imports on demand.
 const workerPacker = "gateway/worker-environments/node-bootstrap-artifact.worker.js";
 const packerCandidates = [
   ...fs.readdirSync(dist).filter((name) => /^node-bootstrap-artifact-.*\.mjs$/.test(name)),
   ...(fs.existsSync(path.join(dist, workerPacker)) ? [workerPacker] : []),
-].filter((name) => fs.readFileSync(path.join(dist, name), "utf8").includes("const BOOTSTRAP_LAUNCHER_FILES = ["));
-assert.equal(packerCandidates.length, 1, `expected exactly one node bootstrap packer, found: ${packerCandidates.join(", ")}`);
+].filter((name) => count(fs.readFileSync(path.join(dist, name), "utf8"), packerAnchor) > 0);
+assert.equal(packerCandidates.length, 1, `expected exactly one node bootstrap packer, found: ${packerCandidates.join(", ") || "none"}`);
 const [artifactModule] = packerCandidates;
 const artifactSource = fs.readFileSync(path.join(dist, artifactModule), "utf8");
+assert.equal(count(artifactSource, packerAnchor), 1, `node bootstrap packer selection repeated in ${artifactModule}`);
+if (packageFilesSelection) assert(!artifactSource.includes(launcherAnchor), `${artifactModule} still has BOOTSTRAP_LAUNCHER_FILES`);
 const inventoryModule = /from "(?:\.\/|(?:\.\.\/)+)(package-dist-inventory-[^"\/]+\.mjs)"/.exec(artifactSource)?.[1];
 assert(inventoryModule, "node bootstrap no longer imports the package dist inventory");
 
-const before = "if (entry.isSymbolicLink()) throw new Error(`Unsafe package dist path: ${relativePath}`);";
-const after = "if (entry.isSymbolicLink()) { if (isOmittedDistSubtree(relativePath, rules)) return []; /* openclaw-nix-node-bootstrap-layout-v1 */ throw new Error(`Unsafe package dist path: ${relativePath}`); }";
+// Readable through 11.4 (entry/relativePath/rules); the inventory chunk is minified
+// from 11.5 on, so take the names from the code: the rules are collectRelativeFiles'
+// third parameter.
+const symlinkThrow = /if \(([\w$]+)\.isSymbolicLink\(\)\) throw new Error\(`Unsafe package dist path: \$\{([\w$]+)\}`\);/g;
+const walkerHeader = /async function collectRelativeFiles\([\w$]+, [\w$]+, ([\w$]+), [\w$]+\) \{/g;
 const patchedFiles = [];
 for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")).sort()) {
   const file = path.join(dist, name);
   const text = fs.readFileSync(file, "utf8");
-  const count = text.split(before).length - 1;
-  if (count === 0) continue;
-  assert.equal(count, 1, `symlink anchor repeated in ${name}`);
-  assert(text.includes("function isOmittedDistSubtree(relativePath, rules) {"), `${name} lacks isOmittedDistSubtree`);
-  fs.writeFileSync(file, text.replace(before, after));
+  const throws = [...text.matchAll(symlinkThrow)];
+  if (throws.length === 0) continue;
+  assert.equal(throws.length, 1, `symlink anchor repeated in ${name}`);
+  assert(/function isOmittedDistSubtree\([\w$]+, [\w$]+\) \{/.test(text), `${name} lacks isOmittedDistSubtree`);
+  const headers = [...text.matchAll(walkerHeader)];
+  assert.equal(headers.length, 1, `${name}: expected one collectRelativeFiles`);
+  const [throwMatch] = throws, [header] = headers;
+  const between = text.slice(header.index, throwMatch.index);
+  assert(throwMatch.index > header.index && !/\n(?:async )?function /.test(between.slice(1)), `${name}: symlink check is outside collectRelativeFiles`);
+  const [anchor, entry, relative] = throwMatch, rules = header[1];
+  assert(between.includes(`isOmittedDistSubtree(`) && between.includes(`, ${rules})`), `${name}: collectRelativeFiles no longer checks omissions with ${rules}`);
+  const after = `if (${entry}.isSymbolicLink()) { if (isOmittedDistSubtree(${relative}, ${rules})) return []; ${MARKER} throw new Error(\`Unsafe package dist path: \${${relative}}\`); }`;
+  fs.writeFileSync(file, text.replace(anchor, () => after));
   patchedFiles.push(name);
 }
 assert(patchedFiles.includes(inventoryModule), `symlink anchor changed in ${inventoryModule}`);
 
-const launcherList = /const BOOTSTRAP_LAUNCHER_FILES = \[([^\]]*)\];/.exec(artifactSource)?.[1];
-assert(launcherList, "BOOTSTRAP_LAUNCHER_FILES anchor changed");
-const launchers = [...launcherList.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
-assert(launchers.includes("openclaw.mjs"), "bootstrap launchers no longer include openclaw.mjs");
-// Same selection as the packer: literal scripts/ entries of package.json files.
+// Same selection as the packer.
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-const scripts = (manifest.files ?? []).filter((entry) => entry.startsWith("scripts/") && !entry.includes("*") && !entry.endsWith("/"));
-for (const relative of [...launchers, ...scripts]) {
+const literal = (entry) => !entry.startsWith("!") && !entry.includes("*") && !entry.endsWith("/");
+let launchers, scripts, runtimeFiles;
+if (packageFilesSelection) {
+  runtimeFiles = (manifest.files ?? []).filter((entry) => (entry.startsWith("scripts/") || /\.[cm]?[jt]s$/u.test(entry)) && literal(entry));
+  launchers = runtimeFiles.filter((entry) => !entry.includes("/"));
+  scripts = runtimeFiles.filter((entry) => entry.startsWith("scripts/"));
+} else {
+  const launcherList = /const BOOTSTRAP_LAUNCHER_FILES = \[([^\]]*)\];/.exec(artifactSource)?.[1];
+  assert(launcherList, "BOOTSTRAP_LAUNCHER_FILES anchor changed");
+  launchers = [...launcherList.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+  scripts = (manifest.files ?? []).filter((entry) => entry.startsWith("scripts/") && !entry.includes("*") && !entry.endsWith("/"));
+  runtimeFiles = [...launchers, ...scripts];
+}
+assert(launchers.includes("openclaw.mjs"), "bootstrap launchers no longer include openclaw.mjs");
+for (const relative of runtimeFiles) {
   assert(!path.isAbsolute(relative) && !relative.split("/").includes(".."), `unsafe packaged path ${relative}`);
   const from = path.join(source, relative);
   const to = path.join(root, relative);
@@ -70,6 +104,7 @@ for (const relative of [...launchers, ...scripts]) {
 }
 
 fs.writeFileSync(path.join(root, ".node-bootstrap-layout-hotfix.json"), JSON.stringify({
-  id: "openclaw-nix-node-bootstrap-layout-v1", upstreamVersion: version, patchedFiles, launchers, scripts,
+  id: "openclaw-nix-node-bootstrap-layout-v1", upstreamVersion: version, patchedFiles,
+  selection: packageFilesSelection ? "package-files" : "launcher-list", launchers, scripts, runtimeFiles,
 }, null, 2) + "\n");
-console.log(`Node bootstrap layout: skipped omitted-subtree symlinks in ${patchedFiles.join(", ")}; installed ${launchers.length} launchers and ${scripts.length} scripts`);
+console.log(`Node bootstrap layout: skipped omitted-subtree symlinks in ${patchedFiles.join(", ")}; installed ${runtimeFiles.length} runtime files (${launchers.length} launchers, ${scripts.length} scripts) for ${artifactModule}`);

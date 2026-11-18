@@ -65,7 +65,9 @@ const routeContracts = [
   [/^node-bundle-install-protocol-.*\.mjs$/, 'NODE_WORKER_BUNDLE_TRANSFER_PATH = "/__openclaw__/worker-bundle/v1"'],
   [/^node-bundle-install-protocol-.*\.mjs$/, "TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/u"],
   [/^node-workspace-transfer-protocol-.*\.mjs$/, 'NODE_WORKSPACE_TRANSFER_PATH = "/__openclaw__/worker-transfer/v1"'],
-  [/^node-workspace-transfer-protocol-.*\.mjs$/, "encodeURIComponent(environmentId)"],
+  // From 2026.11.5 on the bundler mangles local names, so this entry and the
+  // deriveEnvironmentIntent one match the environment id and digest as identifiers.
+  [/^node-workspace-transfer-protocol-.*\.mjs$/, /`\$\{NODE_WORKSPACE_TRANSFER_PATH\}\/environments\/\$\{encodeURIComponent\([\w$]+\)\}`/u],
   [/^worker-protocol-primitives-.*\.mjs$/, 'WORKER_PUBLIC_INGRESS_PATH = "/__openclaw__/worker"'],
   [/^node-desktop-stream-.*\.mjs$/, 'NODE_DESKTOP_ATTACH_PATH = "/node-desktop/attach"'],
   [/^node-desktop-stream-.*\.mjs$/, 'NODE_PORTAL_ATTACH_PATH = "/node-portal/attach"'],
@@ -73,8 +75,11 @@ const routeContracts = [
   [/^artifact-transfer-http-.*\.mjs$/, "SHA256_PATTERN = /^[a-f0-9]{64}$/u"],
   // deriveEnvironmentIntent (worker-environments/service-contract.ts): bundled into
   // project-preparation through 10.4, its own service-contract chunk from 10.5.
-  [/^(project-preparation|service-contract)-.*\.mjs$/, "`worker:${digest.slice(0, 32)}`"],
+  [/^(project-preparation|service-contract)-.*\.mjs$/, /environmentId: `worker:\$\{([\w$]+)\.slice\(0, 32\)\}`,\n\t\tprovisionOperationId: `provision:v2:\$\{\1\}`/u],
 ];
-for (const [file, needle] of routeContracts) assert(distText(file).includes(needle), `worker route contract changed: ${needle} (re-derive the ingress allowlist)`);
+for (const [file, needle] of routeContracts) {
+  const text = distText(file);
+  assert(needle instanceof RegExp ? needle.test(text) : text.includes(needle), `worker route contract changed: ${needle} (re-derive the ingress allowlist)`);
+}
 
 console.log(`Cloud-worker gateway URL: helper and resolver checks passed for ${receipt.patchedFiles.join(", ")}`);

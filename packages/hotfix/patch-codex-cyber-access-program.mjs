@@ -17,6 +17,21 @@
 //   appServer.cyberFailover.model still wins).
 // Authorization stays server-owned: an unentitled workspace gets 401/403, which the
 // failover already records as unavailable.
+//
+// From 2026.11.5 upstream sends cyberAccessProgram itself (Access: a session choice,
+// else the model/agent params.accessPrograms.cyber setting, else "standard"), and its
+// cyber failover retries the same model with daybreak_blue, so the second and third
+// edits are upstream's own and only the first remains, as one edit in the codex
+// plugin's resolveCodexCyberAccessProgram: an agent listed in
+// OPENCLAW_CODEX_DAYBREAK_BLUE_AGENTS defaults to daybreak_blue where it would get
+// Standard. Its configuring twin, params.accessPrograms on the model or agent, cannot
+// stand in: any authored params entry counts as a request transport override
+// (hasAuthoredProviderRequestParams), which Codex declares it cannot reproduce, so the
+// turn would leave the Codex runtime for OpenClaw's. A session choice, the failover
+// retry and an explicit Daybreak Red setting still win; the listed agent's model
+// fallbacks (Kimi, Claude CLI) are untouched, since only the codex plugin reads the
+// variable. Upstream checks entitlement (account/read and the model's advertised
+// availableAccessPrograms.cyber) before turn/start.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -42,6 +57,51 @@ const helper = [
 
 const count = (text, needle) => text.split(needle).length - 1;
 const ownFiles = (dir, pattern) => fs.readdirSync(dir).filter((name) => pattern.test(name)).map((name) => path.join(dir, name)).filter((file) => !fs.lstatSync(file).isSymbolicLink());
+// From 2026.11.5: one edit in upstream's own Access resolver (see the header).
+if (atLeast(version, "2026.11.5")) {
+  const files = ownFiles(setup, /\.mjs$/);
+  const header = "function resolveCodexCyberAccessProgram(params) {";
+  const hits = files.filter((file) => fs.readFileSync(file, "utf8").includes(header));
+  assert.equal(hits.length, 1, `expected one file with ${header}, got ${hits.map((f) => path.basename(f)).join(", ") || "none"}`);
+  const [file] = hits;
+  const text = fs.readFileSync(file, "utf8");
+  assert.equal(count(text, MARKER), 0, `${path.basename(file)} is already patched`);
+  const programBefore = "const program = params.cyberAccessProgram ?? programs?.cyber;";
+  const programAfter = "const program = params.cyberAccessProgram ?? openclawNixCodexDaybreakBlueDefault(params, programs?.cyber);";
+  for (const anchor of ["//#region extensions/codex/src/app-server/access-program.ts", header, programBefore,
+    "const configured = params.runtimePlan?.transport.resolveExtraParams().accessPrograms;",
+    'return program === "daybreak_blue" ? "daybreakBlue" : program === "daybreak_red" ? "daybreakRed" : program === "standard" ? "standard" : void 0;']) {
+    assert.equal(count(text, anchor), 1, `anchor changed in ${path.basename(file)}: ${anchor.slice(0, 70)}`);
+  }
+  // The failover half is upstream's from this release; refuse if that changes.
+  const harnessFiles = ownFiles(setup, /^harness-.*\.mjs$/).filter((f) => fs.readFileSync(f, "utf8").includes("//#region extensions/codex/harness.ts"));
+  assert.equal(harnessFiles.length, 1, "expected one codex harness chunk");
+  const harnessText = fs.readFileSync(harnessFiles[0], "utf8");
+  assert.equal(count(harnessText, 'cyberAccessProgram: "daybreak_blue",'), 1, "upstream's failover retry no longer requests daybreak_blue");
+  assert.equal(count(harnessText, "currentAccessProgram: resolveCodexCyberAccessProgram(params),"), 1, "upstream's failover no longer reads the turn's Access");
+  const failoverFiles = ownFiles(setup, /^cyber-failover-.*\.mjs$/).filter((f) => fs.readFileSync(f, "utf8").includes("//#region extensions/codex/src/app-server/cyber-failover.ts\n"));
+  assert.equal(failoverFiles.length, 1, "expected one cyber-failover chunk");
+  assert(!fs.readFileSync(failoverFiles[0], "utf8").includes("gpt-daybreak"), "upstream's failover names a Daybreak alias again");
+  const defaultHelper = [
+    `function openclawNixCodexDaybreakBlueDefault(params, configured) { ${MARKER}`,
+    '\tif (configured !== void 0 && configured !== "standard") return configured;',
+    "\tconst agentId = typeof params?.agentId === \"string\" ? params.agentId.trim().toLowerCase() : \"\";",
+    "\tif (!agentId) return configured;",
+    `\treturn (process.env.${ENV} ?? "").split(",").some((id) => id.trim().toLowerCase() === agentId) ? "daybreak_blue" : configured;`,
+    "}",
+  ].join("\n");
+  const patched = text.replace(header, `${defaultHelper}\n${header}`).replace(programBefore, programAfter);
+  assert.notEqual(patched, text, `${path.basename(file)} unchanged`);
+  fs.writeFileSync(file, patched);
+  const patchedFiles = [path.relative(root, file)];
+  fs.writeFileSync(path.join(root, ".codex-cyber-access-program-hotfix.json"), JSON.stringify({
+    id: "openclaw-nix-codex-cyber-access-program-v1", upstreamVersion: version, env: ENV, mode: "access-default",
+    failoverModel: null, patchedFiles,
+  }, null, 2) + "\n");
+  console.log(`Codex cyber access program (listed agents default to daybreak_blue; failover is upstream's): ${patchedFiles.join(", ")}`);
+  process.exit(0);
+}
+
 // Exactly one file carries `needle`; patch it with `edit` after checking every anchor.
 const patchOne = (files, needle, anchors, edit) => {
   const hits = files.filter((file) => fs.readFileSync(file, "utf8").includes(needle));

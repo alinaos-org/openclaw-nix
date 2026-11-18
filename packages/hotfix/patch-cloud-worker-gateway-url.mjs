@@ -25,12 +25,16 @@ const dist = path.join(root, "dist");
 
 const REGION = "//#region src/gateway/worker-environments/node-enrollment.ts";
 const MARKER = "/* openclaw-nix-cloud-worker-gateway-url-v1 */";
-const headerBefore = "function createWorkerNodeEnrollmentManager(options) {";
+// From 2026.11.5 on the bundler mangles this chunk's local names (`options` becomes `e`,
+// `config` becomes `a` and `t`), so the anchors capture identifiers rather than spell
+// them; the call sites must still pass the config they resolve against. Each anchor is
+// still required exactly once, and 11.4's readable names match the same patterns.
+const header = /function createWorkerNodeEnrollmentManager\([\w$]+\) \{/g;
 // Origin-only wss://<dns name>[:port]: grantArtifact replaces the URL path while the node
 // prefixes it, so a path would split the two. An invalid value throws (the environment
 // fails) rather than falling back to the tailnet URL. The regex is inline: the recovery
 // helper is one scope, where a top-level const could hit its temporal dead zone.
-const headerAfter = [
+const helper = [
   `function resolveCloudWorkerGatewayPublicUrl(config) { ${MARKER}`,
   "\tconst raw = process.env.OPENCLAW_CLOUD_WORKER_GATEWAY_URL;",
   "\tif (raw === void 0 || raw.trim() === \"\") return resolveConfiguredPairingPublicUrl(config);",
@@ -38,15 +42,17 @@ const headerAfter = [
   "\tif (!/^wss:\\/\\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}(?::[1-9][0-9]{0,4})?$/u.test(value)) throw new Error(\"OPENCLAW_CLOUD_WORKER_GATEWAY_URL must be wss://<dns-name>[:<port>] with no path, query, fragment or credentials\");",
   "\treturn value;",
   "}",
-  headerBefore,
 ].join("\n");
-const callBefore = "publicUrl: resolveConfiguredPairingPublicUrl(config),";
-const callAfter = "publicUrl: resolveCloudWorkerGatewayPublicUrl(config),";
-const prepareContext = `\n\t\t\t${callBefore}\n\t\t\tpublicOriginPreference: "prefer",\n\t\t\tnetworkInterfaces: os.networkInterfaces,`;
-const beginContext = `\n\t\t\t\t\t\t${callBefore}\n\t\t\t\t\t\tpublicOriginPreference: "prefer",\n\t\t\t\t\t\tbootstrapProfile: CLOUD_WORKER_PAIRING_SETUP_BOOTSTRAP_PROFILE,`;
-const phoneSetupCode = "const configuredPublicUrl = params.preferRemoteUrl === true ? void 0 : resolveConfiguredPairingPublicUrl(config);";
+const readCall = "publicUrl: resolveConfiguredPairingPublicUrl(";
+const callFor = (config) => `publicUrl: resolveCloudWorkerGatewayPublicUrl(${config}),`;
+// prepare(): the bootstrap download and the node's WebSocket URL.
+const prepareContext = /(resolvePairingGatewayUrl\(([\w$]+), \{\n\t\t\tenv: process\.env,\n\t\t\tuseLocalGateway: \2\.gateway\?\.mode === "remote",\n\t\t\t)publicUrl: resolveConfiguredPairingPublicUrl\(\2\),(\n\t\t\tpublicOriginPreference: "prefer",\n\t\t\tnetworkInterfaces: os\.networkInterfaces,)/g;
+// begin(): the setup code issued to the node.
+const beginContext = /(resolvePairingSetupFromConfig\(([\w$]+), \{\n\t\t\t\t\t\tenv: process\.env,\n\t\t\t\t\t\tuseLocalGateway: \2\.gateway\?\.mode === "remote",\n\t\t\t\t\t\t)publicUrl: resolveConfiguredPairingPublicUrl\(\2\),(\n\t\t\t\t\t\tpublicOriginPreference: "prefer",\n\t\t\t\t\t\tbootstrapProfile: CLOUD_WORKER_PAIRING_SETUP_BOOTSTRAP_PROFILE,)/g;
+const resolverReads = "resolveConfiguredPairingPublicUrl(";
 
 const count = (text, needle) => text.split(needle).length - 1;
+const matches = (text, pattern) => [...text.matchAll(pattern)].length;
 const regionOf = (text) => {
   const start = text.indexOf(REGION);
   const end = text.indexOf("//#endregion", start);
@@ -64,24 +70,35 @@ for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")
   assert.equal(regions, 1, `node-enrollment region repeated in ${name}`);
   assert.equal(count(text, MARKER), 0, `${name} is already patched`);
   assert.equal(count(text, "OPENCLAW_CLOUD_WORKER_GATEWAY_URL"), 0, `${name} already reads OPENCLAW_CLOUD_WORKER_GATEWAY_URL`);
-  for (const anchor of [headerBefore, prepareContext, beginContext]) assert.equal(count(text, anchor), 1, `anchor changed in ${name}: ${anchor.trim().slice(0, 60)}`);
+  assert.equal(count(text, "resolveCloudWorkerGatewayPublicUrl"), 0, `${name} already defines resolveCloudWorkerGatewayPublicUrl`);
+  for (const [label, anchor] of [["createWorkerNodeEnrollmentManager header", header], ["prepare() publicUrl", prepareContext], ["begin() publicUrl", beginContext]]) {
+    assert.equal(matches(text, anchor), 1, `anchor changed in ${name}: ${label}`);
+  }
+  // The helper calls the resolver by its source name, so the chunk must bind that name
+  // at top level (an import alias, or the bundled function itself).
+  assert(/^import \{[^}\n]*\bresolveConfiguredPairingPublicUrl\b[^}\n]*\} from /mu.test(text) || /^function resolveConfiguredPairingPublicUrl\(/mu.test(text), `${name}: resolveConfiguredPairingPublicUrl is not bound at top level`);
   const [start, end] = regionOf(text);
   const region = text.slice(start, end);
-  assert.equal(count(region, callBefore), 2, `${name}: expected exactly the prepare and begin call sites in the enrollment region`);
-  assert.equal(count(text, callBefore), 2, `${name}: device-pair publicUrl is read by enrollment code outside the region`);
+  assert.equal(count(region, readCall), 2, `${name}: expected exactly the prepare and begin call sites in the enrollment region`);
+  assert.equal(count(text, readCall), 2, `${name}: device-pair publicUrl is read by enrollment code outside the region`);
+  for (const anchor of [header, prepareContext, beginContext]) assert.equal(matches(region, anchor), 1, `${name}: an enrollment anchor sits outside the region`);
 
+  // Function replacements: the helper's regex carries `$`, which a string replacement
+  // would read as a substitution pattern.
   const patchedRegion = region
-    .replace(headerBefore, headerAfter)
-    .replace(prepareContext, prepareContext.replace(callBefore, callAfter))
-    .replace(beginContext, beginContext.replace(callBefore, callAfter));
+    .replace(header, (found) => `${helper}\n${found}`)
+    .replace(prepareContext, (_, before, config, after) => `${before}${callFor(config)}${after}`)
+    .replace(beginContext, (_, before, config, after) => `${before}${callFor(config)}${after}`);
   const patched = text.slice(0, start) + patchedRegion + text.slice(end);
 
   const [newStart, newEnd] = regionOf(patched);
   const newRegion = patched.slice(newStart, newEnd);
-  assert.equal(count(newRegion, callAfter), 2, `${name}: enrollment call sites not rewritten`);
-  assert.equal(count(newRegion, callBefore), 0, `${name}: an enrollment call site still reads device-pair publicUrl`);
-  assert.equal(count(newRegion, "resolveConfiguredPairingPublicUrl(config)"), 1, `${name}: fallback missing from the helper`);
-  assert.equal(count(patched, phoneSetupCode), count(text, phoneSetupCode), `${name}: phone setup-code path changed`);
+  assert.equal(count(newRegion, "publicUrl: resolveCloudWorkerGatewayPublicUrl("), 2, `${name}: enrollment call sites not rewritten`);
+  assert.equal(count(newRegion, readCall), 0, `${name}: an enrollment call site still reads device-pair publicUrl`);
+  assert.equal(count(newRegion, "return resolveConfiguredPairingPublicUrl(config);"), 1, `${name}: fallback missing from the helper`);
+  assert.equal(count(newRegion, resolverReads), 1, `${name}: the helper is not the region's only device-pair publicUrl reader`);
+  // Phone pairing (device.pair.setupCode, the device-pair plugin, `openclaw qr`, doctor)
+  // reads the shared resolver outside this region, which is written back unchanged.
   fs.writeFileSync(file, patched);
   patchedFiles.push(name);
 }
