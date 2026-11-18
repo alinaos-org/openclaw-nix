@@ -582,7 +582,8 @@
       # The workstation module in a VM: one gateway as a user unit of a desktop
       # user, started at boot through linger, with its secrets from the shared env
       # file, the Custom icons library copied into its state, and one agent turn against a
-      # stub model provider; its workspace files, their heartbeat checklist, and
+      # stub model provider; its workspace files, their heartbeat checklist (on a
+      # converted 2026.11.5 heartbeat job, against a declared ticking set), and
       # the nightly fold of a Control UI edit into a git commit.
       workstation = pkgs.testers.runNixOSTest {
         name = "openclaw-workstation";
@@ -643,7 +644,12 @@
                 );
               };
             };
-            heartbeatChecklists.enable = true;
+            heartbeatChecklists = {
+              enable = true;
+              # Nix declares no proactive check ticking on main, so the seeded one
+              # below is reported.
+              ticking.main = [];
+            };
             uiSync = {
               enable = true;
               repo = "/home/alice/config";
@@ -734,7 +740,62 @@
               assert result == "success", result
               tool = "${nodes.machine.services.openclaw.workstation.heartbeatChecklists.tool}/bin/openclaw-heartbeat-checklists"
               # The interactive instance's token comes from the shared env file.
-              drift = machine.succeed(as_alice + f"env -u OPENCLAW_GATEWAY_TOKEN {tool} check main")
+              check = as_alice + f"env -u OPENCLAW_GATEWAY_TOKEN {tool} check main"
+              drift = machine.succeed(check)
+              assert drift.strip() == "", drift
+
+          with subtest("heartbeatChecklists: a heartbeat as 2026.11.5's doctor converts it"):
+              # Fresh state has no heartbeat job (2026.11.5 never creates one), so seed
+              # the converted shape: an ordinary agentTurn job named heartbeat-<agent>,
+              # with skipIfScratchEmpty and no declarationKey.
+              job = json.loads(openclaw(
+                  "gateway call cron.add --json --timeout 30000 --params '"
+                  + json.dumps({
+                      "name": "heartbeat-main",
+                      "agentId": "main",
+                      "schedule": {"kind": "every", "everyMs": 1800000},
+                      "sessionTarget": "session:agent:main:main",
+                      "wakeMode": "now",
+                      "payload": {"kind": "agentTurn", "message": "x", "skipIfScratchEmpty": True},
+                  })
+                  + "'"
+              ))
+              print(job)
+              assert job.get("declarationKey") is None and job["payload"]["kind"] == "agentTurn", job
+
+              def sync_once():
+                  machine.succeed(as_alice + f"systemctl --user restart {unit}")
+                  machine.wait_until_succeeds(
+                      as_alice + f"systemctl --user show -p SubState --value {unit} | grep -qx -e exited -e failed", timeout=420
+                  )
+                  result = machine.succeed(as_alice + f"systemctl --user show -p Result --value {unit}").strip()
+                  assert result == "success", result
+                  return machine.succeed(f"journalctl --no-pager _SYSTEMD_USER_UNIT={unit}")
+
+              # The first sync writes the Nix checklist into the new job's scratch,
+              # the next finds it matching.
+              log = sync_once()
+              print(log)
+              assert "main/main: wrote its Nix checklist" in log, log
+              log = sync_once()
+              assert "main/main: matches its Nix checklist" in log, log
+              scratch = json.loads(openclaw(
+                  "gateway call cron.scratch.get --json --timeout 30000 --params '"
+                  + json.dumps({"id": job["id"]}) + "'"
+              ))
+              assert scratch["scratch"]["content"].strip().endswith("ws-test HEARTBEAT.md"), scratch
+
+              # No drift, but it ticks while ticking.main declares none: reported.
+              findings = machine.succeed(check).strip()
+              assert findings == "main: main's proactive check ticks every 30m but Nix declares it off", findings
+              assert "main: main's proactive check ticks every 30m but Nix declares it off" in log, log
+
+              # Switched off, it matches the declaration again: nothing to report.
+              openclaw(
+                  "gateway call cron.update --json --timeout 30000 --params '"
+                  + json.dumps({"id": job["id"], "patch": {"enabled": False}}) + "'"
+              )
+              drift = machine.succeed(check)
               assert drift.strip() == "", drift
 
           with subtest("uiSync: a Control UI edit becomes a commit on main-ui-sync"):

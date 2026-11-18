@@ -17,9 +17,10 @@ jobs=$(jq -cn --argjson a "$(hb j1 main-work true)" --argjson b "$(hb j2 modeler
 on='{"enabled":true}'
 reply() { jq -cn --arg content "$1" --argjson rev "$2" '{scratch: {content: $content, revision: $rev, updatedAtMs: 1791759467488}, currentRevision: $rev, maxBytes: 262144}'; }
 absent='{"scratch":null,"currentRevision":0,"maxBytes":262144}'
-# decide <phase> <cron> <jobs> <scratch> [agents]: the tool's stdin, assembled.
+# decide <phase> <cron> <jobs> <scratch> [agents] [declared]: the tool's stdin, assembled.
 decide() {
-  printf '{"cron":%s,"jobs":%s,"agents":%s,"scratch":%s,"checklists":%s}' "$2" "$3" "${5:-$agents}" "$4" "$checklists" \
+  printf '{"cron":%s,"jobs":%s,"agents":%s,"scratch":%s,"checklists":%s,"declared":%s}' \
+    "$2" "$3" "${5:-$agents}" "$4" "$checklists" "${6:-null}" \
     | jq -c --arg phase "$1" --arg inst merlin -f "$dir/decide.jq"
 }
 verdict() { local s=$1; shift; decide verdict "$on" "$jobs" "$s" | jq -c "$@"; }
@@ -63,4 +64,50 @@ expect "$(decide verdict "$on" "$dupes" "$scratch" | jq -c '[.[] | .status]')" '
 # An agent missing from agents.list has no workspace, so no checklist.
 expect "$(decide verdict "$on" "$jobs" "$scratch" '{"agents":[]}' | jq -c '[.[] | .status]')" \
   '["undeclared","undeclared","undeclared"]'
+
+# 2026.11.5: doctor converts each heartbeat job into an ordinary agentTurn job
+# with skipIfScratchEmpty and no declarationKey, keeping its id and the name
+# heartbeat-<agent>, and creates "Proactive check (<agent>)" for an agent that
+# only had a HEARTBEAT.md. A cron.list page keeps those, projected, and drops
+# every other agentTurn job.
+turn() { jq -cn --arg id "$1" --arg agent "$2" --argjson enabled "$3" --arg name "$4" --argjson skip "$5" \
+  '{id: $id, agentId: $agent, name: $name, enabled: $enabled, sessionTarget: "isolated", wakeMode: "now",
+    payload: {kind: "agentTurn", message: "check in", skipIfScratchEmpty: $skip},
+    schedule: {kind: "every", everyMs: 2700000, anchorMs: 1346075}, state: {}}'; }
+page=$(jq -cn \
+  --argjson a "$(turn j1 main-work true heartbeat-main-work true)" \
+  --argjson b "$(turn j2 modeler true heartbeat-modeler true)" \
+  --argjson c "$(turn j7 modeler-personal false 'Proactive check (modeler-personal)' true)" \
+  --argjson d "$(turn j8 main-work true 'apartment search' true)" \
+  --argjson e "$(turn j9 main-work true heartbeat-main-work false)" \
+  --argjson f "$(turn j10 main-work true heartbeat-main-work true | jq -c '.declarationKey = "nix:heartbeat-main-work"')" \
+  --argjson g "$(turn j11 modeler true heartbeat-main-work true)" \
+  --argjson h "$(hb j3 studio true)" \
+  '{jobs: [$a, $b, $c, $d, $e, $f, $g, $h], hasMore: false}')
+converted=$(jq -c --arg phase page --arg inst merlin -f "$dir/decide.jq" <<<"$page")
+expect "$(jq -c '[.[] | .id]' <<<"$converted")" '["j1","j2","j7","j3"]'
+expect "$(jq -c '.[0]' <<<"$converted")" \
+  '{"id":"j1","agentId":"main-work","name":"heartbeat-main-work","declarationKey":null,"enabled":true,"schedule":{"kind":"every","everyMs":2700000,"anchorMs":1346075},"payload":{"kind":"agentTurn","skipIfScratchEmpty":true}}'
+expect "$(jq -c --arg phase page --arg inst merlin -f "$dir/decide.jq" <<<'{}')" '[]'
+
+# Converted jobs tick, match and drift exactly as heartbeat jobs did (rescue's
+# 2026.11.4 heartbeat job, j3, beside them).
+expect "$(decide ticking "$on" "$converted" '{}')" '["j1","j2","j3"]'
+expect "$(decide verdict "$on" "$converted" "$scratch" | jq -c '[.[] | [.agentId, .status]]')" \
+  '[["main-work","match"],["modeler","match"],["studio","undeclared"]]'
+expect "$(decide verdict "$on" "$converted" "$drifted" | jq -c '.[0] | [.id, .status, .revision]')" '["j1","drift",4]'
+
+# The declared ticking set (heartbeatChecklists.ticking.<instance>): nothing
+# to report when it matches, when Nix declares nothing, or with the scheduler off.
+expect "$(decide declared "$on" "$converted" '{}' "$agents" '["main-work","modeler","studio"]')" '[]'
+expect "$(decide declared "$on" "$converted" '{}' "$agents")" '[]'
+expect "$(decide declared '{"enabled":false}' "$converted" '{}' "$agents" '[]')" '[]'
+# A ticking check Nix declares off, and a declared agent with none ticking.
+expect "$(decide declared "$on" "$converted" '{}' "$agents" '["main-work","studio","rescue"]' | jq -r '.[]')" \
+  "merlin: modeler's proactive check ticks every 45m but Nix declares it off
+merlin: rescue is declared to tick but has no enabled proactive check"
+# prod: every check disabled and none declared; then one switched on.
+expect "$(decide declared "$on" "$(jq -c 'map(.enabled = false)' <<<"$converted")" '{}' "$agents" '[]')" '[]'
+expect "$(decide declared "$on" "$(jq -c '[.[2] | .enabled = true]' <<<"$converted")" '{}' "$agents" '[]' | jq -r '.[]')" \
+  "merlin: modeler-personal's proactive check ticks every 45m but Nix declares it off"
 echo "heartbeat checklist jq program: all fixtures pass"
