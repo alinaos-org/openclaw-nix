@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.9";
   expectedIntegrity = "";
   packageName = "@openclaw/tencent-provider";
-  version = "2026.11.5";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/tencent-provider/-/tencent-provider-2026.11.5.tgz";
-  npmIntegrity = "sha512-zG3C9rTeLkgSiv4vt4mwUdR8Lg1tIhWImaCNGUhWR6K5VE0aHBIbi+3apnfc2EDkcGutORMb0+TE7XA0/AdY9Q==";
-  npmShasum = "d2f99963d5fffa8435960d8ff441b9b47a949d61";
-  nixHash = "sha256-wqMhXyoJq8sPD6gx9NHc7/qVQbL73Y4ycOKXybArhuI=";
+  version = "2026.11.6";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/tencent-provider/-/tencent-provider-2026.11.6.tgz";
+  npmIntegrity = "sha512-5tXu7Y42lspW28Ae6YhaWe9V1nqkk+IcqJNWrTflYdcmlJL7OKixCCZWms8r8PS234GIyuAzVddFwosk7Uzu2Q==";
+  npmShasum = "36bfdcb5f4ff0a1a50c628679d0ee58ba1931786";
+  nixHash = "sha256-Z57MWM5FhLs3Iu8iaJ4UzXutHD1ozQBKTfOjQ/C99BQ=";
   dependencyMode = "none";
   manifestId = "tencent";
-  openclawCompat = ">=2026.11.5";
-  peerOpenClaw = ">=2026.11.5";
+  openclawCompat = ">=2026.11.6";
+  peerOpenClaw = ">=2026.11.6";
   runtimeExtensions = [
     "./dist/index.js"
   ];
