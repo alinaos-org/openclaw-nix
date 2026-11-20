@@ -109,19 +109,50 @@ const assertNotRedeclared = (slice, names, where) => {
   }
 };
 
-const patchedFiles = [];
-for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")).sort()) {
-  const file = path.join(dist, name);
-  if (fs.lstatSync(file).isSymbolicLink()) continue;
-  let text = fs.readFileSync(file, "utf8");
-  if (count(text, headerBefore) === 0) continue;
-  assert.equal(count(text, headerBefore), 1, `spawnSubagentDirect repeated in ${name}`);
-  assert.equal(count(text, MARKER), 0, `${name} is already patched`);
-  assert.equal(count(text, "openclawNix"), 0, `${name} already carries an openclaw-nix name`);
-  for (const imported of ["readParentExecutionIdentity", "withParentExecutionIdentity"]) {
-    assert.equal([...text.matchAll(new RegExp(`^import \\{[^}\\n]*\\bas ${imported}\\b[^}\\n]*\\} from `, "gm"))].length, 1, `${name}: ${imported} is not imported`);
-  }
+// From 2026.11.6 upstream splits the spawn chunk without changing either path: the
+// hidden path (spawnSubagentDirect) lives in subagent-spawn-*.mjs, which imports only
+// readParentExecutionIdentity, and the visible path (maybeSpawnVisibleSession) in
+// sessions-spawn-visible-*.mjs. Each chunk gets its own copy of the helper, and the
+// hidden chunk imports the carrier's write half from the module it already reads the
+// identity from, so both halves share one WeakMap.
+const split = atLeast(version, "2026.11.6");
+const visibleHeader = "async function maybeSpawnVisibleSession(";
+const imports = (text) => [...text.matchAll(/^import \{([^}\n]*)\} from "([^"\n]+)";$/gm)].flatMap((match) =>
+  match[1].split(",").map((entry) => entry.trim()).filter(Boolean).map((entry) => {
+    const [exported, local = exported] = entry.split(/\s+as\s+/);
+    return { match, exported, local };
+  }));
+const exportsOf = (text, where) => {
+  const statements = [...text.matchAll(/^export \{([^}\n]*)\};$/gm)];
+  assert.equal(statements.length, 1, `${where}: export statement`);
+  return new Map(statements[0][1].split(",").map((entry) => entry.trim()).filter(Boolean).map((entry) => {
+    const [local, exported = local] = entry.split(/\s+as\s+/);
+    return [local, exported];
+  }));
+};
+
+const hiddenEdits = (text, name) => {
   const edits = [];
+  if (split) {
+    const reads = imports(text).filter(({ local }) => local === "readParentExecutionIdentity");
+    assert.equal(reads.length, 1, `${name}: readParentExecutionIdentity is not imported`);
+    assert.equal(count(text, "withParentExecutionIdentity"), 0, `${name}: withParentExecutionIdentity is already bound`);
+    const [{ match, exported: readExport }] = reads;
+    const spec = match[2];
+    assert(/^\.\/[\w.-]+\.mjs$/.test(spec), `${name}: parent execution identity module ${spec}`);
+    const carrierFile = path.join(dist, spec);
+    const carrier = fs.readFileSync(carrierFile, "utf8");
+    assert.equal(count(carrier, "{ carry: withParentExecutionIdentity, read: readParentExecutionIdentity } = createPrivateContextCarrier();"), 1, `${spec}: parent execution identity carrier moved`);
+    const exported = exportsOf(carrier, spec);
+    assert.equal(exported.get("readParentExecutionIdentity"), readExport, `${spec}: readParentExecutionIdentity export`);
+    const writeExport = exported.get("withParentExecutionIdentity");
+    assert(writeExport && /^[A-Za-z_$][\w$]*$/.test(writeExport), `${spec}: withParentExecutionIdentity is not exported`);
+    edits.push([match.index + "import {".length, 0, ` ${writeExport === "withParentExecutionIdentity" ? writeExport : `${writeExport} as withParentExecutionIdentity`},`]);
+  } else {
+    for (const imported of ["readParentExecutionIdentity", "withParentExecutionIdentity"]) {
+      assert.equal([...text.matchAll(new RegExp(`^import \\{[^}\\n]*\\bas ${imported}\\b[^}\\n]*\\} from `, "gm"))].length, 1, `${name}: ${imported} is not imported`);
+    }
+  }
   if (mangled) {
     const header = once(text, "async function spawnSubagentDirect(@input@, @context@) {\n\tconst { params: @params@, ctx: @ctx@, profileReceipt: @@, systemPrompt: @@ } = applySubagentProfile(@input@, @context@);\n", `${name}: spawnSubagentDirect profile anchor`);
     const { params, ctx } = header.groups;
@@ -135,40 +166,69 @@ for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")
     edits.push([at, "\tconst {".length, "\tlet {"]);
     const { cfg, requester, target } = destructure.groups;
     edits.push([destructure.index + destructure[0].length, 0, hiddenLine({ ctx, cfg, requester, target, profile: `${ctx}.subagentProfile` })]);
-
-    const visible = once(text, "async function maybeSpawnVisibleSession(@params@) {\n", `${name}: visible spawn path`);
-    const vp = visible.groups.params;
-    const vcfg = once(text, `\tconst @cfg@ = ${vp}.options?.config ?? readRuntimeConfig();\n`, `${name}: visible config`);
-    const vtarget = once(text, `\tconst @target@ = ${vp}.requestedAgentId ? normalizeAgentId(${vp}.requestedAgentId) : @requester@;\n`, `${name}: visible target resolution`);
-    const policy = once(text, `${visiblePolicy({ params: vp, delegatedName: "@delegated@" }, false)}\n`, `${name}: visible spawn anchor`);
-    assert(visible.index < vcfg.index && vcfg.index < vtarget.index && vtarget.index < policy.index, `${name}: visible spawn anchors out of order`);
-    const nextFunction = text.slice(visible.index + visible[0].length).search(/\n(?:async )?function /);
-    assert(nextFunction < 0 || policy.index < visible.index + visible[0].length + nextFunction, `${name}: visible spawn anchors span functions`);
-    const names = { params: vp, cfg: vcfg.groups.cfg, requester: vtarget.groups.requester, target: vtarget.groups.target, delegatedName: policy.groups.delegated };
-    assertNotRedeclared(text.slice(vcfg.index + vcfg[0].length, policy.index), [names.cfg], `${name}: visible config`);
-    assertNotRedeclared(text.slice(vtarget.index + vtarget[0].length, policy.index), [names.requester, names.target], `${name}: visible agents`);
-    edits.push([policy.index, policy[0].length - 1, visibleAfter(names)]);
   } else {
     assert.equal(count(text, "async function spawnSubagentDirect(params, ctx) {"), 1, `${name}: spawnSubagentDirect signature changed`);
     const hiddenBefore = "childDepth, maxSpawnDepth, childIdem } = requestResolution.resolved;\n";
     assert.equal(count(text, hiddenBefore), 1, `hidden spawn anchor changed in ${name}`);
     assert.equal(count(text, "parentExecutionIdentityToken: readParentExecutionIdentity(ctx)"), 1, `${name}: hidden spawn context name moved`);
+    edits.push([text.indexOf(hiddenBefore) + hiddenBefore.length, 0, hiddenLine({ ctx: "ctx", cfg: "cfg", requester: "requesterAgentId", target: "targetAgentId" })]);
+  }
+  return edits;
+};
+
+const visibleEdits = (text, name) => {
+  if (!mangled) {
     const names = { params: "params", cfg: "cfg", requester: "requesterAgentId", target: "targetAgentId", delegatedName: "delegatedToolPolicy" };
     const visibleBefore = visiblePolicy(names, false);
     assert.equal(count(text, visibleBefore), 1, `visible spawn anchor changed in ${name}`);
-    // Both call sites read these names from their own scope; re-derive if they move.
+    // The call site reads these names from its own scope; re-derive if they move.
     assert.equal(count(text, "async function maybeSpawnVisibleSession(params) {"), 1, `${name}: visible spawn path moved`);
     assert.equal(count(text, "\tconst targetAgentId = params.requestedAgentId ? normalizeAgentId(params.requestedAgentId) : requesterAgentId;\n"), 1, `${name}: visible target resolution moved`);
-    edits.push([text.indexOf(hiddenBefore) + hiddenBefore.length, 0, hiddenLine({ ctx: "ctx", ...names })]);
-    edits.push([text.indexOf(visibleBefore), visibleBefore.length, visibleAfter(names)]);
+    return [[text.indexOf(visibleBefore), visibleBefore.length, visibleAfter(names)]];
   }
-  edits.push([text.indexOf(headerBefore), 0, `${helper}\n`]);
+  const visible = once(text, "async function maybeSpawnVisibleSession(@params@) {\n", `${name}: visible spawn path`);
+  const vp = visible.groups.params;
+  const vcfg = once(text, `\tconst @cfg@ = ${vp}.options?.config ?? readRuntimeConfig();\n`, `${name}: visible config`);
+  const vtarget = once(text, `\tconst @target@ = ${vp}.requestedAgentId ? normalizeAgentId(${vp}.requestedAgentId) : @requester@;\n`, `${name}: visible target resolution`);
+  const policy = once(text, `${visiblePolicy({ params: vp, delegatedName: "@delegated@" }, false)}\n`, `${name}: visible spawn anchor`);
+  assert(visible.index < vcfg.index && vcfg.index < vtarget.index && vtarget.index < policy.index, `${name}: visible spawn anchors out of order`);
+  const nextFunction = text.slice(visible.index + visible[0].length).search(/\n(?:async )?function /);
+  assert(nextFunction < 0 || policy.index < visible.index + visible[0].length + nextFunction, `${name}: visible spawn anchors span functions`);
+  const names = { params: vp, cfg: vcfg.groups.cfg, requester: vtarget.groups.requester, target: vtarget.groups.target, delegatedName: policy.groups.delegated };
+  assertNotRedeclared(text.slice(vcfg.index + vcfg[0].length, policy.index), [names.cfg], `${name}: visible config`);
+  assertNotRedeclared(text.slice(vtarget.index + vtarget[0].length, policy.index), [names.requester, names.target], `${name}: visible agents`);
+  return [[policy.index, policy[0].length - 1, visibleAfter(names)]];
+};
+
+const patchedFiles = [];
+const sites = { hidden: [], visible: [] };
+for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")).sort()) {
+  const file = path.join(dist, name);
+  if (fs.lstatSync(file).isSymbolicLink()) continue;
+  let text = fs.readFileSync(file, "utf8");
+  const hidden = count(text, headerBefore), visible = count(text, visibleHeader);
+  if (hidden === 0 && visible === 0) continue;
+  assert(hidden <= 1, `spawnSubagentDirect repeated in ${name}`);
+  assert(visible <= 1, `maybeSpawnVisibleSession repeated in ${name}`);
+  assert.equal(count(text, MARKER), 0, `${name} is already patched`);
+  assert.equal(count(text, "openclawNix"), 0, `${name} already carries an openclaw-nix name`);
+  const edits = [];
+  if (hidden) { edits.push(...hiddenEdits(text, name)); sites.hidden.push(name); }
+  if (visible) { edits.push(...visibleEdits(text, name)); sites.visible.push(name); }
+  edits.push([text.indexOf(hidden ? headerBefore : visibleHeader), 0, `${helper}\n`]);
   for (const [at, length, replacement] of edits.sort((a, b) => b[0] - a[0])) text = text.slice(0, at) + replacement + text.slice(at + length);
   fs.writeFileSync(file, text);
   patchedFiles.push(name);
 }
-assert.equal(patchedFiles.length, 1, `unexpected spawn chunks: ${patchedFiles.join(", ") || "none"}`);
-assert(/^sessions-spawn-tool-.*\.mjs$/.test(patchedFiles[0]), `spawn path found in ${patchedFiles[0]}`);
+assert.equal(sites.hidden.length, 1, `hidden spawn chunks: ${sites.hidden.join(", ") || "none"}`);
+assert.equal(sites.visible.length, 1, `visible spawn chunks: ${sites.visible.join(", ") || "none"}`);
+if (split) {
+  assert(/^subagent-spawn-[\w-]{8}\.mjs$/.test(sites.hidden[0]), `hidden spawn path found in ${sites.hidden[0]}`);
+  assert(/^sessions-spawn-visible-[\w-]{8}\.mjs$/.test(sites.visible[0]), `visible spawn path found in ${sites.visible[0]}`);
+} else {
+  assert.equal(patchedFiles.length, 1, `unexpected spawn chunks: ${patchedFiles.join(", ")}`);
+  assert(/^sessions-spawn-tool-.*\.mjs$/.test(patchedFiles[0]), `spawn path found in ${patchedFiles[0]}`);
+}
 
 fs.writeFileSync(path.join(root, ".spawn-target-owned-mcp-hotfix.json"), JSON.stringify({
   id: "openclaw-nix-spawn-target-owned-mcp-v1", upstreamVersion: version, patchedFiles,
