@@ -81,9 +81,10 @@
       ProtectSystem = "strict";
       ProtectHome = true;
       PrivateTmp = true;
-      # OpenClaw writes its file logs under /tmp/openclaw (a fixed "secure temp root").
-      # Inside the private /tmp that is the logs directory, so they survive the unit.
-      BindPaths = ["${logsDir}:/tmp/openclaw"];
+      # OpenClaw writes its rolling file log under /tmp/openclaw (a fixed "secure temp
+      # root") through 2026.11.5 and under <state dir>/logs from 2026.11.6. Both are
+      # the logs directory, so the logs survive the unit on either release.
+      BindPaths = ["${logsDir}:/tmp/openclaw" "${logsDir}:${stateDir}/logs"];
       PrivateDevices = true;
       ProtectKernelTunables = true;
       ProtectKernelModules = true;
