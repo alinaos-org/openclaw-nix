@@ -12,7 +12,7 @@
   stdenvNoCC,
   gateway,
   # Bump when the patch set changes for the same gateway.
-  revision ? "hotfix.12",
+  revision ? "hotfix.13",
 }: let
   # A correction release (2026.7.1-2) is its base release's code, so the patches'
   # release gates read the base.

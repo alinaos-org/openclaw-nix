@@ -8,12 +8,12 @@ const root = process.argv[2];
 const receipt = JSON.parse(fs.readFileSync(root + "/.stop-budget-hotfix.json", "utf8"));
 const source = fs.readFileSync(root + "/dist/" + receipt.patchedFile, "utf8");
 const seconds = (ms) => `${ms / 1e3}e3`;
-const atLeast115 = (version) => { const a = String(version).split(".").map(Number), b = [2026, 11, 5]; for (let i = 0; i < b.length; i++) if ((a[i] || 0) !== b[i]) return (a[i] || 0) > b[i]; return true; };
+const atLeast = (version, minimum) => { const a = String(version).split(".").map(Number), b = minimum.split(".").map(Number); for (let i = 0; i < b.length; i++) if ((a[i] || 0) !== b[i]) return (a[i] || 0) > b[i]; return true; };
 // From 2026.11.5 on there is no stop drain and no budget resolver: the clamp
 // lives in runAcceptedRequest's armForceExitTimer. Evaluate the packaged timer
 // (patched, and a baseline with the clamp reverted) against fixtures for every
 // free name it reads, so the minified locals need not be known in advance.
-if (atLeast115(receipt.upstreamVersion)) {
+if (atLeast(receipt.upstreamVersion, "2026.11.5")) {
   const hardExitMs = receipt.stopHardExitMs;
   assert(Number.isFinite(hardExitMs) && hardExitMs > 0 && hardExitMs < 325000, "receipt lacks the stop clamp");
   assert.equal(receipt.stopDrainOwner, "none");
@@ -31,26 +31,50 @@ if (atLeast115(receipt.upstreamVersion)) {
   const deadlineName = patchedSrc.match(/\n\s*([\w$]+) = performance\$1\.now\(\) \+ [\w$]+;/);
   const paramsName = patchedSrc.match(/if \(([\w$]+)\.ownsProcessLifecycle === true\)/);
   assert(timerName && deadlineName && paramsName, "armForceExitTimer shape changed");
+  // Names the timer's callback reads when the deadline fires (the hard exit).
+  const exitCode = patchedSrc.match(/const [\w$]+ = ([\w$]+)\.nativeStopBudget && !([\w$]+) && !([\w$]+);/);
+  const retainer = patchedSrc.match(/([\w$]+)\.retain\(forceExitAfterStabilityBundle\(([\w$]+) \? "gateway\.restart_shutdown_timeout" : "gateway\.stop_shutdown_timeout"/);
+  const watchdogName = patchedSrc.match(/\n\s*([\w$]+) = armShutdownHardExitWatchdog\(\{/);
+  assert(exitCode && retainer && watchdogName && retainer[2] === isRestartName, "hard-exit callback shape changed");
   const forceExitParam = patchedSrc.match(/^const armForceExitTimer = \(([\w$]+)\) =>/)[1];
   const baselineSrc = patchedSrc.replace(` : !${isRestartName} ? Math.min(${forceExitParam}, ${seconds(hardExitMs)}) /* openclaw-nix-stop-budget-v1 */ : `, " : ");
   assert(!baselineSrc.includes("openclaw-nix-stop-budget-v1") && baselineSrc.includes(`Math.min(${forceExitParam}, 1e4) : ${forceExitParam};`), "baseline reversal failed");
 
+  // 2026.11.6 hands the hard-exit watchdog upstream's pending-close-steps
+  // formatter (describePending), read when the watchdog is armed, so it must be
+  // a fixture; the watchdog must receive exactly that formatter from 11.6 on.
+  const v116 = atLeast(receipt.upstreamVersion, "2026.11.6");
+  const describePending = () => "fixture pending steps";
   // One timer instance per accepted request, as upstream builds it.
   const arm = (src, action, budgetMs, restartIntent) => {
-    const timers = [], watchdogs = [], vars = {
+    const timers = [], watchdogs = [], describers = [], warnings = [], exits = [], pending = [], vars = {
       [actionName]: action, [intentName]: restartIntent, [isRestartName]: action !== "stop",
       [timerName[1]]: null, [timerName[2]]: { waitingForStop: false }, [deadlineName[1]]: undefined,
       [paramsName[1]]: { ownsProcessLifecycle: true },
+      [exitCode[1]]: { nativeStopBudget: false }, [exitCode[2]]: false, [exitCode[3]]: undefined,
+      [retainer[1]]: { retain: (x) => x }, [watchdogName[1]]: null,
+      gatewayLog$1: { warn: (line) => warnings.push(line) }, formatErrorMessage: String,
+      forceExitAfterStabilityBundle: (reason, code) => { exits.push([reason, code]); },
       getManagedUpdateOwner: () => null, performance$1: { now: () => 1000 }, HARD_EXIT_WATCHDOG_GRACE_MS: 2000,
+      formatGatewayPendingCloseSteps: describePending,
       setTimeout: (f, ms) => { const t = { f, ms, unref() {} }; timers.push(t); return t; },
-      armShutdownHardExitWatchdog: ({ delayMs }) => { watchdogs.push(delayMs); return {}; },
+      armShutdownHardExitWatchdog: ({ delayMs, describePending }) => { watchdogs.push(delayMs); describers.push(describePending); return { reportPending: () => pending.push(delayMs) }; },
     };
     const scope = new Proxy(vars, { has: (_, k) => k in vars, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
     const fn = vm.runInNewContext(`(function () { with (scope) { ${src}\nreturn armForceExitTimer; } })()`, { scope, Math });
     fn(budgetMs);
     assert.equal(timers.length, 1, "no hard-exit timer armed");
     assert.deepEqual(watchdogs, [timers[0].ms + 2000], "watchdog not aligned with the hard exit");
+    assert.deepEqual(describers, [v116 ? describePending : undefined], "watchdog pending-steps formatter not upstream's");
     assert.equal(vars[deadlineName[1]], 1000 + timers[0].ms, "shutdown deadline (cleanup budget) not aligned with the hard exit");
+    assert(vars[watchdogName[1]], "watchdog handle not kept");
+    // Fire the deadline: the clamped timer must be the stop's hard exit (the
+    // only "gateway.stop_shutdown_timeout"), and from 11.6 it asks the watchdog
+    // to report pending close steps first.
+    timers[0].f();
+    assert.deepEqual(exits, [[action === "stop" ? "gateway.stop_shutdown_timeout" : "gateway.restart_shutdown_timeout", 1]], "hard exit reason");
+    assert(warnings.length === 1 && warnings[0].includes("pending close steps: fixture pending steps"), "deadline warning lost the pending close steps");
+    assert.deepEqual(pending, v116 ? [timers[0].ms + 2000] : [], "deadline did not report pending close steps through the watchdog");
     return timers[0].ms;
   };
   const cases = [
@@ -71,7 +95,7 @@ if (atLeast115(receipt.upstreamVersion)) {
     assert(patched <= base);
   }
   assert.equal(arm(baselineSrc, "stop", 325000, undefined), 325000, "baseline is not upstream's native budget");
-  console.log(`PASS 11.5 armForceExitTimer: stop hard exit ${hardExitMs / 1e3}s, only ever lowered; restart policy unchanged`);
+  console.log(`PASS ${receipt.upstreamVersion} armForceExitTimer: stop hard exit ${hardExitMs / 1e3}s, only ever lowered; restart policy unchanged`);
   process.exit(0);
 }
 // The clamp comes from the patch's receipt, so changing it is one edit in the patch.
@@ -83,7 +107,6 @@ assert(Number.isFinite(drainMs) && Number.isFinite(hardExitMs) && drainMs <= har
 // and prove the clamp binds the stop path, never raises a budget, and leaves
 // every restart value byte-identical to upstream.
 // Qualified from this release on; anchors below fail if upstream moves the code.
-const atLeast = (version, minimum) => { const a = String(version).split(".").map(Number), b = minimum.split(".").map(Number); for (let i = 0; i < b.length; i++) if ((a[i] || 0) !== b[i]) return (a[i] || 0) > b[i]; return true; };
 if (atLeast(receipt.upstreamVersion, "2026.9.6")) {
   const head = source.indexOf("function resolveGatewayShutdownDrainBudget(params) {");
   assert(head >= 0, "9.6 drain-budget resolver not found");

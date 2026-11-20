@@ -67,6 +67,10 @@
       a restart is already running finishes under the restart's own timer, as on
       2026.11.4. The receipt records stopDrainMs null, stopDrainOwner "none" and the
       clamped line.
+      2026.11.6 leaves the clamp's path unchanged (the stop hard exit is still
+      armForceExitTimer(budget.timeoutMs)); it only adds upstream's pending-close-steps
+      reporting to that timer (describePending on the watchdog, reportPending in the
+      deadline), which the test's fixture now supplies and checks.
     '';
     test = ./test-stop-budget.mjs;
     upstream = null;
@@ -318,6 +322,10 @@
       V2 eligibility still read only the shared default. Known limit on 2026.11.5:
       buildAfterTurnRuntimeContext passes no agentId, so a context engine's afterTurn
       resolves the shared default (the built-in legacy engine has no afterTurn).
+      2026.11.6 still drops agentId in the compactPrepared retry and reads only
+      agents.defaults.compaction.model; it only renamed the worker-chunk retry's
+      DEFAULT_PROVIDER/DEFAULT_MODEL import aliases, which the patch now selects by
+      release gate and binds to the chunk's own import.
     '';
     test = ./test-agent-scoped-compaction-model.mjs;
     upstream = null;
@@ -375,6 +383,11 @@
       identity (upstream keys it on the context object), which the earlier object copy
       dropped. Not covered, as before: the copies of spawnSubagentDirect and
       maybeSpawnVisibleSession in dist/worker/ (a spawn from a turn on a cloud worker).
+      From 2026.11.6 upstream splits the spawn code: the hidden path is in
+      subagent-spawn-*.mjs, which imports only readParentExecutionIdentity, and the
+      visible path in sessions-spawn-visible-*.mjs; the hidden chunk's import of the
+      execution-identity carrier gains its write half (withParentExecutionIdentity). Tool
+      inheritance is unchanged upstream.
     '';
     test = ./test-spawn-target-owned-mcp.mjs;
     upstream = null;

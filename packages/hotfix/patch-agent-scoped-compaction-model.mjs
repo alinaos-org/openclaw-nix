@@ -124,14 +124,20 @@ if (atLeast(version, "2026.11.5")) {
     after: `resolveEmbeddedCompactionTarget({config:_t.config,agentId:_t.agentId,/*${MARKER}*/provider:_t.provider,modelId:_t.model,authProfileId:_t.authProfileId,modelSelectionLocked:_t.modelSelectionLocked,defaultProvider:DEFAULT_PROVIDER,defaultModel:DEFAULT_MODEL$1})`,
   });
   // The worker chunk imports resolveEmbeddedCompactionTarget as pn (export `o` of the target
-  // chunk) and DEFAULT_PROVIDER/DEFAULT_MODEL as z/B; `alsoRequires` holds the import alias to
-  // the same file, and the test checks the exporting chunk's own export clause.
+  // chunk) and DEFAULT_PROVIDER/DEFAULT_MODEL as exports `i`/`n` of the worker defaults chunk.
+  // Those two local aliases are re-minified per release: z/B in 2026.11.5
+  // (`import{i as z,n as B,o as V}`), R/z from 2026.11.6 on (`import{i as R,n as z,o as B}`,
+  // the same byte-identical defaults chunk). The retry itself is otherwise unchanged and still
+  // drops agentId. `alsoRequires` holds both import bindings to the same file, so a release
+  // that swaps or renames them fails here instead of passing the wrong values; the test checks
+  // the exporting chunks and the defaults' values.
+  const retryDefaults = atLeast(version, "2026.11.6") ? { provider: "R", model: "z" } : { provider: "z", model: "B" };
   replaceExact({
     id: "compaction-retry-worker-chunk",
     expect: { "worker/worker-chunk-*.mjs": 1 },
-    alsoRequires: [`o as pn,`],
-    before: `pn({config:c.config,provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:z,defaultModel:B})`,
-    after: `pn({config:c.config,agentId:c.agentId,/*${MARKER}*/provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:z,defaultModel:B})`,
+    alsoRequires: [`o as pn,`, `i as ${retryDefaults.provider},n as ${retryDefaults.model},`],
+    before: `pn({config:c.config,provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:${retryDefaults.provider},defaultModel:${retryDefaults.model}})`,
+    after: `pn({config:c.config,agentId:c.agentId,/*${MARKER}*/provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:${retryDefaults.provider},defaultModel:${retryDefaults.model}})`,
   });
 } else {
   // ===== Legacy anchor set: 2026.10.7 through 2026.11.4 (compaction and memory flush) =====
