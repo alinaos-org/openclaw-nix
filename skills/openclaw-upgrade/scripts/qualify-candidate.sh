@@ -85,6 +85,13 @@ fence_args=(--landlock-access "fs:$fence_rights")
 IFS=, read -ra fence_list <<<"$fence_rights"
 for right in "${fence_list[@]}"; do fence_args+=(--landlock-rule "path-beneath:$right:$Q"); done
 fence_args+=(--landlock-rule path-beneath:write-file:/dev/null)
+# A short writable TMPDIR beside $Q: from 2026.11.6 the spawn broker puts its socket
+# directory in tmpdir() only while <tmpdir>/oc-br-<32 hex>/resource.sock fits a Unix
+# socket path (103 bytes), else in /tmp itself, which the fence denies (EACCES). $Q's
+# own tmp is too deep, so each instance gets $T/<instance> (about 75 bytes).
+T=$(mktemp -d /tmp/ocq.XXXXXX)
+trap 'chmod -R u+w "$T" 2>/dev/null; rm -rf "$T"' EXIT
+for right in "${fence_list[@]}"; do fence_args+=(--landlock-rule "path-beneath:$right:$T"); done
 fenced() {
   local props=(--user --pipe --wait --quiet --collect -p MemoryMax=6G)
   while [ "$1" != -- ]; do props+=(-E "$1"); shift; done
@@ -224,6 +231,7 @@ for inst in "$@"; do
   if [ -e "$I" ]; then mv "$I" "$I.prev-$(date +%H%M%S)"; fi
   mkdir -p "$I/home"
   install -d -m 0700 "$I/tmp"
+  install -d -m 0700 "$T/$inst"
   # shellcheck disable=SC2059
   live=$(printf "$state_pattern" "$inst")
   [ -f "$live/$config_name" ] || { echo "FAIL $inst: no $config_name in $live (OPENCLAW_UPGRADE_STATE_DIR_PATTERN)"; continue; }
@@ -336,7 +344,7 @@ for inst in "$@"; do
     rc=0
     start=$(date +%s)
     fenced OPENCLAW_NIX_MODE=0 "OPENCLAW_STATE_DIR=$ST" "OPENCLAW_CONFIG_PATH=$I/doctor-config.json" \
-      "HOME=$I/home" "TMPDIR=$I/tmp" -- \
+      "HOME=$I/home" "TMPDIR=$T/$inst" -- \
       timeout "$doctor_limit" "$CAND" doctor --fix --non-interactive > "$1" 2>&1 || rc=$?
     secs=$(( $(date +%s) - start ))
     # Exit 1 whose only errors are plugin dependencies missing from the copy is the
@@ -376,7 +384,7 @@ for inst in "$@"; do
   echo "== $inst: candidate opens the migrated copy"
   arc=0
   fenced OPENCLAW_NIX_MODE=1 "OPENCLAW_STATE_DIR=$ST" "OPENCLAW_CONFIG_PATH=$I/doctor-config.json" \
-    "HOME=$I/home" "TMPDIR=$I/tmp" -- \
+    "HOME=$I/home" "TMPDIR=$T/$inst" -- \
     timeout 300 "$CAND" agents list --json > "$I/admission.log" 2>&1 || arc=$?
   echo "   admission rc=$arc"
 
