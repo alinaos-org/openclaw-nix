@@ -13,26 +13,26 @@
   minHostVersion = ">=2026.10.3";
   expectedIntegrity = "";
   packageName = "@openclaw/muse";
-  version = "2026.11.6";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/muse/-/muse-2026.11.6.tgz";
-  npmIntegrity = "sha512-EdNP8PiwfiIQOoeZ3lBKtU1v6N/Ft+QoIb9kjUDHqUz/vNrtroPJ8kvs3hgjwZ6u6kx9J4we+gepLSGem5Hg0w==";
-  npmShasum = "9eb9e1911f135480393d14afc1d6fef03c2b1e81";
-  nixHash = "sha256-z+44P/CSw8G4lcEa3GO4+0gZW35+ioV7tfFZSxtgoSg=";
+  version = "2026.11.7";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/muse/-/muse-2026.11.7.tgz";
+  npmIntegrity = "sha512-YNOPe6v6uNTvHdXlyI0w6TUiUxq3YmRIzIo9LkWKZMtoVgiOt67lBYJiBhPkJTwXHZfjTL0SQOtQH8rJPGO+4w==";
+  npmShasum = "52305bec5d6ec6f5b4eacfa2a7d3c0b6cce3a55e";
+  nixHash = "sha256-vYhvcUOZJQIFX0O9yZJ1C+7tnzbkELyOn6MGpTeIdzA=";
   dependencyMode = "package-lock";
-  npmDepsHash = "sha256-J+G/0QJaW2scni+ERl2F48qGZpx7Xy+EqeBmcGak2JU=";
+  npmDepsHash = "sha256-+BvrWOvi66I8rqyiojTDW/OSIxpszBoDPEw+jM9U8og=";
   npmPackageLockFile = "muse.package-lock.json";
-  npmPackageLockSha256 = "93a09505c6f37cc187ec6f599a19bc3cb6ce7af047ceb7427db90283d7101b41";
+  npmPackageLockSha256 = "274607b9b424ed1599fa5093cfe7fd578b291dad9efcf8f2b59dcd65f7374eec";
   npmPackageLockEvidence = {
-    assetName = "openclaw-2026.11.6-dependency-evidence.zip";
-    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.11.6/openclaw-2026.11.6-dependency-evidence.zip";
-    assetNixHash = "sha256-74NijsiJTPZADOVj+g4tlTy0XZQBaXglfAcM/cxQIdo=";
+    assetName = "openclaw-2026.11.7-dependency-evidence.zip";
+    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.11.7/openclaw-2026.11.7-dependency-evidence.zip";
+    assetNixHash = "sha256-eqpr+MpbZUR6NXhPocbDYKRLHKYtfREvV9e9t/81w7E=";
     source = "release";
-    sourceSha = "06afb10d3272cc9deaf38ca6a3b7b839d5935638";
-    generatedAt = "2026-11-19T09:20:29.576Z";
+    sourceSha = "e31bbf056de321127988ec5c1a36ff1b59297de0";
+    generatedAt = "2026-11-22T21:29:43.358Z";
   };
   manifestId = "muse";
-  openclawCompat = ">=2026.11.6";
-  peerOpenClaw = ">=2026.11.6";
+  openclawCompat = ">=2026.11.7";
+  peerOpenClaw = ">=2026.11.7";
   runtimeExtensions = [
     "./dist/index.js"
   ];
