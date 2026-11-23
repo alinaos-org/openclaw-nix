@@ -163,21 +163,47 @@ def worker_native_assets(src):
         return ""
     targets = re.findall(r'"(darwin-[a-z0-9]+)": "fs-safe-darwin-[a-z0-9]+\.node"',
                          (src / "src/shared/worker-bundle-hash.ts").read_text())
-    lock = (src / "pnpm-lock.yaml").read_text()
-    fs_safe = re.search(r"\n  '@openclaw/fs-safe@([0-9.]+)':\n    optionalDependencies:\n((?:      .*\n)+)", lock)
-    if not targets or not fs_safe:
-        sys.exit("worker native assets: darwin targets or @openclaw/fs-safe's optional dependencies not found")
+    if not targets or len(targets) != len(set(targets)):
+        sys.exit("worker native assets: missing or duplicate darwin targets")
+
+    name = "@openclaw/fs-safe"
+    manifest = json.loads((src / "package.json").read_text())
+    versions = {manifest[group][name] for group in ("dependencies", "optionalDependencies")
+                if name in manifest.get(group, {})}
+    if len(versions) != 1:
+        sys.exit(f"worker native assets: expected one root {name} version in package.json, got {versions}")
+    fs_safe = f"{name}@{versions.pop()}"
+
+    # pnpm can prepend an environment document with its own packages and snapshots.
+    lock = (src / "pnpm-lock.yaml").read_text().rsplit("\n---\n", 1)[-1]
+
+    def lock_value(body, key, indent):
+        # A pnpm mapping value ends at the next key at this indentation or less.
+        pattern = rf"^{' ' * indent}{re.escape(key)}:(.*?)(?=^ {{0,{indent}}}\S|\Z)"
+        matches = re.findall(pattern, body, re.M | re.S)
+        if len(matches) != 1:
+            sys.exit(f"worker native assets: expected one {key} entry in pnpm-lock.yaml, found {len(matches)}")
+        return matches[0]
+
+    snapshots = lock_value(lock, "snapshots", 0)
+    snapshot = lock_value(snapshots, f"'{fs_safe}'", 2)
+    optional = lock_value(snapshot, "optionalDependencies", 4)
+    packages = lock_value(lock, "packages", 0)
     lines = ["    # The macOS fs-safe natives the worker bundle embeds (packages/gateway/default.nix).",
              "    workerNativeAssets = {"]
     for target in targets:
-        ver = re.search(rf"'@openclaw/fs-safe-{target}': ([0-9.]+)", fs_safe.group(2))
-        integ = ver and re.search(
-            rf"\n  '@openclaw/fs-safe-{target}@{re.escape(ver.group(1))}':\n    resolution: \{{integrity: (sha512-[A-Za-z0-9+/=]+)\}}", lock)
+        native = f"{name}-{target}"
+        ver = lock_value(optional, f"'{native}'", 6).strip()
+        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", ver):
+            sys.exit(f"worker native assets: invalid {native} version {ver!r} in {fs_safe}")
+        package = lock_value(packages, f"'{native}@{ver}'", 2)
+        resolution = lock_value(package, "resolution", 4).strip()
+        integ = re.fullmatch(r"\{integrity: (sha512-[A-Za-z0-9+/=]+)\}", resolution)
         if not integ:
-            sys.exit(f"worker native assets: no lock pin for @openclaw/fs-safe-{target}")
-        lines += [f"      {target} = {{", f'        version = "{ver.group(1)}";',
+            sys.exit(f"worker native assets: expected a sha512 integrity for {native}@{ver}")
+        lines += [f"      {target} = {{", f'        version = "{ver}";',
                   f'        integrity = "{integ.group(1)}";', "      };"]
-        print(f"workerNativeAssets {target} {ver.group(1)}")
+        print(f"workerNativeAssets {target} {ver}")
     return "\n".join(lines + ["    };"]) + "\n"
 
 
