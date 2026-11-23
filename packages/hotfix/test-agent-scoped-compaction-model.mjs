@@ -57,11 +57,13 @@ const exportAlias = (source, local) => {
 // From 2026.11.5: compaction model only
 // ============================================================================================
 async function currentSuite(root, upstreamVersion) {
-  // The fixtures follow the release the real tree was patched for, so its own anchor set is the
-  // one exercised. The worker retry's DEFAULT_PROVIDER/DEFAULT_MODEL import aliases are the only
-  // anchor bytes that differ between 2026.11.5 (z/B) and 2026.11.6 on (R/z).
+  // Exercise the worker retry with the resolver and defaults imports from this release.
   const VERSION = upstreamVersion;
-  const workerDefaults = atLeast(VERSION, "2026.11.6") ? { provider: "R", model: "z", third: "B" } : { provider: "z", model: "B", third: "V" };
+  const workerAliases = atLeast(VERSION, "2026.11.7")
+    ? { target: "Qn", provider: "U", model: "W", third: "G" }
+    : atLeast(VERSION, "2026.11.6")
+    ? { target: "pn", provider: "R", model: "z", third: "B" }
+    : { target: "pn", provider: "z", model: "B", third: "V" };
   // ------------------------------------------------------------------------------------------
   // Part 1: bounded fixtures
   // ------------------------------------------------------------------------------------------
@@ -162,7 +164,7 @@ async function currentSuite(root, upstreamVersion) {
     ].join("\n"),
   );
 
-  // --- Worker-chunk duplicates: the target (export `o`) and the retry that imports it as `pn`,
+  // --- Worker-chunk duplicates: the target (export `o`) and the retry that imports it,
   // with DEFAULT_PROVIDER/DEFAULT_MODEL imported from the worker defaults chunk (exports i/n)
   // under this release's aliases. ---
   write(
@@ -171,10 +173,10 @@ async function currentSuite(root, upstreamVersion) {
   );
   write(F.workerDefaults, "const t=`openai`,n=`gpt-6-astra`,o=()=>{};export{t as i,n,o};\n");
   {
-    const { provider: p, model: m, third } = workerDefaults;
+    const { target, provider: p, model: m, third } = workerAliases;
     write(
       F.workerRetry,
-      `import{o as pn,r as mn}from"./${path.basename(F.workerTarget)}";import{i as ${p},n as ${m},o as ${third}}from"./${path.basename(F.workerDefaults)}";async function compactPrepared(c){let e=pn({config:c.config,provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:${p},defaultModel:${m}});return e}export{compactPrepared as t};\n`,
+      `import{o as ${target},r as mn}from"./${path.basename(F.workerTarget)}";import{i as ${p},n as ${m},o as ${third}}from"./${path.basename(F.workerDefaults)}";async function compactPrepared(c){let e=${target}({config:c.config,provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:${p},defaultModel:${m}});return e}export{compactPrepared as t};\n`,
     );
   }
   // The import above names an export (`r`) the fixture never defines; give it one so the
@@ -209,15 +211,15 @@ async function currentSuite(root, upstreamVersion) {
   }, /compaction-retry-readable: anchor found in unexpected file agents\/compact-Fx8Rtry1\.mjs/);
   expectPatchFailure("re-minified alias", (d) => {
     const file = path.join(d, F.workerRetry);
-    fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("o as pn,", "s as pn,"));
-  }, /compaction-retry-worker-chunk: worker\/worker-chunk-Fx8Rtry2\.mjs no longer carries o as pn,/);
+    fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace(`o as ${workerAliases.target},`, `s as ${workerAliases.target},`));
+  }, new RegExp(`compaction-retry-worker-chunk: worker/worker-chunk-Fx8Rtry2\\.mjs no longer carries o as ${workerAliases.target},`));
   // The call still reads the same two aliases, but they now bind the defaults chunk's exports
   // the other way round (provider <-> model): the patch must refuse rather than keep passing them.
   expectPatchFailure("swapped defaults aliases", (d) => {
     const file = path.join(d, F.workerRetry);
-    const { provider: p, model: m } = workerDefaults;
+    const { provider: p, model: m } = workerAliases;
     fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace(`i as ${p},n as ${m},`, `i as ${m},n as ${p},`));
-  }, new RegExp(`compaction-retry-worker-chunk: worker/worker-chunk-Fx8Rtry2\\.mjs no longer carries i as ${workerDefaults.provider},n as ${workerDefaults.model},`));
+  }, new RegExp(`compaction-retry-worker-chunk: worker/worker-chunk-Fx8Rtry2\\.mjs no longer carries i as ${workerAliases.provider},n as ${workerAliases.model},`));
   // An upstream that dropped its own per-agent compaction object fails the build instead of
   // gaining a second, hand-made one.
   expectPatchFailure("upstream compaction object missing", (d) => {
@@ -265,7 +267,7 @@ async function currentSuite(root, upstreamVersion) {
   await runCompactionTargetScenarios("sqlite-store.worker.mjs (N-named)", sqliteWorker);
   const workerTarget = await importFixture(F.workerTarget);
   const workerRetry = await importFixture(F.workerRetry);
-  await runCompactionTargetScenarios("worker-chunk (e-named, pn retry)", { resolveEmbeddedCompactionTarget: workerTarget.o, compactPreparedRetry: workerRetry.t });
+  await runCompactionTargetScenarios(`worker-chunk (e-named, ${workerAliases.target} retry)`, { resolveEmbeddedCompactionTarget: workerTarget.o, compactPreparedRetry: workerRetry.t });
 
   fs.rmSync(fixtureRoot, { recursive: true, force: true });
   console.log(`Part 1 (bounded fixtures): all scenarios passed across ${touchedFiles.size} files (${receipt.changes.length} anchors)`);
@@ -334,13 +336,8 @@ async function currentSuite(root, upstreamVersion) {
 
     const workerChunk = /^worker-chunk-.*\.mjs$/;
     const targetFile = realFile("worker", workerChunk, "i=e.modelSelectionLocked?void 0:(e.agentId?e.config?.agents?.entries?.[e.agentId]?.compaction?.model?.trim():void 0)??");
-    const retrySource = fs.readFileSync(realFile("worker", workerChunk, "pn({config:c.config,agentId:c.agentId,"), "utf8");
-    // `pn` must be the target chunk's resolveEmbeddedCompactionTarget, read from both sides.
-    const imported = retrySource.match(/import\{[^}]*\bo as pn\b[^}]*\}from"\.\/([^"]+)"/);
-    assert.ok(imported, "real worker-chunk retry no longer imports pn as export o");
-    assert.equal(imported[1], path.basename(targetFile), "real worker-chunk retry imports pn from a chunk other than the patched target");
-    assert.equal(exportAlias(fs.readFileSync(targetFile, "utf8"), "resolveEmbeddedCompactionTarget"), "o", "real worker-chunk target no longer exports resolveEmbeddedCompactionTarget as o");
-    await checkWorkerRetryDefaults(realDist, retrySource);
+    const retrySource = fs.readFileSync(realFile("worker", workerChunk, `${workerAliases.target}({config:c.config,agentId:c.agentId,`), "utf8");
+    await checkWorkerRetryImports(realDist, retrySource, targetFile);
 
     const feishuSource = fs.readFileSync(path.join(realDist, "config-doctor/feishu.js"), "utf8");
     assert.ok(feishuSource.includes(`model: string().optional() /* ${MARKER} */ }).optional(),`), "real config-doctor/feishu.js: inlined schema missing the per-agent compaction model");
@@ -351,12 +348,12 @@ async function currentSuite(root, upstreamVersion) {
 }
 
 // The real worker-chunk retry cannot be imported standalone, so prove what its call passes: read
-// the defaultProvider/defaultModel aliases from the patched call, resolve them through the
+// the resolver and defaultProvider/defaultModel aliases from the patched call, resolve them through the
 // chunk's import clause to the exporting chunk, load that chunk (running its lazy ESM init when
 // it has one) and require the same values the readable compact-*.mjs retry imports as
 // DEFAULT_PROVIDER/DEFAULT_MODEL.
-async function checkWorkerRetryDefaults(realDist, retrySource) {
-  const call = retrySource.match(/pn\(\{config:c\.config,agentId:c\.agentId,\/\*[^*]*\*\/provider:c\.provider,modelId:c\.model,authProfileId:c\.authProfileId,modelSelectionLocked:c\.modelSelectionLocked,defaultProvider:([\w$]+),defaultModel:([\w$]+)\}\)/);
+async function checkWorkerRetryImports(realDist, retrySource, targetFile) {
+  const call = retrySource.match(/([\w$]+)\(\{config:c\.config,agentId:c\.agentId,\/\*[^*]*\*\/provider:c\.provider,modelId:c\.model,authProfileId:c\.authProfileId,modelSelectionLocked:c\.modelSelectionLocked,defaultProvider:([\w$]+),defaultModel:([\w$]+)\}\)/);
   assert.ok(call, "real worker-chunk retry call not found in its patched shape");
   const bindings = new Map();
   for (const [, specs, from] of retrySource.matchAll(/import\{([^}]*)\}from"\.\/([^"]+)"/g)) {
@@ -365,9 +362,13 @@ async function checkWorkerRetryDefaults(realDist, retrySource) {
       bindings.set(local ?? exported, { exported, from });
     }
   }
-  const provider = bindings.get(call[1]);
-  const model = bindings.get(call[2]);
-  assert.ok(provider && model, `real worker-chunk retry: defaultProvider ${call[1]} / defaultModel ${call[2]} are not imports`);
+  const [, targetAlias, providerAlias, modelAlias] = call;
+  const target = bindings.get(targetAlias);
+  assert.deepEqual(target, { exported: "o", from: path.basename(targetFile) }, `real worker-chunk retry: ${targetAlias} must import export o of the patched target`);
+  assert.equal(exportAlias(fs.readFileSync(targetFile, "utf8"), "resolveEmbeddedCompactionTarget"), "o", "real worker-chunk target no longer exports resolveEmbeddedCompactionTarget as o");
+  const provider = bindings.get(providerAlias);
+  const model = bindings.get(modelAlias);
+  assert.ok(provider && model, `real worker-chunk retry: defaultProvider ${providerAlias} / defaultModel ${modelAlias} are not imports`);
   assert.equal(provider.from, model.from, "real worker-chunk retry: provider and model defaults come from different chunks");
   const defaultsFile = path.join(realDist, "worker", provider.from);
   const defaultsSource = fs.readFileSync(defaultsFile, "utf8");
@@ -392,9 +393,9 @@ async function checkWorkerRetryDefaults(realDist, retrySource) {
   const expectedProvider = readable[readableNames.get("DEFAULT_PROVIDER")];
   const expectedModel = readable[readableNames.get("DEFAULT_MODEL")];
   assert.ok(typeof expectedProvider === "string" && expectedProvider && typeof expectedModel === "string" && expectedModel, "readable DEFAULT_PROVIDER/DEFAULT_MODEL are not non-empty strings");
-  assert.equal(mod[provider.exported], expectedProvider, `real worker-chunk retry passes ${call[1]}=${JSON.stringify(mod[provider.exported])} as defaultProvider, not DEFAULT_PROVIDER ${JSON.stringify(expectedProvider)}`);
-  assert.equal(mod[model.exported], expectedModel, `real worker-chunk retry passes ${call[2]}=${JSON.stringify(mod[model.exported])} as defaultModel, not DEFAULT_MODEL ${JSON.stringify(expectedModel)}`);
-  console.log(`ok - real worker-chunk retry passes DEFAULT_PROVIDER/DEFAULT_MODEL (${call[1]}=${expectedProvider}, ${call[2]}=${expectedModel})`);
+  assert.equal(mod[provider.exported], expectedProvider, `real worker-chunk retry passes ${providerAlias}=${JSON.stringify(mod[provider.exported])} as defaultProvider, not DEFAULT_PROVIDER ${JSON.stringify(expectedProvider)}`);
+  assert.equal(mod[model.exported], expectedModel, `real worker-chunk retry passes ${modelAlias}=${JSON.stringify(mod[model.exported])} as defaultModel, not DEFAULT_MODEL ${JSON.stringify(expectedModel)}`);
+  console.log(`ok - real worker-chunk retry passes DEFAULT_PROVIDER/DEFAULT_MODEL (${providerAlias}=${expectedProvider}, ${modelAlias}=${expectedModel})`);
 }
 
 // Shared compaction-target scenarios, for the fixtures and the real chunk alike.
