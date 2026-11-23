@@ -18,12 +18,12 @@
     # The macOS fs-safe natives the worker bundle embeds (packages/gateway/default.nix).
     workerNativeAssets = {
       darwin-arm64 = {
-        version = "0.26.13";
-        integrity = "sha512-R3mXijsyLrFVRiLjNlpEcmN9SZWMVd7keZWtVngGp19C56lHm/ye5/UJV2rICe5xsuxXM6q0iGKXkcQdUc9uKA==";
+        version = "0.27.1";
+        integrity = "sha512-RXheLSPD8K0IiJ4p6KW8JVlrLd148OM84Z6wDerEmiF3/RbiiBUerNJ+LIzjyxDesZoCQIr8okq6zLdjSZkvdg==";
       };
       darwin-x64 = {
-        version = "0.26.13";
-        integrity = "sha512-s0ZKDbVIQCjUpgwxA3RMmt7UTyGQcWmkicxC7DdOq/hqLwzCRx74nb0zDrbuBHZCW9y6lF6PeqPfppPtwXqjDg==";
+        version = "0.27.1";
+        integrity = "sha512-2CfUUGJc4dwaTuvo4xiKq5zbF9p6p6Cp+zS+M0hTg2E8RLPH/i2+CtF1MOeeMY6q/7FlpS4AOBcf4NNQmLCZFA==";
       };
     };
     # The session icon picker patch does not apply to this release: it builds
