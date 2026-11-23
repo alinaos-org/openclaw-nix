@@ -7,6 +7,31 @@
 # picker: new-release.py sets it when openclaw-nix's picker patch does not apply,
 # and the re-port deletes it (README, "Session icons").
 {
+  "2026.11.7" = {
+    rev = "e31bbf056de321127988ec5c1a36ff1b59297de0";
+    sourceHash = "sha256-mNApehyzd0o5SELkvOyFPsaPD85Bvu4JPin3mAWgvnI=";
+    pnpmDepsHash.x86_64-linux = "sha256-eIOpuKvAmz94Lh5DL74EAFuom6S3x9Zu/7sIXJrkX/Y=";
+    desktopDebHash.x86_64-linux = "sha256-x9QQNKDbHCCTaWzBGQ823u+NEaHoxfxwC2qvAg6X0Ig=";
+    buildTimestamp = "2026-11-22T14:04:12Z";
+    pnpmBootstrapVersion = "12.15.0";
+    tsdownHeapMb = "6144";
+    # The macOS fs-safe natives the worker bundle embeds (packages/gateway/default.nix).
+    workerNativeAssets = {
+      darwin-arm64 = {
+        version = "0.26.13";
+        integrity = "sha512-R3mXijsyLrFVRiLjNlpEcmN9SZWMVd7keZWtVngGp19C56lHm/ye5/UJV2rICe5xsuxXM6q0iGKXkcQdUc9uKA==";
+      };
+      darwin-x64 = {
+        version = "0.26.13";
+        integrity = "sha512-s0ZKDbVIQCjUpgwxA3RMmt7UTyGQcWmkicxC7DdOq/hqLwzCRx74nb0zDrbuBHZCW9y6lF6PeqPfppPtwXqjDg==";
+      };
+    };
+    # The session icon picker patch does not apply to this release: it builds
+    # with OpenClaw's own picker until the patch is re-ported (README,
+    # "Session icons"). The re-port deletes these lines.
+    sessionIconPicker = false;
+  };
+
   "2026.11.6" = {
     rev = "06afb10d3272cc9deaf38ca6a3b7b839d5935638";
     sourceHash = "sha256-RxT474ub1nndQleEsYR/qd8fXKw8ci7/mihBHlJrWmQ=";

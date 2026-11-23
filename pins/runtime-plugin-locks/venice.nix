@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.9";
   expectedIntegrity = "";
   packageName = "@openclaw/venice-provider";
-  version = "2026.11.6";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/venice-provider/-/venice-provider-2026.11.6.tgz";
-  npmIntegrity = "sha512-W3RYiZjb3e6hk3rPJIk2TELbUVtx+x5M/nHv36dOVNSl//QBedh0Rhk6v5LAnRQXtAbaUlz6P7Ts+X2mS+em2A==";
-  npmShasum = "14f8bd598b075ffda9a6aba9b4a73f2016918f41";
-  nixHash = "sha256-YYzNegsfCcBu+i5hn2PyqZ1iAUw28cYqO6vbP+EED48=";
+  version = "2026.11.7";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/venice-provider/-/venice-provider-2026.11.7.tgz";
+  npmIntegrity = "sha512-tiITa2Zegvy6aQ2nPPA2Bzg2BqjvO+R7MGPxZWAh89LB/XZUhqNwt7NSnOpIhXKCbPVWGhHhRkCIxH1NXg3dKQ==";
+  npmShasum = "1d73f933e11f7c795510eb7200be1898423dae31";
+  nixHash = "sha256-XpF2NJkaRmsZpGt153n77XXq0kpNYBkHpYVDA+bZ208=";
   dependencyMode = "none";
   manifestId = "venice";
-  openclawCompat = ">=2026.11.6";
-  peerOpenClaw = ">=2026.11.6";
+  openclawCompat = ">=2026.11.7";
+  peerOpenClaw = ">=2026.11.7";
   runtimeExtensions = [
     "./dist/index.js"
   ];

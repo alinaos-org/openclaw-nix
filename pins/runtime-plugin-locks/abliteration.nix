@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.10.6";
   expectedIntegrity = "";
   packageName = "@openclaw/abliteration-provider";
-  version = "2026.11.6";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/abliteration-provider/-/abliteration-provider-2026.11.6.tgz";
-  npmIntegrity = "sha512-SwbBJ+5IFvVhdLT3dHnSdS3Xv2rrTHALPMOty0SOIKsjNCm/vjJbbROj6x4GaK6dHB2lNYboQN8aGN3OyYSArw==";
-  npmShasum = "9ac5d3ff7c69d6a6fa4cbc9c050a70a435945ec0";
-  nixHash = "sha256-Gxv77c/uexzVLgpKsK314O3I4E48ls9ekVvVkBQEf0U=";
+  version = "2026.11.7";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/abliteration-provider/-/abliteration-provider-2026.11.7.tgz";
+  npmIntegrity = "sha512-RVRfZH2r95fqf/389Wd8eVuN1lxVIULUgfFE9LxLeecowDOLilk4zTuAp/wKBikKyJrJ0SBoSUcLbEvHXOwnyg==";
+  npmShasum = "bafdbe87c2f94a0babb045b128decc8d36857da9";
+  nixHash = "sha256-dvx+vyOhInQsn/jUqvYYZsd1ntXR3Cslj3GHblrREoI=";
   dependencyMode = "none";
   manifestId = "abliteration";
-  openclawCompat = ">=2026.11.6";
-  peerOpenClaw = ">=2026.11.6";
+  openclawCompat = ">=2026.11.7";
+  peerOpenClaw = ">=2026.11.7";
   runtimeExtensions = [
     "./dist/index.js"
   ];

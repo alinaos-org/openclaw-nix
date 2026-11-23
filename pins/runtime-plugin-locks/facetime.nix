@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.9.4";
   expectedIntegrity = "";
   packageName = "@openclaw/facetime";
-  version = "2026.11.6";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/facetime/-/facetime-2026.11.6.tgz";
-  npmIntegrity = "sha512-3SLnmzwETak3O4KzWWmVwVhMnQ8l5EPgjqrtqPaARGy3wlD/s816qTUdNRfBt2yVU9SGzzH1jRXdqPYiy2XQ+w==";
-  npmShasum = "096f784146651cfb2714938713a7f227846097db";
-  nixHash = "sha256-9N42AVWUxX7JPt0pRlSUroibkz1Y3+xAAQ2KwkssHZE=";
+  version = "2026.11.7";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/facetime/-/facetime-2026.11.7.tgz";
+  npmIntegrity = "sha512-AiyK2MSQ9qv2xfL4E2ZOHSITGfIC3RIZo/uDY9KpCdOKaLiLmcQPMC7b9z/QWxBfnYMhkqQPXJedZfOPMIv5DQ==";
+  npmShasum = "d2fdf66ea743d1efa15fdf3f28fedd8f2991139e";
+  nixHash = "sha256-0ZUl7C3HYTpLwcjgvWlfx1Fmdv6CHuf54zkwpq8EEJM=";
   dependencyMode = "bundled";
   manifestId = "facetime";
-  openclawCompat = ">=2026.11.6";
-  peerOpenClaw = ">=2026.11.6";
+  openclawCompat = ">=2026.11.7";
+  peerOpenClaw = ">=2026.11.7";
   runtimeExtensions = [
     "./dist/index.js"
   ];

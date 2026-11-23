@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.4.25";
   expectedIntegrity = "";
   packageName = "@openclaw/whatsapp";
-  version = "2026.11.6";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/whatsapp/-/whatsapp-2026.11.6.tgz";
-  npmIntegrity = "sha512-4AI2cY+icHEA/4VBd5ghIG2taLIfWtd2J7cuMtUgdEDLFN676G3DjuhhlQ34CQ0nkxDFJRnM0/cs6XK7VvMLSA==";
-  npmShasum = "725ddfc5d3802634ebfa4781bd10d62fe1d08d84";
-  nixHash = "sha256-o+xDpWmeNBe0KvcJj1mTQP96pOd6TPnlUin3K0fsLqI=";
+  version = "2026.11.7";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/whatsapp/-/whatsapp-2026.11.7.tgz";
+  npmIntegrity = "sha512-1hI0aoEH2j7FDaZlJMcIvq7FjWThWXmaHTrkNTFJpmNif7JiyW7cyH7kJopMXLHJ629modSOr1fyeuRj9Y8+pQ==";
+  npmShasum = "eaddbb5a6d9df2890d3ffff1bf8419e14de30efc";
+  nixHash = "sha256-muunm/Q8a1lkhbRYHoN/WgZ4UiBgr3pGMTKJZul9yfE=";
   dependencyMode = "bundled";
   manifestId = "whatsapp";
-  openclawCompat = ">=2026.11.6";
-  peerOpenClaw = ">=2026.11.6";
+  openclawCompat = ">=2026.11.7";
+  peerOpenClaw = ">=2026.11.7";
   runtimeExtensions = [
     "./dist/index.js"
   ];
