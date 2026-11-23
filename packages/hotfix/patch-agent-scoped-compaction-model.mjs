@@ -123,21 +123,20 @@ if (atLeast(version, "2026.11.5")) {
     before: `resolveEmbeddedCompactionTarget({config:_t.config,provider:_t.provider,modelId:_t.model,authProfileId:_t.authProfileId,modelSelectionLocked:_t.modelSelectionLocked,defaultProvider:DEFAULT_PROVIDER,defaultModel:DEFAULT_MODEL$1})`,
     after: `resolveEmbeddedCompactionTarget({config:_t.config,agentId:_t.agentId,/*${MARKER}*/provider:_t.provider,modelId:_t.model,authProfileId:_t.authProfileId,modelSelectionLocked:_t.modelSelectionLocked,defaultProvider:DEFAULT_PROVIDER,defaultModel:DEFAULT_MODEL$1})`,
   });
-  // The worker chunk imports resolveEmbeddedCompactionTarget as pn (export `o` of the target
-  // chunk) and DEFAULT_PROVIDER/DEFAULT_MODEL as exports `i`/`n` of the worker defaults chunk.
-  // Those two local aliases are re-minified per release: z/B in 2026.11.5
-  // (`import{i as z,n as B,o as V}`), R/z from 2026.11.6 on (`import{i as R,n as z,o as B}`,
-  // the same byte-identical defaults chunk). The retry itself is otherwise unchanged and still
-  // drops agentId. `alsoRequires` holds both import bindings to the same file, so a release
-  // that swaps or renames them fails here instead of passing the wrong values; the test checks
-  // the exporting chunks and the defaults' values.
-  const retryDefaults = atLeast(version, "2026.11.6") ? { provider: "R", model: "z" } : { provider: "z", model: "B" };
+  // The retry imports resolveEmbeddedCompactionTarget (export o) and the defaults
+  // (exports i/n) under release-specific aliases. Check the bindings in the calling
+  // chunk as well as the call. The test verifies their exporters and the default values.
+  const retry = atLeast(version, "2026.11.7")
+    ? { target: "Qn", provider: "U", model: "W" }
+    : atLeast(version, "2026.11.6")
+    ? { target: "pn", provider: "R", model: "z" }
+    : { target: "pn", provider: "z", model: "B" };
   replaceExact({
     id: "compaction-retry-worker-chunk",
     expect: { "worker/worker-chunk-*.mjs": 1 },
-    alsoRequires: [`o as pn,`, `i as ${retryDefaults.provider},n as ${retryDefaults.model},`],
-    before: `pn({config:c.config,provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:${retryDefaults.provider},defaultModel:${retryDefaults.model}})`,
-    after: `pn({config:c.config,agentId:c.agentId,/*${MARKER}*/provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:${retryDefaults.provider},defaultModel:${retryDefaults.model}})`,
+    alsoRequires: [`o as ${retry.target},`, `i as ${retry.provider},n as ${retry.model},`],
+    before: `${retry.target}({config:c.config,provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:${retry.provider},defaultModel:${retry.model}})`,
+    after: `${retry.target}({config:c.config,agentId:c.agentId,/*${MARKER}*/provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:${retry.provider},defaultModel:${retry.model}})`,
   });
 } else {
   // ===== Legacy anchor set: 2026.10.7 through 2026.11.4 (compaction and memory flush) =====

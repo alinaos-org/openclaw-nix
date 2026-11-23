@@ -326,6 +326,10 @@
       agents.defaults.compaction.model; it only renamed the worker-chunk retry's
       DEFAULT_PROVIDER/DEFAULT_MODEL import aliases, which the patch now selects by
       release gate and binds to the chunk's own import.
+      From 2026.11.7 the worker-chunk compactPrepared retry imports
+      resolveEmbeddedCompactionTarget as Qn and DEFAULT_PROVIDER/DEFAULT_MODEL as U/W
+      (2026.11.6: pn and R/z); the patch selects them by release and checks their bindings
+      in the retry chunk.
     '';
     test = ./test-agent-scoped-compaction-model.mjs;
     upstream = null;
