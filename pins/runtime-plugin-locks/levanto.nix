@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.9.6";
   expectedIntegrity = "";
   packageName = "@openclaw/levanto";
-  version = "2026.11.7";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/levanto/-/levanto-2026.11.7.tgz";
-  npmIntegrity = "sha512-gwftlR9QsQhLH39hH1XjmXqt5eTW1rwYKQvuCF6RuRQzHDOjqUzmUhGCcyvcsalyxCq5YvzzFQBCXZ3O6x+Pwg==";
-  npmShasum = "7144f65f3ce5cf1dd669c0f28e275687baf51709";
-  nixHash = "sha256-CUdZs1cvi7lWg2wzJZWRI51qopCI+2btAJLB5NjYyBw=";
+  version = "2026.11.8";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/levanto/-/levanto-2026.11.8.tgz";
+  npmIntegrity = "sha512-py71/uvV/S49zZy6w6ntAAcFpVbpkV/ateBcEsuoBPudjFpd+CBLgHCaFuic4gtB2exXDet9pHcGUKQSR+QgpA==";
+  npmShasum = "50bb5cf073b5ed9f7d909266508a702569bbe988";
+  nixHash = "sha256-ZLDgDklsDcCN4cQk2o1HO8o1YItXdq07/jEw3ZD2DT4=";
   dependencyMode = "none";
   manifestId = "levanto";
-  openclawCompat = ">=2026.11.7";
-  peerOpenClaw = ">=2026.11.7";
+  openclawCompat = ">=2026.11.8";
+  peerOpenClaw = ">=2026.11.8";
   runtimeExtensions = [
     "./dist/index.js"
   ];

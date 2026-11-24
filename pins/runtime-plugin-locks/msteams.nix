@@ -13,26 +13,26 @@
   minHostVersion = ">=2026.4.10";
   expectedIntegrity = "";
   packageName = "@openclaw/msteams";
-  version = "2026.11.7";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/msteams/-/msteams-2026.11.7.tgz";
-  npmIntegrity = "sha512-sQqiVN1rU3Mh4w3xf7oZFYoCSYE9FiS7u0nrXlELmZ87YxprSi6FXojFsNTHpi+1rcJEJE/ofdIqbF5XE25bIA==";
-  npmShasum = "d5879934b3ac9eaeef3cf69ccbf33c516ab76a18";
-  nixHash = "sha256-VJEV72C4uqA0BK/Mh65xM0UFdpfY+mV0EViXInRqU8o=";
+  version = "2026.11.8";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/msteams/-/msteams-2026.11.8.tgz";
+  npmIntegrity = "sha512-KRKc0USdWON2GsmAinRmXrVJdHGrpiZYoSR29TM+PHPIYhH8HupjHJUONnPjXL1uTcaJl0p29K2ByzImNGuhVA==";
+  npmShasum = "3405d6a8019cfdc5c9fbb28bb8c47b7590f34ce5";
+  nixHash = "sha256-MTlSnbvBuKLXUH56v5miV6aG/1KUmytQ4gvSiHeKIQk=";
   dependencyMode = "package-lock";
-  npmDepsHash = "sha256-2pMjGCArokN903ph7HRNp4OPh/zCtTogeljMeDp7Sso=";
+  npmDepsHash = "sha256-f6PLWM2/U5P7uy1OBB0Z043RgRY2iwp348cgtz/rpic=";
   npmPackageLockFile = "msteams.package-lock.json";
-  npmPackageLockSha256 = "ae5acfacc97bd7bcee6f4a44c0fcac2588934c4341f90145190154596fcaa035";
+  npmPackageLockSha256 = "ddd2eab9b5d9d98548ea7241eab66cfb3d4e7d7a6523dfcb624a5ed94867bdd9";
   npmPackageLockEvidence = {
-    assetName = "openclaw-2026.11.7-dependency-evidence.zip";
-    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.11.7/openclaw-2026.11.7-dependency-evidence.zip";
-    assetNixHash = "sha256-eqpr+MpbZUR6NXhPocbDYKRLHKYtfREvV9e9t/81w7E=";
+    assetName = "openclaw-2026.11.8-dependency-evidence.zip";
+    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.11.8/openclaw-2026.11.8-dependency-evidence.zip";
+    assetNixHash = "sha256-dwTB078pfK39ws+f8tfhCynDbvMcbbnUbd4U56rFZXI=";
     source = "release";
-    sourceSha = "e31bbf056de321127988ec5c1a36ff1b59297de0";
-    generatedAt = "2026-11-22T21:29:43.358Z";
+    sourceSha = "2d4ab292114df2ab9670c91c9b846f701c565bd7";
+    generatedAt = "2026-11-24T01:28:39.340Z";
   };
   manifestId = "msteams";
-  openclawCompat = ">=2026.11.7";
-  peerOpenClaw = ">=2026.11.7";
+  openclawCompat = ">=2026.11.8";
+  peerOpenClaw = ">=2026.11.8";
   runtimeExtensions = [
     "./dist/index.cjs"
   ];

@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.8";
   expectedIntegrity = "";
   packageName = "@openclaw/gmi-provider";
-  version = "2026.11.7";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/gmi-provider/-/gmi-provider-2026.11.7.tgz";
-  npmIntegrity = "sha512-MByokKfVsARQdK4yg6SUHg+zeqnbj4IoBSi1FAhKkzZqyEiYi8rYRiYVy5v1on+pUN3HgzubHQ1jH3aleFM2Ng==";
-  npmShasum = "ccad05380e5d26b2dd6c15ff3e026159b405f14b";
-  nixHash = "sha256-NDuc8X0CdlC2oeOY5aBzijf22wb5iq3zI2t+23aX5Yg=";
+  version = "2026.11.8";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/gmi-provider/-/gmi-provider-2026.11.8.tgz";
+  npmIntegrity = "sha512-fBGLOBn2R7cb4evuPZxRQh74emKLB7QkBi3B5hCyOYY6XBLXcPBerD8gu2ggo8+QGgQmVerGYt8chok0zbGMyw==";
+  npmShasum = "e53c53fc9788b5b35048b17451eab76d05899361";
+  nixHash = "sha256-C1Q9No7dUa0F4cTRLuueg+m/68Lndinya9NMjZghw/M=";
   dependencyMode = "none";
   manifestId = "gmi";
-  openclawCompat = ">=2026.11.7";
-  peerOpenClaw = ">=2026.11.7";
+  openclawCompat = ">=2026.11.8";
+  peerOpenClaw = ">=2026.11.8";
   runtimeExtensions = [
     "./dist/index.js"
   ];
