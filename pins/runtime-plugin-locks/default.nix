@@ -10,12 +10,12 @@
   brave = import ./brave.nix;
   buzz = import ./buzz.nix;
   byteplus = import ./byteplus.nix;
+  celeris = import ./celeris.nix;
   cerebras = import ./cerebras.nix;
   chutes = import ./chutes.nix;
   clickclack = import ./clickclack.nix;
   cloudflare = import ./cloudflare.nix;
   cloudflare-ai-gateway = import ./cloudflareAiGateway.nix;
-  codex = import ./codex.nix;
   cohere = import ./cohere.nix;
   comfy = import ./comfy.nix;
   copilot = import ./copilot.nix;
@@ -29,6 +29,7 @@
   duckduckgo = import ./duckduckgo.nix;
   exa = import ./exa.nix;
   facetime = import ./facetime.nix;
+  fastino = import ./fastino.nix;
   featherless = import ./featherless.nix;
   feishu = import ./feishu.nix;
   firecrawl = import ./firecrawl.nix;
@@ -58,6 +59,7 @@
   msteams = import ./msteams.nix;
   muse = import ./muse.nix;
   mxc = import ./mxc.nix;
+  nace = import ./nace.nix;
   nextcloud-talk = import ./nextcloudTalk.nix;
   nostr = import ./nostr.nix;
   novita = import ./novita.nix;
@@ -65,6 +67,7 @@
   opencode = import ./opencode.nix;
   openshell = import ./openshell.nix;
   parallel = import ./parallel.nix;
+  particle = import ./particle.nix;
   perplexity = import ./perplexity.nix;
   pixverse = import ./pixverse.nix;
   qianfan = import ./qianfan.nix;

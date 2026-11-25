@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.8";
   expectedIntegrity = "";
   packageName = "@openclaw/arcee-provider";
-  version = "2026.11.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/arcee-provider/-/arcee-provider-2026.11.9.tgz";
-  npmIntegrity = "sha512-6e82jgos9tbsYDVBmoSzWAOQL+o0kwir8T1Ke3bMUikQlm4binaFTOOZk8Cn2KkQRHWc74oN9SiPueA3vQ2S1A==";
-  npmShasum = "dfa8a300ebe29bdbcf0e7065a401dcda8bc668af";
-  nixHash = "sha256-l9uSKeIbH0erf4NShfO6OE+eMFbj3uAf6Ide3IF/8GM=";
+  version = "2026.11.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/arcee-provider/-/arcee-provider-2026.11.10.tgz";
+  npmIntegrity = "sha512-d7lCSeaIIdrnNH5niz1s9pzRxdNH7+x9ncsJBO2awafWxZsVMH/BAzt7igL8qwdaFzSsE3FpCKY5DNArnEraZw==";
+  npmShasum = "483d1d2cf25a9d9ca2342515a0a42ae0e5eafada";
+  nixHash = "sha256-KxpjlzXWM5urAbZNUMdm1txBeGzYkKrC/DZT7pjyXTE=";
   dependencyMode = "none";
   manifestId = "arcee";
-  openclawCompat = ">=2026.11.9";
-  peerOpenClaw = ">=2026.11.9";
+  openclawCompat = ">=2026.11.10";
+  peerOpenClaw = ">=2026.11.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];

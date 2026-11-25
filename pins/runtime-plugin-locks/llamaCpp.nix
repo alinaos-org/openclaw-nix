@@ -13,26 +13,26 @@
   minHostVersion = ">=2026.6.2";
   expectedIntegrity = "";
   packageName = "@openclaw/llama-cpp-provider";
-  version = "2026.11.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/llama-cpp-provider/-/llama-cpp-provider-2026.11.9.tgz";
-  npmIntegrity = "sha512-z8JkTOViLlKvYhvJswZbj9p/9deJ7XlLk+HcKEEHEbdgI6vD4ZQk8EaXMDKBDRbc90NCXrFBHeN+LPRAOXVDAQ==";
-  npmShasum = "677f17acab59da2a891323323eaf39006157bc82";
-  nixHash = "sha256-Izo0eCwtF/bEHAjz1lQWA0MkSiPpFfJABlxyizkS/O0=";
+  version = "2026.11.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/llama-cpp-provider/-/llama-cpp-provider-2026.11.10.tgz";
+  npmIntegrity = "sha512-3ogEkzXB86zJb2NYcne0uZJQE6yzHQVesLVVVlIeWQtTKCtnD9XgVyPangLtmcRErbkm0bhRh5656KPUgAACyQ==";
+  npmShasum = "be3c74f4052e3e6775bbd811abb63adfee411f92";
+  nixHash = "sha256-LuLT0TcNF19rQ5RLtbhh0oVPwwxkKQj9zzWBA8cnDgs=";
   dependencyMode = "package-lock";
-  npmDepsHash = "sha256-OT5aDQfiOqhIeVVdQA8pw4yUMH0BrOQZMOgyrJgf/rI=";
+  npmDepsHash = "sha256-K1pyXqmsM8MEkXhQ3EbhsXP8PimDy+Fkxmq3gzzQmcc=";
   npmPackageLockFile = "llamaCpp.package-lock.json";
-  npmPackageLockSha256 = "2dfe10e846658c8582690a1597d00d099c07b256bc5fee591213e54e9d8bf8ed";
+  npmPackageLockSha256 = "fdae8056a4153cc40eee094a9d2c6adce113bf660f0ed361a0f098b301de2477";
   npmPackageLockEvidence = {
-    assetName = "openclaw-2026.11.9-dependency-evidence.zip";
-    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.11.9/openclaw-2026.11.9-dependency-evidence.zip";
-    assetNixHash = "sha256-4ViHZcElpbDuBSHG5lN/9wzDAjRQ4oHH5y3pru5GyAI=";
-    source = "override";
-    sourceSha = "0032b1d7ffd0a59afdf7d2223d8df3250df9057e";
-    generatedAt = "2026-11-25T02:43:33.139Z";
+    assetName = "openclaw-2026.11.10-dependency-evidence.zip";
+    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.11.10/openclaw-2026.11.10-dependency-evidence.zip";
+    assetNixHash = "sha256-ivUy2HRd1Vkoask2S/VdNulCd6+LUq1nFjogpBiJ3JY=";
+    source = "release";
+    sourceSha = "6ea542fd97e2876aa4c871ccc494ed5419a03c5c";
+    generatedAt = "2026-11-24T23:22:12.162Z";
   };
   manifestId = "llama-cpp";
-  openclawCompat = ">=2026.11.9";
-  peerOpenClaw = ">=2026.11.9";
+  openclawCompat = ">=2026.11.10";
+  peerOpenClaw = ">=2026.11.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];

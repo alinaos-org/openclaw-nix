@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.4.25";
   expectedIntegrity = "";
   packageName = "@openclaw/whatsapp";
-  version = "2026.11.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/whatsapp/-/whatsapp-2026.11.9.tgz";
-  npmIntegrity = "sha512-tRAn9xiMwADnUNfjR/u3f2cHyc6EWcBudrnyywm57/5nssRO7QeO3NH2/T9hmVwj0v10R8bz517eQu084yD9Xw==";
-  npmShasum = "8f0b17e51dc244165c5ec2d4339aa805fb4b6e97";
-  nixHash = "sha256-vDejV6nATfYnLHCUjZwJ4aSpbay/ko5kJZsdT8c2DOc=";
+  version = "2026.11.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/whatsapp/-/whatsapp-2026.11.10.tgz";
+  npmIntegrity = "sha512-A3U8jfVqgzfMf3rw7+XNcykhzQK9TzTC+OMSHunJxiHJtTytDjHLrzxKrCMEIuopnXO6Fv8Znl3iXVQw2nBz3A==";
+  npmShasum = "2f6a87c1c62bb5f7193a5933a7bc62200b982b0c";
+  nixHash = "sha256-1kRSIXuk0JF869cfYVsInlH5KgQNgVnvtvbcVncFBeA=";
   dependencyMode = "bundled";
   manifestId = "whatsapp";
-  openclawCompat = ">=2026.11.9";
-  peerOpenClaw = ">=2026.11.9";
+  openclawCompat = ">=2026.11.10";
+  peerOpenClaw = ">=2026.11.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];
@@ -40,7 +40,7 @@
     audio-decode = "3.12.0";
     baileys = "7.0.0-rc14";
     solid-js = "2.0.0-rc.18";
-    typebox = "1.4.2";
+    typebox = "1.4.3";
   };
   optionalDependencies = {};
   bundleDependencies = [
@@ -100,6 +100,7 @@
     "node_modules/baileys/node_modules/@keyv/serialize"
     "node_modules/baileys/node_modules/@pinojs/redact"
     "node_modules/baileys/node_modules/@tokenizer/inflate"
+    "node_modules/baileys/node_modules/@tokenizer/inflate/node_modules/strtok3"
     "node_modules/baileys/node_modules/@tokenizer/token"
     "node_modules/baileys/node_modules/async-mutex"
     "node_modules/baileys/node_modules/atomic-sleep"
@@ -109,6 +110,7 @@
     "node_modules/baileys/node_modules/debug"
     "node_modules/baileys/node_modules/eventemitter3"
     "node_modules/baileys/node_modules/file-type"
+    "node_modules/baileys/node_modules/file-type/node_modules/strtok3"
     "node_modules/baileys/node_modules/hashery"
     "node_modules/baileys/node_modules/hookified"
     "node_modules/baileys/node_modules/ieee754"

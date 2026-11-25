@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.9.8";
   expectedIntegrity = "";
   packageName = "@openclaw/zoom-meetings";
-  version = "2026.11.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/zoom-meetings/-/zoom-meetings-2026.11.9.tgz";
-  npmIntegrity = "sha512-//cgdk0rZfMxtYIqY84EbOBFPFGHsrrxBjMMW12Y5C1tsOrW77kC7fKCgUWw0J93NE6lyPHW7D8mtebgR7bJXw==";
-  npmShasum = "5ae345853ac1ceab71314ca71d5e4f59bea484c0";
-  nixHash = "sha256-Z2OXJMogPfLqdrMoOlHN93t4Py5SlchQYVW0FZGo3Ac=";
+  version = "2026.11.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/zoom-meetings/-/zoom-meetings-2026.11.10.tgz";
+  npmIntegrity = "sha512-Q7/rsQqpBTC0/tOYzcEK1OIGNaili0tBLPx1xNOtL6pndyUbUSxMg8xAKS4faxzj/waS/QWF+oGsGv2h+xFTQw==";
+  npmShasum = "9b12243cf4f71675028506bb4b989f6b38780b3b";
+  nixHash = "sha256-XDZJlS1kJb0cbgclb/NThzdpqI4eQJZk4RvAec+6ihU=";
   dependencyMode = "none";
   manifestId = "zoom-meetings";
-  openclawCompat = ">=2026.11.9";
-  peerOpenClaw = ">=2026.11.9";
+  openclawCompat = ">=2026.11.10";
+  peerOpenClaw = ">=2026.11.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];

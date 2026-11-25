@@ -13,26 +13,26 @@
   minHostVersion = ">=2026.4.10";
   expectedIntegrity = "";
   packageName = "@openclaw/msteams";
-  version = "2026.11.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/msteams/-/msteams-2026.11.9.tgz";
-  npmIntegrity = "sha512-5ueYTR/E/QCVz1oGZPU78vCMVFZo39wpL/I9LxktMkPLJnHJomcE8onEBoRvAvciG7Ty6/Zucz+w20p9sv3Qog==";
-  npmShasum = "b111df2a0be875eb9a0511b5c67a81079ef68047";
-  nixHash = "sha256-WqOuTxIJD3dzNdCp+YxzBLrg4t413hVEwnr71FP4ni4=";
+  version = "2026.11.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/msteams/-/msteams-2026.11.10.tgz";
+  npmIntegrity = "sha512-RCXgc597n7kU/czamKgAq+93zdZ0V2YA1oQM4k6ttnU6t/gMaUWhhnlueng7AuyoycEESSKWjPqo8zWAh6A70A==";
+  npmShasum = "402855d97eb2fdde3f68415b3e389c00d8472ede";
+  nixHash = "sha256-O3Co0C724tSZekJmyYbUPu9/2xTkn3yiFRrG7rdPvJ0=";
   dependencyMode = "package-lock";
-  npmDepsHash = "sha256-bS6+2+1pD1MGlNPfheyEoMUD1pjiFzZ3suif6JXdfTM=";
+  npmDepsHash = "sha256-aODTibEWO9t+2cXJUSqlfKhIdGlgwFX4wEhN5pDErJo=";
   npmPackageLockFile = "msteams.package-lock.json";
-  npmPackageLockSha256 = "6c24645c4695738de79668dfe3c06831279770f19871d21479432e75af125778";
+  npmPackageLockSha256 = "afe82f25e3ded44dff9cca712e0e942e5437a3e7ec581e41904467fb27616f48";
   npmPackageLockEvidence = {
-    assetName = "openclaw-2026.11.9-dependency-evidence.zip";
-    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.11.9/openclaw-2026.11.9-dependency-evidence.zip";
-    assetNixHash = "sha256-4ViHZcElpbDuBSHG5lN/9wzDAjRQ4oHH5y3pru5GyAI=";
-    source = "override";
-    sourceSha = "0032b1d7ffd0a59afdf7d2223d8df3250df9057e";
-    generatedAt = "2026-11-25T02:43:33.139Z";
+    assetName = "openclaw-2026.11.10-dependency-evidence.zip";
+    assetUrl = "https://github.com/openclaw/openclaw/releases/download/v2026.11.10/openclaw-2026.11.10-dependency-evidence.zip";
+    assetNixHash = "sha256-ivUy2HRd1Vkoask2S/VdNulCd6+LUq1nFjogpBiJ3JY=";
+    source = "release";
+    sourceSha = "6ea542fd97e2876aa4c871ccc494ed5419a03c5c";
+    generatedAt = "2026-11-24T23:22:12.162Z";
   };
   manifestId = "msteams";
-  openclawCompat = ">=2026.11.9";
-  peerOpenClaw = ">=2026.11.9";
+  openclawCompat = ">=2026.11.10";
+  peerOpenClaw = ">=2026.11.10";
   runtimeExtensions = [
     "./dist/index.cjs"
   ];
@@ -42,11 +42,11 @@
   ];
   contracts = {};
   dependencies = {
-    "@azure/identity" = "4.14.0";
+    "@azure/identity" = "4.14.1";
     "@microsoft/teams.api" = "2.1.1";
     "@microsoft/teams.apps" = "2.1.1";
     express = "5.3.0";
-    typebox = "1.4.2";
+    typebox = "1.4.3";
     zod = "4.6.7";
   };
   optionalDependencies = {};
