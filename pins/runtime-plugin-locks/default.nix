@@ -16,6 +16,7 @@
   clickclack = import ./clickclack.nix;
   cloudflare = import ./cloudflare.nix;
   cloudflare-ai-gateway = import ./cloudflareAiGateway.nix;
+  codex = import ./codex.nix;
   cohere = import ./cohere.nix;
   comfy = import ./comfy.nix;
   copilot = import ./copilot.nix;

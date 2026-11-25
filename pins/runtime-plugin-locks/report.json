@@ -267,6 +267,22 @@
       "peerOpenClaw": ">=2026.11.10"
     },
     {
+      "id": "codex",
+      "status": "supported",
+      "label": "Codex",
+      "kind": "plugin",
+      "source": "official",
+      "catalogFile": "official-external-plugin-catalog.json",
+      "catalogEntryName": "@openclaw/codex",
+      "catalogDefaultChoice": "npm",
+      "selectedSource": "npm",
+      "packageName": "@openclaw/codex",
+      "version": "2026.11.10",
+      "dependencyMode": "package-lock",
+      "openclawCompat": ">=2026.11.10",
+      "peerOpenClaw": ">=2026.11.10"
+    },
+    {
       "id": "cohere",
       "status": "supported",
       "label": "Cohere",
@@ -1771,22 +1787,6 @@
       "detail": "package has runtime dependencies but no npm-shrinkwrap.json, bundled node_modules, or upstream npm package-lock evidence"
     },
     {
-      "id": "codex",
-      "label": "Codex",
-      "kind": "plugin",
-      "source": "official",
-      "catalogFile": "official-external-plugin-catalog.json",
-      "catalogEntryName": "@openclaw/codex",
-      "catalogDefaultChoice": "npm",
-      "selectedSource": "npm",
-      "npmSpec": "@openclaw/codex",
-      "clawhubSpec": "clawhub:@openclaw/codex",
-      "minHostVersion": ">=2026.5.1-beta.1",
-      "status": "skipped",
-      "reason": "partial-bundled-runtime-dependencies",
-      "detail": "declared dependency roots missing from bundled node_modules: node_modules/@openai/codex, node_modules/@openclaw/fs-safe, node_modules/semver, node_modules/smol-toml, node_modules/typebox, node_modules/ws, node_modules/zod"
-    },
-    {
       "id": "cua-computer",
       "label": "CUA Computer",
       "kind": "plugin",
@@ -1816,7 +1816,7 @@
       "minHostVersion": ">=2026.5.31",
       "status": "skipped",
       "reason": "partial-bundled-runtime-dependencies",
-      "detail": "declared dependency roots missing from bundled node_modules: node_modules/@lancedb/lancedb-darwin-arm64, node_modules/@lancedb/lancedb-linux-arm64-gnu, node_modules/@lancedb/lancedb-linux-arm64-musl, node_modules/@lancedb/lancedb-linux-x64-musl, node_modules/@lancedb/lancedb-win32-arm64-msvc, node_modules/@lancedb/lancedb-win32-x64-msvc"
+      "detail": "declared dependency roots missing from bundled node_modules: node_modules/@lancedb/lancedb-darwin-arm64, node_modules/@lancedb/lancedb-linux-arm64-gnu, node_modules/@lancedb/lancedb-linux-arm64-musl, node_modules/@lancedb/lancedb-linux-x64-musl, node_modules/@lancedb/lancedb-win32-arm64-msvc, node_modules/@lancedb/lancedb-win32-x64-msvc; package-lock evidence unusable: npm package-lock evidence for @openclaw/memory-lancedb is bundled"
     },
     {
       "id": "opencode-go",
