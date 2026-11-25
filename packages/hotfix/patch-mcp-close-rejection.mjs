@@ -14,8 +14,8 @@ const dist = path.join(root, "dist");
 const files = fs.readdirSync(dist).filter((name) => /^mcp-client-lifecycle-.*\.mjs$/.test(name));
 if (files.length !== 1) throw new Error(`expected one MCP lifecycle chunk, found ${files.length}`);
 if (atLeast(upstreamVersion, "2026.10.1")) {
-  // 10.1 splits the worker bundle into chunks: connectMcpClient now has two worker
-  // copies (worker/sqlite-store.worker.mjs and a worker-chunk-*.mjs). Verify each.
+  // From 10.1 connectMcpClient also appears in a worker-chunk-*.mjs and,
+  // through 2026.11.9, in worker/sqlite-store.worker.mjs. Verify each copy.
   const workerDir = path.join(dist, "worker");
   const workerCopies = fs.readdirSync(workerDir).filter((name) => /\.m?js$/.test(name)).sort()
     .filter((name) => fs.readFileSync(path.join(workerDir, name), "utf8").includes("async function connectMcpClient("))

@@ -22,6 +22,10 @@ for (const name of receipt.patchedFiles) {
   const end = text.indexOf("\n}\n", start);
   assert(start >= 0 && end > start, `${name}: helper missing`);
   const helper = text.slice(start, end + 2);
+  assert.equal([...text.matchAll(/publicUrl:\s*resolveCloudWorkerGatewayPublicUrl\(/g)].length, 2,
+    `${name}: expected both enrollment call sites to use the cloud-worker URL helper`);
+  assert.doesNotMatch(text, /publicUrl:\s*resolveConfiguredPairingPublicUrl\(/,
+    `${name}: enrollment still reads the device-pair URL directly`);
   const run = (env) => vm.runInNewContext(`${helper}\nresolveCloudWorkerGatewayPublicUrl({ pairing: "tailnet" })`, {
     process: { env },
     resolveConfiguredPairingPublicUrl: (config) => `device-pair:${config.pairing}`,

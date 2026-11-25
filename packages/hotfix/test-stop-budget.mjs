@@ -22,8 +22,12 @@ if (atLeast(receipt.upstreamVersion, "2026.11.5")) {
   assert.equal(headers.length, 1, "expected one runAcceptedRequest header");
   const [head] = headers;
   const [, , actionName, intentName] = head;
-  const start = source.indexOf("const armForceExitTimer", head.index);
-  const end = source.indexOf("const clearForceExitTimer", start);
+  const declarationAt = (pattern, from) => {
+    pattern.lastIndex = from;
+    return pattern.exec(source)?.index ?? -1;
+  };
+  const start = declarationAt(/\bconst armForceExitTimer\s*=/g, head.index);
+  const end = declarationAt(/\bconst clearForceExitTimer\s*=/g, start);
   assert(start > head.index && end > start, "armForceExitTimer not found");
   const patchedSrc = source.slice(start, end);
   assert(patchedSrc.includes(receipt.clampedLine), "armForceExitTimer is unpatched");

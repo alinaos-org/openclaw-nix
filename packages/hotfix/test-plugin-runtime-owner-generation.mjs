@@ -12,6 +12,12 @@ const receipt = JSON.parse(
 );
 assert.equal(receipt.id, "openclaw-nix-plugin-runtime-owner-generation-v1");
 
+function fileForChange(id) {
+  const files = receipt.changes.find((change) => change.id === id)?.files;
+  assert.equal(files?.length, 1, `${id}: expected one file in receipt`);
+  return path.join(root, files[0]);
+}
+
 const changedFiles = new Set(receipt.changes.flatMap((change) => change.files));
 const admissionFiles = receipt.changes.find((change) => change.id === "admission-owner")?.files ?? [];
 assert.equal(admissionFiles.length, 1);
@@ -86,6 +92,36 @@ assert.equal(
   true,
   "a prepared generation containing the authenticated owner was rejected",
 );
+
+const factsFile = fileForChange("workspace-owner-key");
+const { preparedModelRuntimeWorkspaceFactsKey: factsKey } = await importNamed(factsFile, ["preparedModelRuntimeWorkspaceFactsKey"]);
+const workspace = { config: {}, env: {} };
+assert.notEqual(
+  factsKey({ ...workspace, runtimePluginOwnerIds: ["a"] }),
+  factsKey({ ...workspace, runtimePluginOwnerIds: ["b"] }),
+  "workspace facts key ignores the authenticated owner",
+);
+
+const factsSource = fs.readFileSync(factsFile, "utf8");
+assert.match(factsSource, /([\w$]+)\.readOnly && !\1\.loadRuntimePlugins && !\1\.runtimePluginOwnerIds && !\1\.runtimePluginSelections/,
+  "read-only preparation ignores the owner");
+assert.match(factsSource, /([\w$]+)\.runtimePluginOwnerIds \|\| \1\.runtimePluginSelections \|\| ![\w$]+ \? [\w$]+\(\{\s*\.\.\.\1\.loadRuntimePlugins \? \{ basePluginIds: \1\.runtimePluginOwnerIds \?\? \[\]/,
+  "workspace registry load ignores the owner");
+
+const ownerSource = fs.readFileSync(fileForChange("owner-identity"), "utf8");
+assert.match(ownerSource, /runtimePluginOwnerIds:\s*([\w$]+)\.runtimePluginOwnerIds,\s*runtimePluginSelections:\s*\1\.runtimePluginSelections,\s*config:\s*\1\.readOnly/,
+  "owner key ignores the owner");
+assert.match(ownerSource, /([\w$]+)\.input\.allowGatewaySubagentBinding === ([\w$]+)\.allowGatewaySubagentBinding\) && \(\2\.runtimePluginOwnerIds === void 0 \|\| JSON\.stringify\(\1\.input\.runtimePluginOwnerIds\) === JSON\.stringify\(\2\.runtimePluginOwnerIds\)\)/,
+  "published-owner filter ignores the owner");
+const fallbacks = ownerSource.matchAll(/([\w$]+)\.workspaceDir === void 0 \|\| \1\.agentId === void 0 \|\| \1\.runtimePluginOwnerIds === void 0 && \1\.runtimePluginSelections === void 0/g);
+const splitProjection = receipt.upstreamVersion.localeCompare("2026.11.5", "en", { numeric: true }) >= 0;
+assert.equal([...fallbacks].length, splitProjection ? 3 : 2, "configured-workspace fallback ignores the owner");
+assert.match(ownerSource, /([\w$]+)\.allowGatewaySubagentBinding === ([\w$]+)\.allowGatewaySubagentBinding && JSON\.stringify\(\1\.runtimePluginOwnerIds\) === JSON\.stringify\(\2\.runtimePluginOwnerIds\) && JSON\.stringify\(\1\.runtimePluginSelections\) === JSON\.stringify\(\2\.runtimePluginSelections\)/,
+  "lifecycle input ignores the owner");
+assert.match(ownerSource, /runtimePluginOwnerIds:\s*void 0,\s*runtimePluginSelections:\s*void 0\s*\}\) === ownerKey\(\{/,
+  "catalog owner identity keeps the owner");
+assert.match(ownerSource, /runtimePluginOwnerIds:\s*void 0,\s*runtimePluginSelections:\s*void 0\s*\}\) \? [\w$]+ : [\w$]+;/,
+  "catalog input identity keeps the owner");
 
 // Find a dist module by a name in its export clause, not by its contents: 2026.11.4
 // moved resolveHookRegistry into hook-runner-global-state, beside the hook runner.

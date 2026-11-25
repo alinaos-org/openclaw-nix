@@ -19,7 +19,7 @@ assert(start >= 0 && end > start, "clamp helper missing");
 const clamp = vm.runInNewContext(`(${text.slice(start, end + 2)})`);
 // The delivery builder itself must route the description through the clamp.
 assert.equal(
-  [...text.matchAll(/\bdescription:\s*clampSkillDeliveryDescription\(\w+\.description\), \/\* openclaw-nix-skill-delivery-description-v1 \*\/\s*revision:/g)].length,
+  [...text.matchAll(/\bdescription:\s*clampSkillDeliveryDescription\([\w$]+\.description\), \/\* openclaw-nix-skill-delivery-description-v1 \*\/\s*revision:/g)].length,
   1,
   "delivery builder does not call the clamp",
 );
@@ -28,7 +28,7 @@ assert.equal(
 const schemaChunk = /from\s*"\.\/(skill-resources-[^"]+\.mjs)"/.exec(text)?.[1];
 assert(schemaChunk, "resources chunk no longer imports the skill-resources schema");
 const schemaExports = /export\s*\{([^}]*)\}/.exec(fs.readFileSync(path.join(dist, schemaChunk), "utf8"))?.[1] ?? "";
-const schemaAlias = /\bSkillResourceDeliverySchema as (\w+)/.exec(schemaExports)?.[1];
+const schemaAlias = /\bSkillResourceDeliverySchema as ([\w$]+)/.exec(schemaExports)?.[1];
 assert(schemaAlias, "skill-resources chunk no longer exports SkillResourceDeliverySchema");
 const schema = (await import(pathToFileURL(path.join(dist, schemaChunk)).href))[schemaAlias];
 // Resolve typebox the way the gateway does: from its own node_modules, via the export map.

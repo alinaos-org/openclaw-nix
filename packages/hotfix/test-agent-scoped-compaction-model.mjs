@@ -216,6 +216,11 @@ async function currentSuite(root, upstreamVersion) {
     console.log(`ok - ${label}: patch refused`);
   };
   expectPatchFailure("target disappeared", (d) => fs.rmSync(path.join(d, F.target)), /compaction-target-readable: expected 1 anchor\(s\) in compaction-runtime-context-\*\.mjs, found 0; found in nowhere/);
+  if (compact) {
+    expectPatchFailure("minified schema in SQLite store worker", (d) => {
+      fs.writeFileSync(path.join(d, "worker/sqlite-store.worker.mjs"), "const schema={compaction:x$({maxSummaryChars:y$.optional()}).optional(),params:z};");
+    }, /SQLite store worker bundles the minified per-agent compaction schema again/);
+  }
   expectPatchFailure("extra worker copy", (d) => fs.copyFileSync(path.join(d, F.workerTarget), path.join(d, "worker/worker-chunk-Fx8Dupe9.mjs")), /compaction-target-worker-chunk: expected 1 anchor\(s\) in worker\/worker-chunk-\*\.mjs, found 2/);
   expectPatchFailure("unexpected chunk", (d) => {
     fs.mkdirSync(path.join(d, "agents"));
@@ -340,8 +345,11 @@ async function currentSuite(root, upstreamVersion) {
     realFile(".", /^compact-.*\.mjs$/, /const compactPrepared\s*=\s*async\s*\(\)\s*=>\s*\{/);
 
     const sqliteWorkerSource = fs.readFileSync(path.join(realDist, "worker/sqlite-store.worker.mjs"), "utf8");
-    if (compact) assert.doesNotMatch(sqliteWorkerSource, /resolveEmbeddedCompactionTarget|AgentEntryBaseSchema|function compactPrepared\(/);
-    else for (const [needle, what] of [
+    if (compact) {
+      assert.doesNotMatch(sqliteWorkerSource, /resolveEmbeddedCompactionTarget|AgentEntryBaseSchema|AgentCompactionMaxSummaryCharsSchema|function compactPrepared\(/);
+      assert.doesNotMatch(sqliteWorkerSource, /compaction:[\w$]+\(\{maxSummaryChars:[\w$]+\.optional\(\)\}\)\.optional\(\),params:/,
+        "SQLite store worker bundles the minified per-agent compaction schema again");
+    } else for (const [needle, what] of [
       [`maxSummaryChars:AgentCompactionMaxSummaryCharsSchema.optional(),model:string$3().optional()/*${MARKER}*/}).optional(),params:`, "inlined schema missing the per-agent compaction model"],
       ["Ye=N.modelSelectionLocked?void 0:(N.agentId?N.config?.agents?.entries?.[N.agentId]?.compaction?.model?.trim():void 0)??", "compaction target does not read the per-agent override"],
       ["resolveEmbeddedCompactionTarget({config:_t.config,agentId:_t.agentId,", "compaction retry does not carry agentId"],
