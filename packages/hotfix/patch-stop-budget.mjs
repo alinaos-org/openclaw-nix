@@ -8,7 +8,7 @@ const atLeast = (version, minimum) => { const a = String(version).split(".").map
 assert(root && atLeast(version, "2026.9.4"), "stop-budget hotfix requires a qualified stable release");
 const dist = path.join(root, "dist");
 const candidates = fs.readdirSync(dist).filter((name) => /^run-.*\.mjs$/.test(name)
-  && fs.readFileSync(path.join(dist, name), "utf8").includes("const runAcceptedRequest ="));
+  && /\bconst runAcceptedRequest\s*=/.test(fs.readFileSync(path.join(dist, name), "utf8")));
 assert.equal(candidates.length, 1, "expected exactly one lifecycle entry");
 const file = path.join(dist, candidates[0]);
 let source = fs.readFileSync(file, "utf8");
@@ -36,21 +36,22 @@ if (atLeast(version, "2026.11.5")) {
   const marker = "openclaw-nix-stop-budget-v1";
   assert(!source.includes(marker), "stop-budget: already applied");
   const esc = (name) => name.replace(/\$/g, "\\$");
-  const head = source.match(/const runAcceptedRequest = \(([\w$]+)\) => \{\n\s*const \{ action: ([\w$]+), restartIntent: ([\w$]+) \} = \1;\n/);
-  assert(head, "stop-budget: runAcceptedRequest header moved");
+  const headers = [...source.matchAll(/const runAcceptedRequest\s*=\s*\(?([\w$]+)\)?\s*=>\s*\{\s*const\s*\{\s*action:\s*([\w$]+),\s*restartIntent:\s*([\w$]+)\s*\}\s*=\s*\1;/g)];
+  assert.equal(headers.length, 1, "expected one runAcceptedRequest header");
+  const [head] = headers;
   const [, , action, intent] = head;
-  const bodyEnd = source.indexOf("const clearForceExitTimer = ", head.index);
+  const bodyEnd = source.indexOf("const clearForceExitTimer", head.index);
   assert(bodyEnd > head.index, "stop-budget: clearForceExitTimer not found after runAcceptedRequest");
   const body = source.slice(head.index, bodyEnd);
-  const restartDecls = [...body.matchAll(new RegExp(`\\n\\s*const ([\\w$]+) = ${esc(action)} !== "stop";\\n`, "g"))];
+  const restartDecls = [...body.matchAll(new RegExp(`\\bconst ([\\w$]+)\\s*=\\s*${esc(action)}\\s*!==\\s*["\\x60]stop["\\x60];`, "g"))];
   assert.equal(restartDecls.length, 1, "stop-budget: isRestart declaration moved");
   const isRestart = restartDecls[0][1];
-  const timers = [...body.matchAll(new RegExp(`const armForceExitTimer = \\(([\\w$]+)\\) => \\{\\n\\s*(const ([\\w$]+) = ${esc(intent)}\\?\\.requireFreshProcess \\? Math\\.min\\(\\1, 1e4\\) : \\1;)`, "g"))];
+  const timers = [...body.matchAll(new RegExp(`const armForceExitTimer\\s*=\\s*\\(?([\\w$]+)\\)?\\s*=>\\s*\\{\\s*(const ([\\w$]+)\\s*=\\s*${esc(intent)}\\?\\.requireFreshProcess\\s*\\?\\s*Math\\.min\\(\\1,\\s*1e4\\)\\s*:\\s*\\1;)`, "g"))];
   assert.equal(timers.length, 1, "stop-budget: armForceExitTimer deadline moved");
   const [, forceExitMs, before, deadlineMs] = timers[0];
   // The stop path must have no hard exit outside this timer.
-  assert.equal(source.split('"gateway.stop_shutdown_timeout"').length, 2, "stop-budget: a second stop hard exit appeared");
-  assert(body.indexOf('"gateway.stop_shutdown_timeout"') > body.indexOf(before), "stop-budget: the stop hard exit left armForceExitTimer");
+  assert.equal([...source.matchAll(/["\x60]gateway\.stop_shutdown_timeout["\x60]/g)].length, 1, "stop-budget: a second stop hard exit appeared");
+  assert(body.indexOf("gateway.stop_shutdown_timeout") > body.indexOf(before), "stop-budget: the stop hard exit left armForceExitTimer");
   const after = `const ${deadlineMs} = ${intent}?.requireFreshProcess ? Math.min(${forceExitMs}, 1e4) : !${isRestart} ? Math.min(${forceExitMs}, ${seconds(STOP_HARD_EXIT_MS)}) /* ${marker} */ : ${forceExitMs};`;
   assert.equal(source.split(before).length, 2, `stop-budget anchor changed: ${before}`);
   source = source.replace(before, after);

@@ -29,7 +29,7 @@ const MARKER = "/* openclaw-nix-node-bootstrap-layout-v1 */";
 // the .d.mts declarations and src/infra/directory-walk.ts.
 const packageFilesSelection = atLeast(version, "2026.11.5");
 const launcherAnchor = "const BOOTSTRAP_LAUNCHER_FILES = [";
-const runtimeFilesAnchor = /const [\w$]+ = \([\w$]+\.files \?\? \[\]\)\.filter\(\(([\w$]+)\) => \(\1\.startsWith\("scripts\/"\) \|\| \/\\\.\[cm\]\?\[jt\]s\$\/u\.test\(\1\)\) && !\1\.startsWith\("!"\) && !\1\.includes\("\*"\) && !\1\.endsWith\("\/"\)\);/g;
+const runtimeFilesAnchor = /const [\w$]+\s*=\s*\([\w$]+\.files\s*\?\?\s*\[\]\)\.filter\(\(?([\w$]+)\)?\s*=>\s*\(\1\.startsWith\(["\x60]scripts\/["\x60]\)\s*\|\|\s*\/\\\.\[cm\]\?\[jt\]s\$\/u\.test\(\1\)\)\s*&&\s*!\1\.startsWith\(["\x60]!["\x60]\)\s*&&\s*!\1\.includes\(["\x60]\*["\x60]\)\s*&&\s*!\1\.endsWith\(["\x60]\/["\x60]\)\);/g;
 const count = (text, anchor) => typeof anchor === "string" ? text.split(anchor).length - 1 : [...text.matchAll(anchor)].length;
 const packerAnchor = packageFilesSelection ? runtimeFilesAnchor : launcherAnchor;
 
@@ -47,14 +47,15 @@ const [artifactModule] = packerCandidates;
 const artifactSource = fs.readFileSync(path.join(dist, artifactModule), "utf8");
 assert.equal(count(artifactSource, packerAnchor), 1, `node bootstrap packer selection repeated in ${artifactModule}`);
 if (packageFilesSelection) assert(!artifactSource.includes(launcherAnchor), `${artifactModule} still has BOOTSTRAP_LAUNCHER_FILES`);
-const inventoryModule = /from "(?:\.\/|(?:\.\.\/)+)(package-dist-inventory-[^"\/]+\.mjs)"/.exec(artifactSource)?.[1];
-assert(inventoryModule, "node bootstrap no longer imports the package dist inventory");
+const inventoryImports = [...artifactSource.matchAll(/from\s*"(?:\.\/|(?:\.\.\/)+)(package-dist-inventory-[^"\/]+\.mjs)"/g)];
+assert.equal(inventoryImports.length, 1, "expected one package dist inventory import");
+const inventoryModule = inventoryImports[0][1];
 
 // Readable through 11.4 (entry/relativePath/rules); the inventory chunk is minified
 // from 11.5 on, so take the names from the code: the rules are collectRelativeFiles'
 // third parameter.
-const symlinkThrow = /if \(([\w$]+)\.isSymbolicLink\(\)\) throw new Error\(`Unsafe package dist path: \$\{([\w$]+)\}`\);/g;
-const walkerHeader = /async function collectRelativeFiles\([\w$]+, [\w$]+, ([\w$]+), [\w$]+\) \{/g;
+const symlinkThrow = /if\s*\(([\w$]+)\.isSymbolicLink\(\)\)\s*throw new Error\(`Unsafe package dist path: \$\{([\w$]+)\}`\);/g;
+const walkerHeader = /async function collectRelativeFiles\([\w$]+,\s*[\w$]+,\s*([\w$]+),\s*[\w$]+\)\s*\{/g;
 const patchedFiles = [];
 for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")).sort()) {
   const file = path.join(dist, name);
@@ -62,19 +63,24 @@ for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")
   const throws = [...text.matchAll(symlinkThrow)];
   if (throws.length === 0) continue;
   assert.equal(throws.length, 1, `symlink anchor repeated in ${name}`);
-  assert(/function isOmittedDistSubtree\([\w$]+, [\w$]+\) \{/.test(text), `${name} lacks isOmittedDistSubtree`);
+  assert.equal(count(text, /function isOmittedDistSubtree\([\w$]+,\s*[\w$]+\)\s*\{/g), 1, `${name} lacks isOmittedDistSubtree`);
   const headers = [...text.matchAll(walkerHeader)];
   assert.equal(headers.length, 1, `${name}: expected one collectRelativeFiles`);
   const [throwMatch] = throws, [header] = headers;
   const between = text.slice(header.index, throwMatch.index);
-  assert(throwMatch.index > header.index && !/\n(?:async )?function /.test(between.slice(1)), `${name}: symlink check is outside collectRelativeFiles`);
+  assert(throwMatch.index > header.index && !/\b(?:async )?function /.test(between.slice(header[0].length)), `${name}: symlink check is outside collectRelativeFiles`);
   const [anchor, entry, relative] = throwMatch, rules = header[1];
-  assert(between.includes(`isOmittedDistSubtree(`) && between.includes(`, ${rules})`), `${name}: collectRelativeFiles no longer checks omissions with ${rules}`);
+  assert(new RegExp(`isOmittedDistSubtree\\([\\w$]+,\\s*${rules.replace(/\$/g, "\\$")}\\)`).test(between), `${name}: collectRelativeFiles no longer checks omissions with ${rules}`);
   const after = `if (${entry}.isSymbolicLink()) { if (isOmittedDistSubtree(${relative}, ${rules})) return []; ${MARKER} throw new Error(\`Unsafe package dist path: \${${relative}}\`); }`;
   fs.writeFileSync(file, text.replace(anchor, () => after));
   patchedFiles.push(name);
 }
 assert(patchedFiles.includes(inventoryModule), `symlink anchor changed in ${inventoryModule}`);
+
+if (atLeast(version, "2026.11.10")) {
+  assert.deepEqual(patchedFiles, [inventoryModule, "managed-handoff-runtime.mjs", "package-update-activation-recovery.mjs"].sort(),
+    "node bootstrap inventory copies changed");
+}
 
 // Same selection as the packer.
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));

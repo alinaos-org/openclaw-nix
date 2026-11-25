@@ -32,7 +32,7 @@ assert(generationFile, "main prepared plugin-generation module missing from rece
 // Resolve a bundled export by its source name: the minified alias letters move
 // between releases, the names in the bundle's export clause do not.
 function exportAlias(source, name, where) {
-  const clause = source.match(/^export \{([^}]*)\};?$/m);
+  const clause = source.match(/\bexport\s*\{([^}]*)\};?\s*$/);
   assert(clause, `${where}: export clause missing`);
   const entry = clause[1]
     .split(",")
@@ -95,7 +95,7 @@ function moduleExporting(prefix, name) {
     .filter((file) => file.startsWith(prefix) && file.endsWith(".mjs"))
     .map((file) => path.join(root, "dist", file))
     .filter((file) =>
-      new RegExp(`^export \\{[^}]*\\b${name} as `, "m").test(fs.readFileSync(file, "utf8")),
+      new RegExp(`\\bexport\\s*\\{[^}]*\\b${name} as `, "m").test(fs.readFileSync(file, "utf8")),
     );
   assert.equal(matches.length, 1, `${prefix}*.mjs exporting ${name}: found ${matches.length}`);
   return matches[0];

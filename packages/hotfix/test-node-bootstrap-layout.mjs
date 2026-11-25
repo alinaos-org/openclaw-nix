@@ -12,7 +12,7 @@ const receipt = JSON.parse(fs.readFileSync(path.join(root, ".node-bootstrap-layo
 // From 11.5 the build and worker helpers share the node-bootstrap-artifact- prefix;
 // the provider is the chunk that exports it.
 const providerModules = fs.readdirSync(dist).filter((name) => /^node-bootstrap-artifact-.*\.mjs$/.test(name)
-  && /export \{[^}]*\bcreateNodeBootstrapArtifactProvider\b[^}]*\}/.test(fs.readFileSync(path.join(dist, name), "utf8")));
+  && /export\s*\{[^}]*\bcreateNodeBootstrapArtifactProvider\b[^}]*\}/.test(fs.readFileSync(path.join(dist, name), "utf8")));
 assert.equal(providerModules.length, 1, `expected one node bootstrap provider, found: ${providerModules.join(", ") || "none"}`);
 const [artifactModule] = providerModules;
 const { createNodeBootstrapArtifactProvider } = await import(pathToFileURL(path.join(dist, artifactModule)).href);
@@ -22,7 +22,7 @@ const provider = createNodeBootstrapArtifactProvider({ packageRoot: root, runnin
 try {
   const artifact = await provider.prepare();
   assert.equal(artifact.buildId, buildId);
-  const listing = spawnSync("tar", ["-tzf", artifact.tarballPath], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+  const listing = spawnSync("tar", ["-tzf", artifact.tarballPath], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   assert.equal(listing.status, 0, listing.stderr);
   // npm tarball layout: every entry sits under package/.
   const entries = new Set(listing.stdout.split("\n").filter(Boolean).map((entry) => {

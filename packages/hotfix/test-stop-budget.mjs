@@ -18,25 +18,28 @@ if (atLeast(receipt.upstreamVersion, "2026.11.5")) {
   assert(Number.isFinite(hardExitMs) && hardExitMs > 0 && hardExitMs < 325000, "receipt lacks the stop clamp");
   assert.equal(receipt.stopDrainOwner, "none");
   assert.equal(source.split(receipt.clampedLine).length, 2, "clamped deadline not in the packaged run loop");
-  const head = source.match(/const runAcceptedRequest = \(([\w$]+)\) => \{\n\s*const \{ action: ([\w$]+), restartIntent: ([\w$]+) \} = \1;\n/);
-  assert(head, "runAcceptedRequest header not found");
+  const headers = [...source.matchAll(/const runAcceptedRequest\s*=\s*\(?([\w$]+)\)?\s*=>\s*\{\s*const\s*\{\s*action:\s*([\w$]+),\s*restartIntent:\s*([\w$]+)\s*\}\s*=\s*\1;/g)];
+  assert.equal(headers.length, 1, "expected one runAcceptedRequest header");
+  const [head] = headers;
   const [, , actionName, intentName] = head;
-  const start = source.indexOf("const armForceExitTimer = ", head.index);
-  const end = source.indexOf("const clearForceExitTimer = ", start);
+  const start = source.indexOf("const armForceExitTimer", head.index);
+  const end = source.indexOf("const clearForceExitTimer", start);
   assert(start > head.index && end > start, "armForceExitTimer not found");
   const patchedSrc = source.slice(start, end);
   assert(patchedSrc.includes(receipt.clampedLine), "armForceExitTimer is unpatched");
-  const isRestartName = source.slice(head.index, start).match(new RegExp(`const ([\\w$]+) = ${actionName.replace(/\$/g, "\\$")} !== "stop";`))[1];
-  const timerName = patchedSrc.match(/if \(([\w$]+) \|\| ([\w$]+)\.waitingForStop && !getManagedUpdateOwner\(\)\) return;/);
-  const deadlineName = patchedSrc.match(/\n\s*([\w$]+) = performance\$1\.now\(\) \+ [\w$]+;/);
-  const paramsName = patchedSrc.match(/if \(([\w$]+)\.ownsProcessLifecycle === true\)/);
+  const isRestartName = source.slice(head.index, start).match(new RegExp(`const ([\\w$]+)\\s*=\\s*${actionName.replace(/\$/g, "\\$")}\\s*!==\\s*["\\x60]stop["\\x60];`))[1];
+  const timerName = patchedSrc.match(/if\s*\(([\w$]+)\s*\|\|\s*([\w$]+)\.waitingForStop\s*&&\s*!getManagedUpdateOwner\(\)\)\s*return;/);
+  const deadlineName = patchedSrc.match(/([\w$]+)\s*=\s*performance\$1\.now\(\)\s*\+\s*[\w$]+;/);
+  const paramsName = patchedSrc.match(/if\s*\(([\w$]+)\.ownsProcessLifecycle\s*===\s*true\)/);
   assert(timerName && deadlineName && paramsName, "armForceExitTimer shape changed");
-  // Names the timer's callback reads when the deadline fires (the hard exit).
-  const exitCode = patchedSrc.match(/const [\w$]+ = ([\w$]+)\.nativeStopBudget && !([\w$]+) && !([\w$]+);/);
-  const retainer = patchedSrc.match(/([\w$]+)\.retain\(forceExitAfterStabilityBundle\(([\w$]+) \? "gateway\.restart_shutdown_timeout" : "gateway\.stop_shutdown_timeout"/);
-  const watchdogName = patchedSrc.match(/\n\s*([\w$]+) = armShutdownHardExitWatchdog\(\{/);
+  const exitCode = patchedSrc.match(/const [\w$]+\s*=\s*([\w$]+)\.nativeStopBudget\s*&&\s*!([\w$]+)\s*&&\s*!([\w$]+);/);
+  const retainer = patchedSrc.match(/([\w$]+)\.retain\(forceExitAfterStabilityBundle\(([\w$]+)\s*\?\s*["\x60]gateway\.restart_shutdown_timeout["\x60]\s*:\s*["\x60]gateway\.stop_shutdown_timeout["\x60]/);
+  const wrappedWatchdog = atLeast(receipt.upstreamVersion, "2026.11.10");
+  const wrapper = wrappedWatchdog ? source.match(/function armGatewayShutdownHardExitWatchdog\([^{}]+\)\s*\{\s*return armShutdownHardExitWatchdog\(\{[^{}]*onError:[^{}]*=>\{[^}]*\$\{formatErrorMessage\([\w$]+\)\}[^}]*\}\}\)\s*;?\}/)?.[0] : "";
+  assert(!wrappedWatchdog || wrapper, "packaged hard-exit watchdog wrapper moved");
+  const watchdogName = patchedSrc.match(wrappedWatchdog ? /([\w$]+)\s*=\s*armGatewayShutdownHardExitWatchdog\(/ : /([\w$]+)\s*=\s*armShutdownHardExitWatchdog\(\{/);
   assert(exitCode && retainer && watchdogName && retainer[2] === isRestartName, "hard-exit callback shape changed");
-  const forceExitParam = patchedSrc.match(/^const armForceExitTimer = \(([\w$]+)\) =>/)[1];
+  const forceExitParam = patchedSrc.match(/^const armForceExitTimer\s*=\s*\(?([\w$]+)\)?\s*=>/)[1];
   const baselineSrc = patchedSrc.replace(` : !${isRestartName} ? Math.min(${forceExitParam}, ${seconds(hardExitMs)}) /* openclaw-nix-stop-budget-v1 */ : `, " : ");
   assert(!baselineSrc.includes("openclaw-nix-stop-budget-v1") && baselineSrc.includes(`Math.min(${forceExitParam}, 1e4) : ${forceExitParam};`), "baseline reversal failed");
 
@@ -61,7 +64,7 @@ if (atLeast(receipt.upstreamVersion, "2026.11.5")) {
       armShutdownHardExitWatchdog: ({ delayMs, describePending }) => { watchdogs.push(delayMs); describers.push(describePending); return { reportPending: () => pending.push(delayMs) }; },
     };
     const scope = new Proxy(vars, { has: (_, k) => k in vars, get: (t, k) => t[k], set: (t, k, v) => { t[k] = v; return true; } });
-    const fn = vm.runInNewContext(`(function () { with (scope) { ${src}\nreturn armForceExitTimer; } })()`, { scope, Math });
+    const fn = vm.runInNewContext(`(function () { with (scope) { ${wrapper}\n${src}\nreturn armForceExitTimer; } })()`, { scope, Math });
     fn(budgetMs);
     assert.equal(timers.length, 1, "no hard-exit timer armed");
     assert.deepEqual(watchdogs, [timers[0].ms + 2000], "watchdog not aligned with the hard exit");

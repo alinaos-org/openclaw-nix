@@ -43,8 +43,11 @@ const realFileIn = (realDist, dir, name, needle) => {
     .readdirSync(path.join(realDist, dir), { withFileTypes: true })
     .filter((entry) => entry.isFile() && name.test(entry.name))
     .map((entry) => path.join(realDist, dir, entry.name))
-    .filter((file) => fs.readFileSync(file, "utf8").includes(needle));
-  assert.equal(found.length, 1, `expected one ${dir}/${name} chunk carrying ${needle.slice(0, 80)}, got ${found.map((f) => path.relative(realDist, f)).join(", ") || "none"}`);
+    .filter((file) => {
+      const source = fs.readFileSync(file, "utf8");
+      return needle instanceof RegExp ? needle.test(source) : source.includes(needle);
+    });
+  assert.equal(found.length, 1, `expected one ${dir}/${name} chunk carrying ${String(needle).slice(0, 80)}, got ${found.map((f) => path.relative(realDist, f)).join(", ") || "none"}`);
   return found[0];
 };
 const exportAlias = (source, local) => {
@@ -59,7 +62,12 @@ const exportAlias = (source, local) => {
 async function currentSuite(root, upstreamVersion) {
   // Exercise the worker retry with the resolver and defaults imports from this release.
   const VERSION = upstreamVersion;
-  const workerAliases = atLeast(VERSION, "2026.11.7")
+  const compact = atLeast(VERSION, "2026.11.10");
+  const changeCount = compact ? 6 : 9;
+  const fileCount = compact ? 6 : 7;
+  const workerAliases = compact
+    ? { target: "Sn", provider: "K", model: "ie", third: "ae" }
+    : atLeast(VERSION, "2026.11.7")
     ? { target: "Qn", provider: "U", model: "W", third: "G" }
     : atLeast(VERSION, "2026.11.6")
     ? { target: "pn", provider: "R", model: "z", third: "B" }
@@ -71,7 +79,11 @@ async function currentSuite(root, upstreamVersion) {
   const fixtureDist = path.join(fixtureRoot, "dist");
   fs.mkdirSync(path.join(fixtureDist, "worker"), { recursive: true });
   fs.mkdirSync(path.join(fixtureDist, "config-doctor"), { recursive: true });
-  const write = (relPath, content) => fs.writeFileSync(path.join(fixtureDist, relPath), content);
+  const write = (relPath, content) => {
+    // These synthetic modules contain no whitespace-sensitive literals.
+    const fixture = compact ? content.replace(/\/\*\*[^*]*\*\//g, "").replace(/\s*([{}(),;:=?.])\s*/g, "$1") : content;
+    fs.writeFileSync(path.join(fixtureDist, relPath), fixture);
+  };
 
   // Hashes no release has shipped: the patch must find every target by content alone.
   const F = {
@@ -152,7 +164,7 @@ async function currentSuite(root, upstreamVersion) {
 
   // --- sqlite-store.worker.mjs: the N-named target, the _t-named retry and the inlined schema
   // anchor (never executed), so the minified variant gets the same behavioral proof. ---
-  write(
+  if (!compact) write(
     "worker/sqlite-store.worker.mjs",
     [
       "function resolveEmbeddedCompactionTarget(N){let Fe=N.provider?.trim()||N.defaultProvider,Re=N.modelId?.trim()||N.defaultModel,Ye=N.modelSelectionLocked?void 0:N.config?.agents?.defaults?.compaction?.model?.trim(),assembleTarget=(Re,Ye)=>{let Xe=Re===Fe?N.authProfileId??void 0:void 0;return{provider:Re,model:Ye,authProfileId:Xe}};if(!Ye)return assembleTarget(Fe,Re);let Xe=Ye.indexOf(`/`);if(Xe>0)return assembleTarget(Ye.slice(0,Xe).trim(),Ye.slice(Xe+1).trim()||N.defaultModel);return assembleTarget(Fe,Ye)}",
@@ -184,7 +196,7 @@ async function currentSuite(root, upstreamVersion) {
   fs.appendFileSync(path.join(fixtureDist, F.workerTarget), "const mn=0;export{mn as r};\n");
 
   // --- Failure modes, each on a fresh copy of the unpatched fixtures. ---
-  const runPatch = (target) => execFileSync(process.execPath, [patchScript, target, VERSION], { stdio: "pipe", encoding: "utf8" });
+  const runPatch = (target) => execFileSync(process.execPath, [patchScript, target, VERSION], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
   const expectPatchFailure = (label, mutate, pattern) => {
     const copy = fs.mkdtempSync(path.join(os.tmpdir(), "oc-compaction-hotfix-neg-"));
     fs.cpSync(fixtureRoot, copy, { recursive: true });
@@ -225,7 +237,7 @@ async function currentSuite(root, upstreamVersion) {
   expectPatchFailure("upstream compaction object missing", (d) => {
     for (const file of [F.schema, "config-doctor/feishu.js"]) {
       const full = path.join(d, file);
-      fs.writeFileSync(full, fs.readFileSync(full, "utf8").replace(/\tcompaction: strictObject\(\{ \n[^\n]*\n[^\n]*\n/, ""));
+      fs.writeFileSync(full, fs.readFileSync(full, "utf8").replace(/compaction:\s*strictObject\(\{[\s\S]*?AgentCompactionMaxSummaryCharsSchema\.optional\(\)\s*\}\)\.optional\(\),/, ""));
     }
   }, /schema-agent-entry-compaction: expected 1 anchor\(s\) in zod-schema\.core-\*\.mjs, found 0/);
 
@@ -243,18 +255,18 @@ async function currentSuite(root, upstreamVersion) {
   const receipt = JSON.parse(fs.readFileSync(path.join(fixtureRoot, ".agent-scoped-compaction-model-hotfix.json"), "utf8"));
   assert.equal(receipt.id, MARKER);
   assert.equal(receipt.upstreamVersion, VERSION);
-  assert.equal(receipt.changes.length, 9, `expected 9 anchor replacements, got ${receipt.changes.length}`);
+  assert.equal(receipt.changes.length, changeCount, `expected ${changeCount} anchor replacements, got ${receipt.changes.length}`);
   const touchedFiles = new Set(receipt.changes.map((c) => c.file));
-  assert.equal(touchedFiles.size, 7, `expected 7 distinct files touched, got ${touchedFiles.size}`);
+  assert.equal(touchedFiles.size, fileCount, `expected ${fileCount} distinct files touched, got ${touchedFiles.size}`);
 
   // --- Schema: `model` joined upstream's own per-agent compaction object; no second key. ---
   for (const schemaFile of [F.schema, "config-doctor/feishu.js"]) {
     const source = fs.readFileSync(path.join(fixtureDist, schemaFile), "utf8");
     assert.equal(source.split("compaction:").length - 1, 1, `${schemaFile}: a second compaction key was added`);
-    assert.ok(source.includes(`maxSummaryChars: AgentCompactionMaxSummaryCharsSchema.optional(),\n\tmodel: string().optional() /* ${MARKER} */ }).optional(),`), `${schemaFile}: model missing from upstream's compaction object`);
+    assert.ok(source.replace(/\s/g, "").includes(`maxSummaryChars:AgentCompactionMaxSummaryCharsSchema.optional(),model:string().optional()/*${MARKER}*/}).optional(),`), `${schemaFile}: model missing from upstream's compaction object`);
     assert.ok(!source.includes("memoryFlush"), `${schemaFile}: the memory flush is upstream's session model now; no per-agent memoryFlush field`);
   }
-  {
+  if (!compact) {
     const source = fs.readFileSync(path.join(fixtureDist, "worker/sqlite-store.worker.mjs"), "utf8");
     assert.ok(source.includes(`compaction:strictObject({maxSummaryChars:AgentCompactionMaxSummaryCharsSchema.optional(),model:string$3().optional()/*${MARKER}*/}).optional(),params:`), "sqlite-store.worker.mjs: inlined schema missing model");
   }
@@ -263,8 +275,10 @@ async function currentSuite(root, upstreamVersion) {
   const readableTarget = await importFixture(F.target);
   const readableRetry = await importFixture(F.retry);
   await runCompactionTargetScenarios("readable chunk", { resolveEmbeddedCompactionTarget: readableTarget.a, compactPreparedRetry: readableRetry.compactPreparedRetry });
-  const sqliteWorker = await importFixture("worker/sqlite-store.worker.mjs");
-  await runCompactionTargetScenarios("sqlite-store.worker.mjs (N-named)", sqliteWorker);
+  if (!compact) {
+    const sqliteWorker = await importFixture("worker/sqlite-store.worker.mjs");
+    await runCompactionTargetScenarios("sqlite-store.worker.mjs (N-named)", sqliteWorker);
+  }
   const workerTarget = await importFixture(F.workerTarget);
   const workerRetry = await importFixture(F.workerRetry);
   await runCompactionTargetScenarios(`worker-chunk (e-named, ${workerAliases.target} retry)`, { resolveEmbeddedCompactionTarget: workerTarget.o, compactPreparedRetry: workerRetry.t });
@@ -278,8 +292,8 @@ async function currentSuite(root, upstreamVersion) {
   const realDist = path.join(root, "dist");
   const realReceipt = JSON.parse(fs.readFileSync(path.join(root, ".agent-scoped-compaction-model-hotfix.json"), "utf8"));
   assert.equal(realReceipt.id, MARKER);
-  assert.equal(realReceipt.changes.length, 9, `expected 9 anchor replacements in the real tree, got ${realReceipt.changes.length}`);
-  assert.equal(new Set(realReceipt.changes.map((c) => c.file)).size, 7, "expected 7 distinct files patched in the real tree");
+  assert.equal(realReceipt.changes.length, changeCount, `expected ${changeCount} anchor replacements in the real tree, got ${realReceipt.changes.length}`);
+  assert.equal(new Set(realReceipt.changes.map((c) => c.file)).size, fileCount, "unexpected count of patched modules");
   const realFile = (dir, name, needle) => realFileIn(realDist, dir, name, needle);
   const importExport = async (file, local) => {
     const alias = exportAlias(fs.readFileSync(file, "utf8"), local);
@@ -290,14 +304,14 @@ async function currentSuite(root, upstreamVersion) {
   // --- Native schema: the real AgentEntryBaseSchema and the whole OpenClawSchema, as config
   // validation runs them. ---
   {
-    const AgentEntryBaseSchema = await importExport(realFile(".", /^zod-schema\.core-.*\.mjs$/, "const AgentEntryBaseSchema = strictObject({"), "AgentEntryBaseSchema");
+    const AgentEntryBaseSchema = await importExport(realFile(".", /^zod-schema\.core-.*\.mjs$/, /const AgentEntryBaseSchema\s*=\s*strictObject\(\{/), "AgentEntryBaseSchema");
     const parsed = AgentEntryBaseSchema.parse({ id: "onyx", compaction: { model: ONYX_MODEL, maxSummaryChars: 5000 } });
     assert.equal(parsed.compaction.model, ONYX_MODEL);
     assert.equal(parsed.compaction.maxSummaryChars, 5000, "upstream's own maxSummaryChars must survive beside model");
     assert.throws(() => AgentEntryBaseSchema.parse({ id: "onyx", compaction: { model: ONYX_MODEL, memoryFlush: { model: ONYX_MODEL } } }), /unrecognized/i, "the real schema must reject a per-agent memoryFlush: upstream retired the flush model");
     assert.throws(() => AgentEntryBaseSchema.parse({ id: "onyx", compaction: { model: 7 } }), "a non-string model must still fail");
 
-    const OpenClawSchema = await importExport(realFile(".", /^zod-schema-.*\.mjs$/, "const OpenClawSchema = "), "OpenClawSchema");
+    const OpenClawSchema = await importExport(realFile(".", /^zod-schema-.*\.mjs$/, /const OpenClawSchema\s*=/), "OpenClawSchema");
     const config = {
       agents: {
         defaults: { compaction: { model: "sonnet", memoryFlush: { softThresholdTokens: 4000 } } },
@@ -321,12 +335,13 @@ async function currentSuite(root, upstreamVersion) {
 
   // --- Structural checks: the readable retry and the worker-pool duplicates. ---
   {
-    realFile(".", /^compact-.*\.mjs$/, `\t\t\t\tconst e = resolveEmbeddedCompactionTarget({\n\t\t\t\t\tconfig: c.config,\n\t\t\t\t\tagentId: c.agentId, /* ${MARKER} */\n`);
+    realFile(".", /^compact-.*\.mjs$/, /const [\w$]+\s*=\s*resolveEmbeddedCompactionTarget\(\{\s*config:\s*([\w$]+)\.config,\s*agentId:\s*\1\.agentId,\s*\/\*\s*openclaw-nix-agent-scoped-compaction-model-v1\s*\*\//);
     // The retry's params object carries the session agent (agentId: s.agentId ?? d.sessionAgentId).
-    realFile(".", /^compact-.*\.mjs$/, "const compactPrepared = async () => {");
+    realFile(".", /^compact-.*\.mjs$/, /const compactPrepared\s*=\s*async\s*\(\)\s*=>\s*\{/);
 
     const sqliteWorkerSource = fs.readFileSync(path.join(realDist, "worker/sqlite-store.worker.mjs"), "utf8");
-    for (const [needle, what] of [
+    if (compact) assert.doesNotMatch(sqliteWorkerSource, /resolveEmbeddedCompactionTarget|AgentEntryBaseSchema|function compactPrepared\(/);
+    else for (const [needle, what] of [
       [`maxSummaryChars:AgentCompactionMaxSummaryCharsSchema.optional(),model:string$3().optional()/*${MARKER}*/}).optional(),params:`, "inlined schema missing the per-agent compaction model"],
       ["Ye=N.modelSelectionLocked?void 0:(N.agentId?N.config?.agents?.entries?.[N.agentId]?.compaction?.model?.trim():void 0)??", "compaction target does not read the per-agent override"],
       ["resolveEmbeddedCompactionTarget({config:_t.config,agentId:_t.agentId,", "compaction retry does not carry agentId"],
@@ -335,12 +350,13 @@ async function currentSuite(root, upstreamVersion) {
     }
 
     const workerChunk = /^worker-chunk-.*\.mjs$/;
-    const targetFile = realFile("worker", workerChunk, "i=e.modelSelectionLocked?void 0:(e.agentId?e.config?.agents?.entries?.[e.agentId]?.compaction?.model?.trim():void 0)??");
-    const retrySource = fs.readFileSync(realFile("worker", workerChunk, `${workerAliases.target}({config:c.config,agentId:c.agentId,`), "utf8");
+    const targetFile = realFile("worker", workerChunk, /[\w$]+=([\w$]+)\.modelSelectionLocked\?void 0:\(\1\.agentId\?\1\.config\?\.agents\?\.entries\?\.\[\1\.agentId\]\?\.compaction\?\.model\?\.trim\(\):void 0\)\?\?/);
+    const retryCall = new RegExp(String.raw`\b${workerAliases.target}\(\{config:([\w$]+)\.config,agentId:\1\.agentId,`);
+    const retrySource = fs.readFileSync(realFile("worker", workerChunk, retryCall), "utf8");
     await checkWorkerRetryImports(realDist, retrySource, targetFile);
 
     const feishuSource = fs.readFileSync(path.join(realDist, "config-doctor/feishu.js"), "utf8");
-    assert.ok(feishuSource.includes(`model: string().optional() /* ${MARKER} */ }).optional(),`), "real config-doctor/feishu.js: inlined schema missing the per-agent compaction model");
+    assert.ok(feishuSource.replace(/\s/g, "").includes(`model:string().optional()/*${MARKER}*/}).optional(),`), "real config-doctor/feishu.js: inlined schema missing the per-agent compaction model");
     console.log("ok - structural checks on the real compact-*.mjs retry, sqlite-store.worker.mjs, the worker-chunk pair and config-doctor/feishu.js");
   }
 
@@ -353,7 +369,7 @@ async function currentSuite(root, upstreamVersion) {
 // it has one) and require the same values the readable compact-*.mjs retry imports as
 // DEFAULT_PROVIDER/DEFAULT_MODEL.
 async function checkWorkerRetryImports(realDist, retrySource, targetFile) {
-  const call = retrySource.match(/([\w$]+)\(\{config:c\.config,agentId:c\.agentId,\/\*[^*]*\*\/provider:c\.provider,modelId:c\.model,authProfileId:c\.authProfileId,modelSelectionLocked:c\.modelSelectionLocked,defaultProvider:([\w$]+),defaultModel:([\w$]+)\}\)/);
+  const call = retrySource.match(/([\w$]+)\(\{config:([\w$]+)\.config,agentId:\2\.agentId,\/\*[^*]*\*\/provider:\2\.provider,modelId:\2\.model,authProfileId:\2\.authProfileId,modelSelectionLocked:\2\.modelSelectionLocked,defaultProvider:([\w$]+),defaultModel:([\w$]+)\}\)/);
   assert.ok(call, "real worker-chunk retry call not found in its patched shape");
   const bindings = new Map();
   for (const [, specs, from] of retrySource.matchAll(/import\{([^}]*)\}from"\.\/([^"]+)"/g)) {
@@ -362,7 +378,7 @@ async function checkWorkerRetryImports(realDist, retrySource, targetFile) {
       bindings.set(local ?? exported, { exported, from });
     }
   }
-  const [, targetAlias, providerAlias, modelAlias] = call;
+  const [, targetAlias, , providerAlias, modelAlias] = call;
   const target = bindings.get(targetAlias);
   assert.deepEqual(target, { exported: "o", from: path.basename(targetFile) }, `real worker-chunk retry: ${targetAlias} must import export o of the patched target`);
   assert.equal(exportAlias(fs.readFileSync(targetFile, "utf8"), "resolveEmbeddedCompactionTarget"), "o", "real worker-chunk target no longer exports resolveEmbeddedCompactionTarget as o");
@@ -385,8 +401,8 @@ async function checkWorkerRetryImports(realDist, retrySource, targetFile) {
     assert.equal(typeof mod[initExport], "function", `${provider.from}: lazy init ${init[1]} is not exported`);
     mod[initExport]();
   }
-  const compactSource = fs.readFileSync(realFileIn(realDist, ".", /^compact-.*\.mjs$/, "const compactPrepared = async () => {"), "utf8");
-  const readableImport = compactSource.match(/import \{([^}]*\bas DEFAULT_PROVIDER\b[^}]*)\} from "\.\/([^"]+)";/);
+  const compactSource = fs.readFileSync(realFileIn(realDist, ".", /^compact-.*\.mjs$/, /const compactPrepared\s*=\s*async\s*\(\)\s*=>\s*\{/), "utf8");
+  const readableImport = compactSource.match(/import\s*\{([^}]*\bas DEFAULT_PROVIDER\b[^}]*)\}\s*from\s*"\.\/([^"]+)";/);
   assert.ok(readableImport, "readable compact-*.mjs no longer imports DEFAULT_PROVIDER");
   const readableNames = new Map(readableImport[1].split(",").map((s) => s.trim().split(/\s+as\s+/)).map(([e, l]) => [l ?? e, e]));
   const readable = await import(pathToFileURL(path.join(realDist, readableImport[2])).href);
@@ -747,7 +763,7 @@ async function legacySuite() {
 
   // --- Failure modes, each on a fresh copy of the unpatched fixtures: the patch must refuse a
   // target that disappeared, an extra copy of a target, and a target in an unexpected chunk. ---
-  const runPatch = (target) => execFileSync(process.execPath, [patchScript, target, "2026.10.7"], { stdio: "pipe", encoding: "utf8" });
+  const runPatch = (target) => execFileSync(process.execPath, [patchScript, target, "2026.10.7"], { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
   const expectPatchFailure = (label, mutate, pattern) => {
     const copy = fs.mkdtempSync(path.join(os.tmpdir(), "oc-compaction-hotfix-neg-"));
     fs.cpSync(fixtureRoot, copy, { recursive: true });

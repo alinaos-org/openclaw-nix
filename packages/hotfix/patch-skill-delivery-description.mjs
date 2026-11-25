@@ -20,7 +20,7 @@ const MARKER = "/* openclaw-nix-skill-delivery-description-v1 */";
 // keepNames), so the parameters and loop variables are single letters that can change
 // with any rebuild. The anchors therefore match the code's shape with any identifiers
 // in those places; each shape must still occur exactly once.
-const header = /^async function prepareSkillResourceDelivery\(\w+, \w+, \w+ = \[\], \w+\) \{$/gm;
+const header = /\basync function prepareSkillResourceDelivery\([\w$]+,\s*[\w$]+,\s*[\w$]+\s*=\s*\[\],\s*[\w$]+\)\s*\{/g;
 const helper = [
   `function clampSkillDeliveryDescription(text) { ${MARKER}`,
   "\tif (typeof text !== \"string\" || text.length <= 1024) return text;",
@@ -31,7 +31,7 @@ const helper = [
 ].join("\n");
 // 11.4 and earlier: `description: skill.description, revision: bundle.revision, files`;
 // 11.5: `description: e.description, revision: s.revision, files: r`.
-const field = /^(\t\t\tdescription: )(\w+\.description),(\n\t\t\trevision: \w+\.revision,\n\t\t\tfiles(?:: \w+)?\n\t\t\}\);)$/gm;
+const field = /\b(description:\s*)([\w$]+\.description),(\s*revision:\s*[\w$]+\.revision,\s*files(?::\s*[\w$]+)?\s*\}\);?)/g;
 const count = (text, pattern) => typeof pattern === "string" ? text.split(pattern).length - 1 : [...text.matchAll(pattern)].length;
 
 const patchedFiles = [];
