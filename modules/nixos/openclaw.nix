@@ -105,8 +105,12 @@
       RestrictAddressFamilies = ["AF_UNIX" "AF_INET" "AF_INET6" "AF_NETLINK"];
       SystemCallArchitectures = "native";
       # 2026.10.5's page-cache warm worker reads residency with mincore, which no
-      # syscall group carries.
-      SystemCallFilter = ["@system-service" "mincore" "~@privileged"];
+      # syscall group carries. From 2026.11.10 the SQLite store worker gives its private
+      # snapshot copies the database's owner (fchown; src/infra/sqlite-private-snapshot-fork.ts),
+      # and ~@privileged removes @chown, so the kernel killed the gateway with SIGSYS
+      # (syscall 93) a minute after start. The service runs as its own user, so chown
+      # can only hand a file to that user or a group it is in.
+      SystemCallFilter = ["@system-service" "mincore" "~@privileged" "@chown"];
       UMask = "0077";
     };
   in {
