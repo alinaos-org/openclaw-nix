@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.4.30";
   expectedIntegrity = "";
   packageName = "@openclaw/diffs";
-  version = "2026.11.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/diffs/-/diffs-2026.11.9.tgz";
-  npmIntegrity = "sha512-ZubDVbEaMpPZEG+zEgCj/HH8bFgNqfSeuk/t2hp5B6Fu/P0w7grZW8iXt9adMCjmbBizBkkYbnXpd7o56Yvmeg==";
-  npmShasum = "ee2b1a5a2280da9babf440116ba3e31faba10086";
-  nixHash = "sha256-Js1jZp7h5WLYJUD4y2jEnB+HPYNThQP/EKAElQoU6TY=";
+  version = "2026.11.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/diffs/-/diffs-2026.11.10.tgz";
+  npmIntegrity = "sha512-9WTv6KQsmxmvh6ekAZh9WQfuN+KSbq9i9DI7rz+PfPTWd3u+AeguIsELjgEGK215VSHSkUaZfwa2EowxuuA11g==";
+  npmShasum = "59b906b2fc52c0c1ce9b1ff1e5aee3add8680cc8";
+  nixHash = "sha256-F27sGoYdymtfm687YFuL/BAtmj06I25hiA1BwaxttUI=";
   dependencyMode = "bundled";
   manifestId = "diffs";
-  openclawCompat = ">=2026.11.9";
-  peerOpenClaw = ">=2026.11.9";
+  openclawCompat = ">=2026.11.10";
+  peerOpenClaw = ">=2026.11.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];
@@ -33,10 +33,10 @@
     ];
   };
   dependencies = {
-    "@pierre/diffs" = "1.5.2";
+    "@pierre/diffs" = "1.6.2";
     "@shikijs/langs" = "4.5.0";
     playwright-core = "1.64.1";
-    typebox = "1.4.2";
+    typebox = "1.4.3";
     zod = "4.6.7";
   };
   optionalDependencies = {};
@@ -49,6 +49,7 @@
   ];
   bundledPackageRoots = [
     "node_modules/@pierre/diffs"
+    "node_modules/@pierre/diffs/node_modules/@pierre/highlights"
     "node_modules/@pierre/diffs/node_modules/@pierre/theme"
     "node_modules/@pierre/diffs/node_modules/@pierre/theming"
     "node_modules/@pierre/diffs/node_modules/@shikijs/core"
@@ -56,7 +57,6 @@
     "node_modules/@pierre/diffs/node_modules/@shikijs/engine-oniguruma"
     "node_modules/@pierre/diffs/node_modules/@shikijs/primitive"
     "node_modules/@pierre/diffs/node_modules/@shikijs/themes"
-    "node_modules/@pierre/diffs/node_modules/@shikijs/transformers"
     "node_modules/@pierre/diffs/node_modules/@shikijs/types"
     "node_modules/@pierre/diffs/node_modules/@shikijs/vscode-textmate"
     "node_modules/@pierre/diffs/node_modules/@types/hast"

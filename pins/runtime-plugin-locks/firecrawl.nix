@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.8";
   expectedIntegrity = "";
   packageName = "@openclaw/firecrawl-plugin";
-  version = "2026.11.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/firecrawl-plugin/-/firecrawl-plugin-2026.11.9.tgz";
-  npmIntegrity = "sha512-1J2sinxpwci+lVjOuD3HBmtwnLhtO/zq5vZasrAzhNhROze5KtGfpl5hZfMlfGmgxGIMa19BefT/i/1zImNpAg==";
-  npmShasum = "c19b265895c3f5e577cdf7ba65e00bde8ae3f36f";
-  nixHash = "sha256-+CQGaTH0fSIcDHNI1mVmSpn4iVpp6ZfLViFiJXO9pQ0=";
+  version = "2026.11.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/firecrawl-plugin/-/firecrawl-plugin-2026.11.10.tgz";
+  npmIntegrity = "sha512-Y54WUlmJ6lEdLvfRnJVrcnxvreQ2hZ6hCyTNV9Qj8sBuMR9pUQD7m/GFq7TZO/SCK9TI5v0zjTnVZttt5GWQFg==";
+  npmShasum = "f96147650f48efa3b6295715367dc261644f67cc";
+  nixHash = "sha256-oQelEesBgEWKvvKhUwcS+PqIyQmhHiwjtaWfIck81sQ=";
   dependencyMode = "bundled";
   manifestId = "firecrawl";
-  openclawCompat = ">=2026.11.9";
-  peerOpenClaw = ">=2026.11.9";
+  openclawCompat = ">=2026.11.10";
+  peerOpenClaw = ">=2026.11.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];
@@ -41,7 +41,7 @@
     ];
   };
   dependencies = {
-    typebox = "1.4.2";
+    typebox = "1.4.3";
   };
   optionalDependencies = {};
   bundleDependencies = [

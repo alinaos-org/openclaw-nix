@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.5.12-beta.1";
   expectedIntegrity = "";
   packageName = "@openclaw/amazon-bedrock-mantle-provider";
-  version = "2026.11.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/amazon-bedrock-mantle-provider/-/amazon-bedrock-mantle-provider-2026.11.9.tgz";
-  npmIntegrity = "sha512-KuCJaatCOL95IRJ6UiDypuYimMNaKlBuOXDmiYXaNEUG1xRbgLxCC956MsGDVoBSWzz3z2C6zNecceE3NrxrrA==";
-  npmShasum = "e2421ca7b190f0b3b893766dca732970da00583f";
-  nixHash = "sha256-SGy8jzgRxzYD9Jq4B1R7oli7bHOkT+J7+5WhwfQKNKA=";
+  version = "2026.11.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/amazon-bedrock-mantle-provider/-/amazon-bedrock-mantle-provider-2026.11.10.tgz";
+  npmIntegrity = "sha512-pK0OEA07uVUmVwBHNXnTDokHT2Qdbshd/2vm71WEXy7rg5i60RJVSM5uw+SCaXWD2Tc0uQQAqPop1o6ixrGKsg==";
+  npmShasum = "13d8eb064b3259623845d3bd6c593edf3d4b1e74";
+  nixHash = "sha256-S+J/D1uLHbQ+ryf6pQzzGKcxg4i1qejGGFakvIHh90M=";
   dependencyMode = "bundled";
   manifestId = "amazon-bedrock-mantle";
-  openclawCompat = ">=2026.11.9";
-  peerOpenClaw = ">=2026.11.9";
+  openclawCompat = ">=2026.11.10";
+  peerOpenClaw = ">=2026.11.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];
@@ -29,7 +29,7 @@
   channels = [];
   contracts = {};
   dependencies = {
-    "@anthropic-ai/sdk" = "0.135.0";
+    "@anthropic-ai/sdk" = "0.137.0";
     "@aws/bedrock-token-generator" = "1.1.0";
   };
   optionalDependencies = {};
@@ -49,6 +49,9 @@
     "node_modules/@aws/bedrock-token-generator"
     "node_modules/@aws/bedrock-token-generator/node_modules/@aws/lambda-invoke-store"
     "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/core"
+    "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/core/node_modules/@aws-sdk/types"
+    "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/core/node_modules/@smithy/core"
+    "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/core/node_modules/@smithy/signature-v4"
     "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-cognito-identity"
     "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-env"
     "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-http"
@@ -63,7 +66,11 @@
     "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-node/node_modules/@aws-sdk/credential-provider-sso"
     "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-node/node_modules/@aws-sdk/credential-provider-web-identity"
     "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-node/node_modules/@aws-sdk/nested-clients"
+    "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-node/node_modules/@aws-sdk/signature-v4-multi-region"
     "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-node/node_modules/@aws-sdk/token-providers"
+    "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-node/node_modules/@aws-sdk/types"
+    "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-node/node_modules/@smithy/core"
+    "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-node/node_modules/@smithy/signature-v4"
     "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-process"
     "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-sso"
     "node_modules/@aws/bedrock-token-generator/node_modules/@aws-sdk/credential-provider-web-identity"
@@ -77,11 +84,14 @@
     "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/config-resolver"
     "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/core"
     "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/credential-provider-imds"
+    "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/credential-provider-imds/node_modules/@smithy/core"
     "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/fetch-http-handler"
+    "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/fetch-http-handler/node_modules/@smithy/core"
     "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/hash-node"
     "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/invalid-dependency"
     "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/node-config-provider"
     "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/node-http-handler"
+    "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/node-http-handler/node_modules/@smithy/core"
     "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/protocol-http"
     "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/signature-v4"
     "node_modules/@aws/bedrock-token-generator/node_modules/@smithy/types"

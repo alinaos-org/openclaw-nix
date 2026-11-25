@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.8";
   expectedIntegrity = "";
   packageName = "@openclaw/parallel-plugin";
-  version = "2026.11.9";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/parallel-plugin/-/parallel-plugin-2026.11.9.tgz";
-  npmIntegrity = "sha512-bkSNVDaXKfp5ye9Ard0nDD9XHfQkx4CaLztAEDqeMW4i2Y0JRNdgN3mWq32mAFlyepi272+ztyBtOXD4Ml88UQ==";
-  npmShasum = "46d1a06bd54607dd77c66694c083d5ba19230748";
-  nixHash = "sha256-8QX+PJQTAjU9iYbRMN4b2Fn1BIAEvnL/PRPkhtGp3SQ=";
+  version = "2026.11.10";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/parallel-plugin/-/parallel-plugin-2026.11.10.tgz";
+  npmIntegrity = "sha512-PkQs1qDxLqgi+XmZyojpymo/zR8q4349lXNxEFKl4+Ze+ypByfDw2O9g/GmDjDC1f5D58CLIceuvZNrZKUbmBw==";
+  npmShasum = "b043095cf02b63022ed4ac5177ebaefbf531aa0d";
+  nixHash = "sha256-GytSi7px2Y2E70ZQ6nP8LDco0wQb1BjqCDgupN0JLlo=";
   dependencyMode = "none";
   manifestId = "parallel";
-  openclawCompat = ">=2026.11.9";
-  peerOpenClaw = ">=2026.11.9";
+  openclawCompat = ">=2026.11.10";
+  peerOpenClaw = ">=2026.11.10";
   runtimeExtensions = [
     "./dist/index.js"
   ];
@@ -31,6 +31,9 @@
     webSearchProviders = [
       "parallel"
       "parallel-free"
+    ];
+    decisionProviders = [
+      "parallel"
     ];
   };
   dependencies = {};
