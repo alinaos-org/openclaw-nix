@@ -13,8 +13,10 @@ const receipt = JSON.parse(fs.readFileSync(path.join(root, ".skill-tree-store-ha
 assert.equal(receipt.id, "openclaw-nix-skill-tree-store-hardlinks-v1");
 const chunk = receipt.patchedFiles.find((name) => name.startsWith("bundle-"));
 const text = fs.readFileSync(path.join(dist, chunk), "utf8");
-const alias = /\breadSkillBundleTree as (\w+)/.exec(/export \{([^}]*)\}/.exec(text)?.[1] ?? "")?.[1];
+const alias = /\breadSkillBundleTree as (\w+)/.exec(/export\s*\{([^}]*)\}/.exec(text)?.[1] ?? "")?.[1];
 assert(alias, "bundle chunk no longer exports readSkillBundleTree");
+assert.equal([...text.matchAll(/hardlinks:\s*isImmutableNixStoreRoot\([\w$]+\.rootReal\) \? "allow" : "reject"/g)].length, 1,
+  "skill tree reader does not check the store root");
 const readSkillBundleTree = (await import(pathToFileURL(path.join(dist, chunk)).href))[alias];
 
 function hardlinkedSkill(parent) {

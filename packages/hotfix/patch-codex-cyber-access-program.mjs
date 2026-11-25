@@ -60,6 +60,14 @@ const ownFiles = (dir, pattern) => fs.readdirSync(dir).filter((name) => pattern.
 // From 2026.11.5: one edit in upstream's own Access resolver (see the header).
 if (atLeast(version, "2026.11.5")) {
   const files = ownFiles(setup, /\.mjs$/);
+  // Count labels across the candidate files, so a duplicate in any file fails.
+  const moduleFile = (files, owner) => {
+    const hits = files.flatMap((file) =>
+      [...fs.readFileSync(file, "utf8").matchAll(/^\/\/(?:#region |! ?| )(\S+)$/gm)]
+        .filter((label) => label[1] === owner).map(() => file));
+    assert.equal(hits.length, 1, `expected one bundled ${owner}`);
+    return hits[0];
+  };
   const header = "function resolveCodexCyberAccessProgram(params) {";
   const hits = files.filter((file) => fs.readFileSync(file, "utf8").includes(header));
   assert.equal(hits.length, 1, `expected one file with ${header}, got ${hits.map((f) => path.basename(f)).join(", ") || "none"}`);
@@ -68,20 +76,19 @@ if (atLeast(version, "2026.11.5")) {
   assert.equal(count(text, MARKER), 0, `${path.basename(file)} is already patched`);
   const programBefore = "const program = params.cyberAccessProgram ?? programs?.cyber;";
   const programAfter = "const program = params.cyberAccessProgram ?? openclawNixCodexDaybreakBlueDefault(params, programs?.cyber);";
-  for (const anchor of ["//#region extensions/codex/src/app-server/access-program.ts", header, programBefore,
+  assert.equal(moduleFile(files, "extensions/codex/src/app-server/access-program.ts"), file);
+  for (const anchor of [ header, programBefore,
     "const configured = params.runtimePlan?.transport.resolveExtraParams().accessPrograms;",
     'return program === "daybreak_blue" ? "daybreakBlue" : program === "daybreak_red" ? "daybreakRed" : program === "standard" ? "standard" : void 0;']) {
     assert.equal(count(text, anchor), 1, `anchor changed in ${path.basename(file)}: ${anchor.slice(0, 70)}`);
   }
   // The failover half is upstream's from this release; refuse if that changes.
-  const harnessFiles = ownFiles(setup, /^harness-.*\.mjs$/).filter((f) => fs.readFileSync(f, "utf8").includes("//#region extensions/codex/harness.ts"));
-  assert.equal(harnessFiles.length, 1, "expected one codex harness chunk");
-  const harnessText = fs.readFileSync(harnessFiles[0], "utf8");
+  const harness = moduleFile(ownFiles(setup, /^harness-.*\.mjs$/), "extensions/codex/harness.ts");
+  const harnessText = fs.readFileSync(harness, "utf8");
   assert.equal(count(harnessText, 'cyberAccessProgram: "daybreak_blue",'), 1, "upstream's failover retry no longer requests daybreak_blue");
   assert.equal(count(harnessText, "currentAccessProgram: resolveCodexCyberAccessProgram(params),"), 1, "upstream's failover no longer reads the turn's Access");
-  const failoverFiles = ownFiles(setup, /^cyber-failover-.*\.mjs$/).filter((f) => fs.readFileSync(f, "utf8").includes("//#region extensions/codex/src/app-server/cyber-failover.ts\n"));
-  assert.equal(failoverFiles.length, 1, "expected one cyber-failover chunk");
-  assert(!fs.readFileSync(failoverFiles[0], "utf8").includes("gpt-daybreak"), "upstream's failover names a Daybreak alias again");
+  const failover = moduleFile(ownFiles(setup, /^cyber-failover-.*\.mjs$/), "extensions/codex/src/app-server/cyber-failover.ts");
+  assert(!fs.readFileSync(failover, "utf8").includes("gpt-daybreak"), "upstream's failover names a Daybreak alias again");
   const defaultHelper = [
     `function openclawNixCodexDaybreakBlueDefault(params, configured) { ${MARKER}`,
     '\tif (configured !== void 0 && configured !== "standard") return configured;',

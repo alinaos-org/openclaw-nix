@@ -83,7 +83,8 @@ if (hprofileCtx !== undefined) assert.equal(hprofileCtx, hctx, "profile read fro
 // The line runs with the identity carrier the hidden chunk itself imports: both halves
 // must come from one module export pair, or the rewritten context would lose the token.
 const importedFrom = (local) => {
-  const found = [...hiddenText.matchAll(/^import \{([^}\n]*)\} from "([^"\n]+)";$/gm)].flatMap((match) =>
+  // Spaced (`import { a as b } from "x";`, one per line) up to 2026.11.9, compacted from 2026.11.10.
+  const found = [...hiddenText.matchAll(/import\s*\{([^}]*)\}\s*from\s*"([^"]+)";?/g)].flatMap((match) =>
     match[1].split(",").map((entry) => entry.trim().split(/\s+as\s+/)).filter((parts) => (parts[1] ?? parts[0]) === local).map(([exported]) => ({ exported, spec: match[2] })));
   assert.equal(found.length, 1, `hidden chunk imports ${local}`);
   return found[0];

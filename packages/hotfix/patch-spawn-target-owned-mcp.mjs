@@ -200,6 +200,83 @@ const visibleEdits = (text, name) => {
   return [[policy.index, policy[0].length - 1, visibleAfter(names)]];
 };
 
+// From 2026.11.10 upstream's build compacts the dist (minify codegen): no indentation
+// or newlines inside code and no spaces around punctuation, so the spaced anchors above
+// cannot match. The same anchors in compact form, with every name captured.
+const compact = atLeast(version, "2026.11.10");
+const ID = "[A-Za-z_$][\\w$]*";
+const re = (source, flags = "dg") => new RegExp(source, flags);
+const onceRe = (text, regex, what) => {
+  const hits = [...text.matchAll(regex)];
+  assert.equal(hits.length, 1, `${what}: ${hits.length} matches`);
+  return hits[0];
+};
+const noFunctionBetween = (text, from, to, what) =>
+  assert(!/\bfunction\b/.test(text.slice(from, to)), `${what}: anchors span functions`);
+
+const hiddenEditsCompact = (text, name) => {
+  const edits = [];
+  const reads = [...text.matchAll(/import\s*\{([^}]*)\}\s*from\s*"([^"]+)";?/g)].flatMap((match) =>
+    match[1].split(",").map((entry) => entry.trim()).filter(Boolean).map((entry) => {
+      const [exported, local = exported] = entry.split(/\s+as\s+/);
+      return { match, exported, local };
+    })).filter(({ local }) => local === "readParentExecutionIdentity");
+  assert.equal(reads.length, 1, `${name}: readParentExecutionIdentity is not imported`);
+  assert.equal(count(text, "withParentExecutionIdentity"), 0, `${name}: withParentExecutionIdentity is already bound`);
+  const [{ match, exported: readExport }] = reads;
+  const spec = match[2];
+  assert(/^\.\/[\w.-]+\.mjs$/.test(spec), `${name}: parent execution identity module ${spec}`);
+  const carrier = fs.readFileSync(path.join(dist, spec), "utf8");
+  assert.equal([...carrier.matchAll(/\{\s*carry:\s*withParentExecutionIdentity,\s*read:\s*readParentExecutionIdentity\s*\}\s*=\s*createPrivateContextCarrier\(\);/g)].length, 1, `${spec}: parent execution identity carrier moved`);
+  const exportStatements = [...carrier.matchAll(/export\s*\{([^}]*)\};?/g)];
+  assert.equal(exportStatements.length, 1, `${spec}: export statement`);
+  const exported = new Map(exportStatements[0][1].split(",").map((entry) => entry.trim()).filter(Boolean).map((entry) => {
+    const [local, as = local] = entry.split(/\s+as\s+/);
+    return [local, as];
+  }));
+  assert.equal(exported.get("readParentExecutionIdentity"), readExport, `${spec}: readParentExecutionIdentity export`);
+  const writeExport = exported.get("withParentExecutionIdentity");
+  assert(writeExport && /^[A-Za-z_$][\w$]*$/.test(writeExport), `${spec}: withParentExecutionIdentity is not exported`);
+  const importOpen = match[0].indexOf("{") + 1;
+  edits.push([match.index + importOpen, 0, `${writeExport === "withParentExecutionIdentity" ? writeExport : `${writeExport} as withParentExecutionIdentity`},`]);
+
+  const header = onceRe(text, re(`async function spawnSubagentDirect\\((?<input>${ID}),\\s*(?<context>${ID})\\)\\s*\\{\\s*(?<decl>const)\\s*\\{\\s*params:\\s*(?<params>${ID}),\\s*ctx:\\s*(?<ctx>${ID}),\\s*profileReceipt:\\s*${ID},\\s*systemPrompt:\\s*${ID}\\s*\\}\\s*=\\s*applySubagentProfile\\(\\k<input>,\\s*\\k<context>\\);`), `${name}: spawnSubagentDirect profile anchor`);
+  const { params, ctx } = header.groups;
+  const resolve = onceRe(text, re(`const\\s+(?<resolution>${ID})\\s*=\\s*await resolveSubagentSpawnRequest\\(${params},\\s*${ctx}\\);`), `${name}: hidden spawn request anchor`);
+  const destructure = onceRe(text, re(`const\\s*\\{\\s*taskName:[^{}]*?\\bcfg:\\s*(?<cfg>${ID}),[^{}]*?\\brequesterAgentId:\\s*(?<requester>${ID}),\\s*targetAgentId:\\s*(?<target>${ID}),[^{}]*?\\bchildIdem:\\s*${ID},\\s*blind:\\s*${ID}\\s*\\}\\s*=\\s*${resolve.groups.resolution}\\.resolved;`), `${name}: hidden spawn anchor`);
+  assert(header.index < resolve.index && resolve.index < destructure.index, `${name}: hidden spawn anchors out of order`);
+  noFunctionBetween(text, header.index + header[0].length, destructure.index, `${name}: hidden spawn`);
+  assert.equal([...text.matchAll(re(`parentExecutionIdentityToken:\\s*readParentExecutionIdentity\\(${ctx}\\)`))].length, 1, `${name}: hidden spawn context name moved`);
+  // The profile destructure's const becomes a let so the hidden path can rewrite the context.
+  const declAt = header.indices.groups.decl[0];
+  assert.equal(text.slice(declAt, declAt + 5), "const", `${name}: profile destructure moved`);
+  edits.push([declAt, "const".length, "let"]);
+  const { cfg, requester, target } = destructure.groups;
+  // On its own line, as in the spaced build, so the injected statement reads (and tests) alone.
+  edits.push([destructure.index + destructure[0].length, 0, `\n${hiddenLine({ ctx, cfg, requester, target, profile: `${ctx}.subagentProfile` })}`]);
+  return edits;
+};
+
+const visibleEditsCompact = (text, name) => {
+  const visible = onceRe(text, re(`async function maybeSpawnVisibleSession\\((?<params>${ID})\\)\\s*\\{`), `${name}: visible spawn path`);
+  const vp = visible.groups.params;
+  const vcfg = onceRe(text, re(`const\\s+(?<cfg>${ID})\\s*=\\s*${vp}\\.options\\?\\.config\\s*\\?\\?\\s*readRuntimeConfig\\(\\);`), `${name}: visible config`);
+  const vtarget = onceRe(text, re(`const\\s+(?<target>${ID})\\s*=\\s*${vp}\\.requestedAgentId\\s*\\?\\s*normalizeAgentId\\(${vp}\\.requestedAgentId\\)\\s*:\\s*(?<requester>${ID});`), `${name}: visible target resolution`);
+  const policy = onceRe(text, re(`inheritedToolPolicy:\\s*\\{\\s*version:\\s*1,\\s*allow:\\s*\\[\\.\\.\\.${vp}\\.options\\?\\.inheritedToolAllowlist\\s*\\?\\?\\s*\\[\\]\\],\\s*deny:\\s*\\[\\.\\.\\.${vp}\\.options\\?\\.inheritedToolDenylist\\s*\\?\\?\\s*\\[\\]\\],\\s*\\.\\.\\.(?<delegated>${ID})\\s*\\?\\s*\\{\\s*delegatedToolPolicy(?::\\s*\\k<delegated>)?\\s*\\}\\s*:\\s*\\{\\}\\s*\\},`), `${name}: visible spawn anchor`);
+  assert(visible.index < vcfg.index && vcfg.index < vtarget.index && vtarget.index < policy.index, `${name}: visible spawn anchors out of order`);
+  noFunctionBetween(text, visible.index + visible[0].length, policy.index, `${name}: visible spawn`);
+  // Compacted code reuses short names in inner scopes, so the spaced rebinding check
+  // would refuse valid output; instead each of the three names must be declared exactly
+  // once in this function up to the call site (its own declaration).
+  const body = text.slice(visible.index, policy.index);
+  for (const bound of [vcfg.groups.cfg, vtarget.groups.target, vtarget.groups.requester]) {
+    const n = bound.replace(/[$]/g, "\\$");
+    assert.equal([...body.matchAll(re(`(?:\\bconst|\\blet|\\bvar)\\s+${n}\\s*=`))].length, 1, `${name}: ${bound} is rebound before the call site`);
+  }
+  const names = { params: vp, cfg: vcfg.groups.cfg, requester: vtarget.groups.requester, target: vtarget.groups.target, delegatedName: policy.groups.delegated };
+  return [[policy.index, policy[0].length, `${visibleAfter(names)}\n`]];
+};
+
 const patchedFiles = [];
 const sites = { hidden: [], visible: [] };
 for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")).sort()) {
@@ -213,8 +290,8 @@ for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")
   assert.equal(count(text, MARKER), 0, `${name} is already patched`);
   assert.equal(count(text, "openclawNix"), 0, `${name} already carries an openclaw-nix name`);
   const edits = [];
-  if (hidden) { edits.push(...hiddenEdits(text, name)); sites.hidden.push(name); }
-  if (visible) { edits.push(...visibleEdits(text, name)); sites.visible.push(name); }
+  if (hidden) { edits.push(...(compact ? hiddenEditsCompact : hiddenEdits)(text, name)); sites.hidden.push(name); }
+  if (visible) { edits.push(...(compact ? visibleEditsCompact : visibleEdits)(text, name)); sites.visible.push(name); }
   edits.push([text.indexOf(hidden ? headerBefore : visibleHeader), 0, `${helper}\n`]);
   for (const [at, length, replacement] of edits.sort((a, b) => b[0] - a[0])) text = text.slice(0, at) + replacement + text.slice(at + length);
   fs.writeFileSync(file, text);

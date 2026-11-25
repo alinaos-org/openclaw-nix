@@ -16,7 +16,7 @@ assert.equal(receipt.id, "openclaw-nix-cloud-worker-gateway-url-v1");
 
 for (const name of receipt.patchedFiles) {
   const file = path.join(dist, name);
-  execFileSync(process.execPath, ["--check", file]);
+  execFileSync(process.execPath, ["--check", file], { stdio: ["ignore", "pipe", "pipe"] });
   const text = fs.readFileSync(file, "utf8");
   const start = text.indexOf("function resolveCloudWorkerGatewayPublicUrl(config) {");
   const end = text.indexOf("\n}\n", start);
@@ -38,9 +38,9 @@ for (const name of receipt.patchedFiles) {
 }
 
 const chunk = receipt.patchedFiles.find((name) => name.startsWith("server-worker-environment-startup-"));
-const setupCode = /from "\.\/(setup-code-[^"]+\.mjs)"/.exec(fs.readFileSync(path.join(dist, chunk), "utf8"))?.[1];
+const setupCode = /from\s*"\.\/(setup-code-[^"]+\.mjs)"/.exec(fs.readFileSync(path.join(dist, chunk), "utf8"))?.[1];
 assert(setupCode, "enrollment chunk no longer imports setup-code");
-const exports = /export \{([^}]*)\}/.exec(fs.readFileSync(path.join(dist, setupCode), "utf8"))?.[1] ?? "";
+const exports = /export\s*\{([^}]*)\}/.exec(fs.readFileSync(path.join(dist, setupCode), "utf8"))?.[1] ?? "";
 const alias = /\bresolvePairingGatewayUrl as (\w+)/.exec(exports)?.[1];
 assert(alias, "setup-code no longer exports resolvePairingGatewayUrl");
 const resolvePairingGatewayUrl = (await import(pathToFileURL(path.join(dist, setupCode)).href))[alias];
@@ -61,25 +61,25 @@ assert(!invalid.url && invalid.error, "an invalid override must fail closed, not
 // the allowlist is re-derived instead of silently refusing (or admitting) other paths.
 const distText = (pattern) => fs.readdirSync(dist).filter((file) => pattern.test(file)).map((file) => fs.readFileSync(path.join(dist, file), "utf8")).join("\n");
 const routeContracts = [
-  [/^gateway-http-route-contracts-.*\.mjs$/, 'WORKER_BOOTSTRAP_ARTIFACT_TRANSFER_PATH = "/__openclaw__/worker-bootstrap"'],
-  [/^node-bundle-install-protocol-.*\.mjs$/, 'NODE_WORKER_BUNDLE_TRANSFER_PATH = "/__openclaw__/worker-bundle/v1"'],
-  [/^node-bundle-install-protocol-.*\.mjs$/, "TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/u"],
-  [/^node-workspace-transfer-protocol-.*\.mjs$/, 'NODE_WORKSPACE_TRANSFER_PATH = "/__openclaw__/worker-transfer/v1"'],
+  [/^gateway-http-route-contracts-.*\.mjs$/, /\bWORKER_BOOTSTRAP_ARTIFACT_TRANSFER_PATH\s*=\s*["\x60]\/__openclaw__\/worker-bootstrap["\x60]/],
+  [/^node-bundle-install-protocol-.*\.mjs$/, /\bNODE_WORKER_BUNDLE_TRANSFER_PATH\s*=\s*["\x60]\/__openclaw__\/worker-bundle\/v1["\x60]/],
+  [/^node-bundle-install-protocol-.*\.mjs$/, /\bTOKEN_PATTERN\s*=\s*\/\^\[A-Za-z0-9_\-\]\{43\}\$\/u/],
+  [/^node-workspace-transfer-protocol-.*\.mjs$/, /\bNODE_WORKSPACE_TRANSFER_PATH\s*=\s*["\x60]\/__openclaw__\/worker-transfer\/v1["\x60]/],
   // From 2026.11.5 on the bundler mangles local names, so this entry and the
   // deriveEnvironmentIntent one match the environment id and digest as identifiers.
   [/^node-workspace-transfer-protocol-.*\.mjs$/, /`\$\{NODE_WORKSPACE_TRANSFER_PATH\}\/environments\/\$\{encodeURIComponent\([\w$]+\)\}`/u],
-  [/^worker-protocol-primitives-.*\.mjs$/, 'WORKER_PUBLIC_INGRESS_PATH = "/__openclaw__/worker"'],
-  [/^node-desktop-stream-.*\.mjs$/, 'NODE_DESKTOP_ATTACH_PATH = "/node-desktop/attach"'],
-  [/^node-desktop-stream-.*\.mjs$/, 'NODE_PORTAL_ATTACH_PATH = "/node-portal/attach"'],
-  [/^startup-state-readiness-.*\.mjs$/, "TICKET_PATTERN$1 = /^[a-f0-9]{48}$/u"],
-  [/^artifact-transfer-http-.*\.mjs$/, "SHA256_PATTERN = /^[a-f0-9]{64}$/u"],
+  [/^worker-protocol-primitives-.*\.mjs$/, /\bWORKER_PUBLIC_INGRESS_PATH\s*=\s*["\x60]\/__openclaw__\/worker["\x60]/],
+  [/^node-desktop-stream-.*\.mjs$/, /\bNODE_DESKTOP_ATTACH_PATH\s*=\s*["\x60]\/node-desktop\/attach["\x60]/],
+  [/^node-desktop-stream-.*\.mjs$/, /\bNODE_PORTAL_ATTACH_PATH\s*=\s*["\x60]\/node-portal\/attach["\x60]/],
+  [/^startup-state-readiness-.*\.mjs$/, /\bTICKET_PATTERN\$1\s*=\s*\/\^\[a-f0-9\]\{48\}\$\/u/],
+  [/^artifact-transfer-http-.*\.mjs$/, /\bSHA256_PATTERN\s*=\s*\/\^\[a-f0-9\]\{64\}\$\/u/],
   // deriveEnvironmentIntent (worker-environments/service-contract.ts): bundled into
   // project-preparation through 10.4, its own service-contract chunk from 10.5.
-  [/^(project-preparation|service-contract)-.*\.mjs$/, /environmentId: `worker:\$\{([\w$]+)\.slice\(0, 32\)\}`,\n\t\tprovisionOperationId: `provision:v2:\$\{\1\}`/u],
+  [/^(project-preparation|service-contract)-.*\.mjs$/, /environmentId:\s*`worker:\$\{([\w$]+)\.slice\(0,\s*32\)\}`,\s*provisionOperationId:\s*`provision:v2:\$\{\1\}`/u],
 ];
 for (const [file, needle] of routeContracts) {
   const text = distText(file);
-  assert(needle instanceof RegExp ? needle.test(text) : text.includes(needle), `worker route contract changed: ${needle} (re-derive the ingress allowlist)`);
+  assert(needle.test(text), `worker route contract changed: ${needle} (re-derive the ingress allowlist)`);
 }
 
 console.log(`Cloud-worker gateway URL: helper and resolver checks passed for ${receipt.patchedFiles.join(", ")}`);

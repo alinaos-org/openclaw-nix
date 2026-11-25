@@ -70,6 +70,7 @@ const changes = [];
 const anchors = [];
 const replaceExact = (anchor) => anchors.push(anchor);
 
+const compact = atLeast(version, "2026.11.10");
 if (atLeast(version, "2026.11.5")) {
   // --- Schema: extend upstream's own agents.entries.<id>.compaction strictObject with
   // `model`, so maxSummaryChars survives (a second `compaction` key would shadow it). ---
@@ -77,10 +78,11 @@ if (atLeast(version, "2026.11.5")) {
     id: "schema-agent-entry-compaction",
     // The shared chunk and the feishu config-doctor bundle carry the identical readable copy.
     expect: { "zod-schema.core-*.mjs": 1, "config-doctor/feishu.js": 1 },
-    before: `maxSummaryChars: AgentCompactionMaxSummaryCharsSchema.optional() }).optional(),\n\tparams: record(string(), unknown()).optional(),\n\truntime: AgentRuntimeSchema\n});`,
-    after: `maxSummaryChars: AgentCompactionMaxSummaryCharsSchema.optional(),\n\tmodel: string().optional() /* ${MARKER} */ }).optional(),\n\tparams: record(string(), unknown()).optional(),\n\truntime: AgentRuntimeSchema\n});`,
+    before: /maxSummaryChars:\s*AgentCompactionMaxSummaryCharsSchema\.optional\(\)\s*\}\)\.optional\(\),\s*params:\s*record\(string\(\),\s*unknown\(\)\)\.optional\(\),\s*runtime:\s*AgentRuntimeSchema\s*\}\);/g,
+    after: (match) => match.replace("AgentCompactionMaxSummaryCharsSchema.optional()", `AgentCompactionMaxSummaryCharsSchema.optional(),\n\tmodel: string().optional() /* ${MARKER} */`),
   });
-  replaceExact({
+  // The 11.10 SQLite store worker no longer bundles the schema, target or retry.
+  if (!compact) replaceExact({
     id: "schema-agent-entry-compaction-sqlite-worker",
     expect: { "worker/sqlite-store.worker.mjs": 1 },
     before: `compaction:strictObject({maxSummaryChars:AgentCompactionMaxSummaryCharsSchema.optional()}).optional(),params:record(string$3(),unknown()).optional(),runtime:AgentRuntimeSchema})`,
@@ -92,10 +94,10 @@ if (atLeast(version, "2026.11.5")) {
   replaceExact({
     id: "compaction-target-readable",
     expect: { "compaction-runtime-context-*.mjs": 1 },
-    before: `\tconst r = e.modelSelectionLocked ? void 0 : e.config?.agents?.defaults?.compaction?.model?.trim();`,
-    after: `\tconst r = e.modelSelectionLocked ? void 0 : (e.agentId ? e.config?.agents?.entries?.[e.agentId]?.compaction?.model?.trim() : void 0) ?? e.config?.agents?.defaults?.compaction?.model?.trim(); /* ${MARKER} */`,
+    before: /const ([\w$]+)\s*=\s*([\w$]+)\.modelSelectionLocked\s*\?\s*void 0\s*:\s*\2\.config\?\.agents\?\.defaults\?\.compaction\?\.model\?\.trim\(\);/g,
+    after: (_, result, p) => `const ${result} = ${p}.modelSelectionLocked ? void 0 : (${p}.agentId ? ${p}.config?.agents?.entries?.[${p}.agentId]?.compaction?.model?.trim() : void 0) ?? ${p}.config?.agents?.defaults?.compaction?.model?.trim(); /* ${MARKER} */`,
   });
-  replaceExact({
+  if (!compact) replaceExact({
     id: "compaction-target-sqlite-worker",
     expect: { "worker/sqlite-store.worker.mjs": 1 },
     before: `Ye=N.modelSelectionLocked?void 0:N.config?.agents?.defaults?.compaction?.model?.trim(),assembleTarget=`,
@@ -104,8 +106,13 @@ if (atLeast(version, "2026.11.5")) {
   replaceExact({
     id: "compaction-target-worker-chunk",
     expect: { "worker/worker-chunk-*.mjs": 1 },
-    before: `i=e.modelSelectionLocked?void 0:e.config?.agents?.defaults?.compaction?.model?.trim(),assembleTarget=`,
-    after: `i=e.modelSelectionLocked?void 0:(e.agentId?e.config?.agents?.entries?.[e.agentId]?.compaction?.model?.trim():void 0)??e.config?.agents?.defaults?.compaction?.model?.trim(),/*${MARKER}*/assembleTarget=`,
+    ...(compact ? {
+      before: /([\w$]+)=([\w$]+)\.modelSelectionLocked\?void 0:\2\.config\?\.agents\?\.defaults\?\.compaction\?\.model\?\.trim\(\),assembleTarget=/g,
+      after: (_, result, p) => `${result}=${p}.modelSelectionLocked?void 0:(${p}.agentId?${p}.config?.agents?.entries?.[${p}.agentId]?.compaction?.model?.trim():void 0)??${p}.config?.agents?.defaults?.compaction?.model?.trim(),/*${MARKER}*/assembleTarget=`,
+    } : {
+      before: `i=e.modelSelectionLocked?void 0:e.config?.agents?.defaults?.compaction?.model?.trim(),assembleTarget=`,
+      after: `i=e.modelSelectionLocked?void 0:(e.agentId?e.config?.agents?.entries?.[e.agentId]?.compaction?.model?.trim():void 0)??e.config?.agents?.defaults?.compaction?.model?.trim(),/*${MARKER}*/assembleTarget=`,
+    }),
   });
 
   // --- compactPrepared fallback/retry: carry agentId into its own resolveEmbeddedCompactionTarget
@@ -114,10 +121,10 @@ if (atLeast(version, "2026.11.5")) {
   replaceExact({
     id: "compaction-retry-readable",
     expect: { "compact-*.mjs": 1 },
-    before: `\t\t\t\tconst e = resolveEmbeddedCompactionTarget({\n\t\t\t\t\tconfig: c.config,\n\t\t\t\t\tprovider: c.provider,\n\t\t\t\t\tmodelId: c.model,\n\t\t\t\t\tauthProfileId: c.authProfileId,\n\t\t\t\t\tmodelSelectionLocked: c.modelSelectionLocked,\n\t\t\t\t\tdefaultProvider: DEFAULT_PROVIDER,\n\t\t\t\t\tdefaultModel: DEFAULT_MODEL\n\t\t\t\t});`,
-    after: `\t\t\t\tconst e = resolveEmbeddedCompactionTarget({\n\t\t\t\t\tconfig: c.config,\n\t\t\t\t\tagentId: c.agentId, /* ${MARKER} */\n\t\t\t\t\tprovider: c.provider,\n\t\t\t\t\tmodelId: c.model,\n\t\t\t\t\tauthProfileId: c.authProfileId,\n\t\t\t\t\tmodelSelectionLocked: c.modelSelectionLocked,\n\t\t\t\t\tdefaultProvider: DEFAULT_PROVIDER,\n\t\t\t\t\tdefaultModel: DEFAULT_MODEL\n\t\t\t\t});`,
+    before: /const ([\w$]+)\s*=\s*resolveEmbeddedCompactionTarget\(\{\s*config:\s*([\w$]+)\.config,\s*provider:\s*\2\.provider,\s*modelId:\s*\2\.model,\s*authProfileId:\s*\2\.authProfileId,\s*modelSelectionLocked:\s*\2\.modelSelectionLocked,\s*defaultProvider:\s*DEFAULT_PROVIDER,\s*defaultModel:\s*DEFAULT_MODEL\s*\}\);/g,
+    after: (match, _, p) => match.replace(`${p}.config,`, () => `${p}.config,agentId:${p}.agentId,/*${MARKER}*/`),
   });
-  replaceExact({
+  if (!compact) replaceExact({
     id: "compaction-retry-sqlite-worker",
     expect: { "worker/sqlite-store.worker.mjs": 1 },
     before: `resolveEmbeddedCompactionTarget({config:_t.config,provider:_t.provider,modelId:_t.model,authProfileId:_t.authProfileId,modelSelectionLocked:_t.modelSelectionLocked,defaultProvider:DEFAULT_PROVIDER,defaultModel:DEFAULT_MODEL$1})`,
@@ -126,7 +133,9 @@ if (atLeast(version, "2026.11.5")) {
   // The retry imports resolveEmbeddedCompactionTarget (export o) and the defaults
   // (exports i/n) under release-specific aliases. Check the bindings in the calling
   // chunk as well as the call. The test verifies their exporters and the default values.
-  const retry = atLeast(version, "2026.11.7")
+  const retry = compact
+    ? { target: "Sn", provider: "K", model: "ie" }
+    : atLeast(version, "2026.11.7")
     ? { target: "Qn", provider: "U", model: "W" }
     : atLeast(version, "2026.11.6")
     ? { target: "pn", provider: "R", model: "z" }
@@ -135,8 +144,8 @@ if (atLeast(version, "2026.11.5")) {
     id: "compaction-retry-worker-chunk",
     expect: { "worker/worker-chunk-*.mjs": 1 },
     alsoRequires: [`o as ${retry.target},`, `i as ${retry.provider},n as ${retry.model},`],
-    before: `${retry.target}({config:c.config,provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:${retry.provider},defaultModel:${retry.model}})`,
-    after: `${retry.target}({config:c.config,agentId:c.agentId,/*${MARKER}*/provider:c.provider,modelId:c.model,authProfileId:c.authProfileId,modelSelectionLocked:c.modelSelectionLocked,defaultProvider:${retry.provider},defaultModel:${retry.model}})`,
+    before: new RegExp(String.raw`\b${retry.target}\(\{config:([\w$]+)\.config,provider:\1\.provider,modelId:\1\.model,authProfileId:\1\.authProfileId,modelSelectionLocked:\1\.modelSelectionLocked,defaultProvider:${retry.provider},defaultModel:${retry.model}\}\)`, "g"),
+    after: (match, p) => match.replace(`${p}.config,`, () => `${p}.config,agentId:${p}.agentId,/*${MARKER}*/`),
   });
 } else {
   // ===== Legacy anchor set: 2026.10.7 through 2026.11.4 (compaction and memory flush) =====
@@ -340,7 +349,7 @@ const candidates = [];
     else if (entry.isFile() && /\.m?js$/.test(entry.name)) candidates.push(full);
   }
 })(dist);
-const count = (text, needle) => text.split(needle).length - 1;
+const count = (text, needle) => needle instanceof RegExp ? [...text.matchAll(needle)].length : text.split(needle).length - 1;
 const globToRegExp = (glob) =>
   new RegExp(`^${glob.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")}$`);
 const hits = new Map(anchors.map((anchor) => [anchor.id, []]));
@@ -349,6 +358,10 @@ for (const file of candidates) {
   const text = fs.readFileSync(file, "utf8");
   const rel = path.relative(dist, file).split(path.sep).join("/");
   assert(!text.includes(MARKER), `agent-scoped-compaction-model hotfix already applied (${rel} carries ${MARKER})`);
+  if (compact && rel === "worker/sqlite-store.worker.mjs") {
+    assert(!/resolveEmbeddedCompactionTarget|AgentEntryBaseSchema|AgentCompactionMaxSummaryCharsSchema|function compactPrepared\(/.test(text),
+      "SQLite store worker bundles compaction code again");
+  }
   let matched = false;
   for (const anchor of anchors) {
     const n = count(text, anchor.before);

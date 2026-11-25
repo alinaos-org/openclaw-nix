@@ -30,24 +30,91 @@ function listModules(dir) {
 const modules = listModules(dist);
 const changes = [];
 
+const compact = atLeast(version, "2026.11.10");
+// The compact gateway labels the source modules. Worker-only copies lack these
+// labels and have always been outside the run-admission patch.
+const owners = {
+  "admission-owner": "gateway/agent-turn/agent-run-admission-phase",
+  "admission-owner-selection": "gateway/agent-turn/agent-run-admission-phase",
+  "workspace-owner-key": "agents/prepared-model-runtime.inbound-registry",
+  "owner-only-read-preparation": "agents/prepared-model-runtime.inbound-registry",
+  "workspace-owner-load": "agents/prepared-model-runtime.inbound-registry",
+  "generation-owner-guard": "agents/prepared-model-runtime.plugin-generation",
+  "generation-owner-selection": "agents/prepared-model-runtime.plugin-generation",
+  "owner-identity": "agents/prepared-model-runtime.owner",
+  "published-owner-match": "agents/prepared-model-runtime.owner",
+  "published-owner-fallback": "agents/prepared-model-runtime.owner",
+  "projected-owner-fallback": "agents/prepared-model-runtime.published-owner",
+  "owner-lifecycle-input": "agents/prepared-model-runtime.owner",
+  "catalog-owner-identity": "agents/prepared-model-runtime-lease",
+  "catalog-input-identity": "agents/prepared-model-runtime-lease",
+};
+const labelsOf = (text) => [...text.matchAll(/^\/\/(?:#region |(?:! ?| )(?=\S+\/\S+$))(.+)$/gm)];
+const sources = new Map();
+const regionFiles = new Map();
+if (compact) {
+  const wanted = new Set(Object.values(owners).map((name) => `src/${name}.ts`));
+  for (const file of modules) {
+    const source = fs.readFileSync(file, "utf8");
+    const labels = labelsOf(source);
+    for (const [, label] of labels) {
+      if (!wanted.has(label)) continue;
+      assert(!regionFiles.has(label), `duplicate module ${label} in ${file}`);
+      regionFiles.set(label, file);
+      sources.set(file, source);
+    }
+  }
+}
+
+// The mangled templates below use single-letter identifiers only for locals.
+// Capture each one once and require later uses to read the same binding.
+function compactEdit(source, before, after) {
+  const locals = new Set();
+  const tokens = before.trim().match(/\s+|[A-Za-z_$][\w$]*|./g);
+  const pattern = tokens.map((token, i) => {
+    if (/^\s+$/.test(token)) return /\w$/.test(tokens[i - 1]) && /^\w/.test(tokens[i + 1]) ? "\\s+" : "\\s*";
+    if (/^[A-Za-z]$/.test(token)) {
+      if (locals.has(token)) return `\\k<${token}>`;
+      locals.add(token);
+      return `(?<${token}>[A-Za-z_$][\\w$]*)`;
+    }
+    return token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }).join("");
+  const re = new RegExp(pattern, "g");
+  const matches = [...source.matchAll(re)];
+  const replacement = source.replace(re, (...args) => {
+    const groups = args.at(-1);
+    return after.replace(/\b[A-Za-z]\b/g, (token) => locals.has(token) ? groups[token] : token);
+  });
+  return { replacement, count: matches.length };
+}
+
 function replaceExact({ id, before, after, expectedCount, expectedFiles }) {
   let count = 0;
   const files = [];
-  for (const file of modules) {
-    let source = fs.readFileSync(file, "utf8");
-    const occurrences = source.split(before).length - 1;
+  const label = `src/${owners[id]}.ts`;
+  if (compact) assert(regionFiles.has(label), `${id}: missing ${label}`);
+  for (const file of compact ? [regionFiles.get(label)] : modules) {
+    const source = sources.get(file) ?? fs.readFileSync(file, "utf8");
+    let replacement, occurrences;
+    if (compact) {
+      const labels = labelsOf(source);
+      const index = labels.findIndex((match) => match[1] === label);
+      const start = labels[index].index, end = labels[index + 1]?.index ?? source.length;
+      const edit = compactEdit(source.slice(start, end), before, after);
+      occurrences = edit.count;
+      replacement = source.slice(0, start) + edit.replacement + source.slice(end);
+    } else {
+      occurrences = source.split(before).length - 1;
+      replacement = occurrences ? source.replaceAll(before, after) : source;
+    }
     if (occurrences === 0) continue;
-    source = source.replaceAll(before, after);
-    fs.writeFileSync(file, source);
+    sources.set(file, replacement);
     count += occurrences;
     files.push(path.relative(root, file));
   }
   assert.equal(count, expectedCount, `${id}: expected ${expectedCount} anchors, found ${count}`);
-  assert.equal(
-    files.length,
-    expectedFiles,
-    `${id}: expected ${expectedFiles} files, found ${files.length}`,
-  );
+  assert.equal(files.length, expectedFiles, `${id}: expected ${expectedFiles} files, found ${files.length}`);
   changes.push({ id, count, files });
 }
 
@@ -360,6 +427,7 @@ ${catalogPurpose}\t\t\truntimePluginOwnerIds: void 0,
   expectedFiles: 1,
 });
 
+for (const [file, source] of sources) fs.writeFileSync(file, source);
 fs.writeFileSync(
   path.join(root, ".plugin-runtime-owner-generation-hotfix.json"),
   `${JSON.stringify({ id: MARKER, upstreamVersion: version, changes }, null, 2)}\n`,

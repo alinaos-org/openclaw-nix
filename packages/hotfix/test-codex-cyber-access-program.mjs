@@ -23,7 +23,7 @@ const setEnv = (value) => { if (value === undefined) delete process.env[ENV]; el
 if (receipt.mode === "access-default") {
   assert.equal(receipt.patchedFiles.length, 1, "receipt lists one patched file");
   const accessFile = path.join(root, receipt.patchedFiles[0]);
-  execFileSync(process.execPath, ["--check", accessFile]);
+  execFileSync(process.execPath, ["--check", accessFile], { stdio: ["ignore", "pipe", "pipe"] });
   const accessText = fs.readFileSync(accessFile, "utf8");
   assert.equal(accessText.split("openclaw-nix-codex-cyber-access-program-v1").length - 1, 1, "marker missing or repeated");
   const resolveAlias = exportAliasOf(accessText, "resolveCodexCyberAccessProgram");
@@ -71,7 +71,7 @@ if (receipt.mode === "access-default") {
   assert.equal((await turn("reverser", "coder")).cyberAccessProgram, "standard", "unlisted agent's turn/start changed");
 
   // Failover: upstream's own; a listed agent's turn counts as already elevated.
-  const failoverFiles = fs.readdirSync(setup).filter((name) => /^cyber-failover-.*\.mjs$/.test(name) && fs.readFileSync(path.join(setup, name), "utf8").includes("//#region extensions/codex/src/app-server/cyber-failover.ts\n"));
+  const failoverFiles = fs.readdirSync(setup).filter((name) => /^cyber-failover-.*\.mjs$/.test(name) && [...fs.readFileSync(path.join(setup, name), "utf8").matchAll(/^\/\/(?:#region |! ?| )extensions\/codex\/src\/app-server\/cyber-failover\.ts$/gm)].length === 1);
   assert.equal(failoverFiles.length, 1, "expected one cyber-failover chunk");
   const failover = await import(pathToFileURL(path.join(setup, failoverFiles[0])).href);
   const config = failover.resolveCodexCyberFailoverConfig(undefined);

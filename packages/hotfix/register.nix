@@ -70,7 +70,9 @@
       2026.11.6 leaves the clamp's path unchanged (the stop hard exit is still
       armForceExitTimer(budget.timeoutMs)); it only adds upstream's pending-close-steps
       reporting to that timer (describePending on the watchdog, reportPending in the
-      deadline), which the test's fixture now supplies and checks.
+      deadline), which the test's fixture now supplies and checks. On 2026.11.10
+      the test exercises the packaged armGatewayShutdownHardExitWatchdog wrapper
+      alongside the compact timer, including the formatter it passes through.
     '';
     test = ./test-stop-budget.mjs;
     upstream = null;
@@ -91,12 +93,14 @@
       files entry under scripts/ or ending in .[cm]?[jt]s (53 files on 11.5).
 
       Not covered, as before: dist/worker/worker-chunk-*.mjs and
-      sqlite-store.worker.mjs carry a minified copy of collectRelativeFiles that the
+      (through 2026.11.9) sqlite-store.worker.mjs carry a copy of collectRelativeFiles that the
       node bootstrap path does not use (its build chunk imports package-dist-inventory).
+      On 2026.11.10 the compact runtime-files filter selects 55 files. The inventory,
+      managed handoff and update-recovery modules each contain one symlink check.
     '';
     test = ./test-node-bootstrap-layout.mjs;
     upstream = null;
-    upstreamStatus = "not reported; still needed on 2026.11.5 (a symlink is rejected before the omission check in collectRelativeFiles)";
+    upstreamStatus = "not reported; still needed on 2026.11.10 (a symlink is rejected before the omission check in collectRelativeFiles)";
     removeWhen = "Upstream's packer accepts a non-npm install layout, or the Nix gateway installs package.json files at the package root.";
   };
 
@@ -109,7 +113,8 @@
       keeps pairing on a private network leaves workers unable to reach it. Give
       enrollment its own URL (OPENCLAW_CLOUD_WORKER_GATEWAY_URL), with the same
       validation. From 2026.11.5 the anchors match the bundler's shortened local
-      names.
+      names. On 2026.11.10 the node-enrollment module ends at the next source
+      label or EOF. Both URL calls must still occur exactly once inside it.
     '';
     test = ./test-cloud-worker-gateway-url.mjs;
     upstream = null;
@@ -125,12 +130,12 @@
       Cloud workers: skill bundles refuse hardlinked files, and Nix store optimisation
       hardlinks every identical store file, so every worker turn failed. Allow hard
       links only under /nix/store (immutable, world-readable); symlinks stay refused.
-      From 2026.11.5 on the bundle chunk ships minified locals; the patch selects the
-      minified names by release and checks that each binds the same value (symlinks
-      default, safe root, entries loop, rootReal) exactly once.
+      The patch captures the reader's local names from the signature and read call,
+      and checks the corresponding symlink default, safe root, entries loop and real
+      path exactly once in both the spaced and 2026.11.10 compact builds.
 
       Not covered, as before: the copies of readSkillBundleTree in
-      dist/worker/worker-chunk-*.mjs and sqlite-store.worker.mjs.
+      dist/worker/worker-chunk-*.mjs and (through 2026.11.9) sqlite-store.worker.mjs.
     '';
     test = ./test-skill-tree-store-hardlinks.mjs;
     upstream = null;
@@ -147,10 +152,11 @@
       the whole catalog, so no worker turn ran. Clamp each description when the
       delivery is built. From 2026.11.5 upstream mangles local names in dist, so the
       anchors match the builder's shape with any identifiers there; each shape must
-      still occur exactly once.
+      still occur exactly once. On 2026.11.10 the compact object still carries
+      description, revision and files in that order.
 
       Not covered, as before: the copies of prepareSkillResourceDelivery in
-      dist/worker/worker-chunk-*.mjs and sqlite-store.worker.mjs (reached only with
+      dist/worker/worker-chunk-*.mjs and, through 2026.11.9, sqlite-store.worker.mjs (reached only with
       librarySelections, whose bundle imports already refuse long descriptions).
     '';
     test = ./test-skill-delivery-description.mjs;
@@ -181,6 +187,8 @@
       Known: on 2026.11.5 a listed agent's native-settings (supervision) turn, which
       has no runtime plan, also requests daybreak_blue; nothing on nova uses
       supervision bindings. 11.5 checks the program's entitlement before turn/start.
+      The bundled Codex plugin on 2026.11.10 keeps spaced function bodies and
+      identifies its access, harness and failover modules with plain path comments.
     '';
     test = ./test-codex-cyber-access-program.mjs;
     upstream = null;
@@ -211,6 +219,9 @@
       (readPublishedModelRuntimeSnapshot, projectPublishedModelRuntimeOwner,
       projectNormalizedModelRuntimeOwner). 11.5's new borrowed-generation fast path
       goes through preparedPluginGenerationSupportsSelections and so needs the owner.
+      On 2026.11.10 the compact anchors capture the local bindings within six labelled
+      source modules in four chunks. The projected fallback occurs twice; each of
+      the other thirteen edits occurs once.
     '';
     test = ./test-plugin-runtime-owner-generation.mjs;
     upstream = "https://github.com/openclaw/openclaw/pull/177903";
@@ -280,7 +291,9 @@
       with it. Upstream's new bindTokensIssuer mutation only binds OpenClaw's own
       tokensAuthorizationServerUrl, and only when discoveryState exists, so this
       hotfix is still needed. The 11.5 tokens() has a refreshClaim guard before its
-      return, and the patch anchors past it.
+      return, and the patch anchors past it. On 2026.11.10 the test calls auth
+      through the client's public export and follows the re-export to verify the
+      issuer binding in its defining chunk.
     '';
     test = ./test-mcp-oauth-issuer-binding.mjs;
     upstream = null;
@@ -329,7 +342,9 @@
       From 2026.11.7 the worker-chunk compactPrepared retry imports
       resolveEmbeddedCompactionTarget as Qn and DEFAULT_PROVIDER/DEFAULT_MODEL as U/W
       (2026.11.6: pn and R/z); the patch selects them by release and checks their bindings
-      in the retry chunk.
+      in the retry chunk. On 2026.11.10 those imports are Sn and K/ie. The SQLite
+      store worker no longer bundles the schema, resolver or retry. The patch checks
+      for their absence there and applies the six remaining edits across six files.
     '';
     test = ./test-agent-scoped-compaction-model.mjs;
     upstream = null;

@@ -23,13 +23,13 @@ const atLeast = (version, minimum) => { const a = String(version).split(".").map
 assert(root && atLeast(version, "2026.9.8"), "cloud-worker gateway URL hotfix is qualified from 2026.9.8");
 const dist = path.join(root, "dist");
 
-const REGION = "//#region src/gateway/worker-environments/node-enrollment.ts";
+const REGION = "src/gateway/worker-environments/node-enrollment.ts";
 const MARKER = "/* openclaw-nix-cloud-worker-gateway-url-v1 */";
 // From 2026.11.5 on the bundler mangles this chunk's local names (`options` becomes `e`,
 // `config` becomes `a` and `t`), so the anchors capture identifiers rather than spell
 // them; the call sites must still pass the config they resolve against. Each anchor is
 // still required exactly once, and 11.4's readable names match the same patterns.
-const header = /function createWorkerNodeEnrollmentManager\([\w$]+\) \{/g;
+const header = /function createWorkerNodeEnrollmentManager\([\w$]+\)\s*\{/g;
 // Origin-only wss://<dns name>[:port]: grantArtifact replaces the URL path while the node
 // prefixes it, so a path would split the two. An invalid value throws (the environment
 // fails) rather than falling back to the tailnet URL. The regex is inline: the recovery
@@ -43,21 +43,27 @@ const helper = [
   "\treturn value;",
   "}",
 ].join("\n");
-const readCall = "publicUrl: resolveConfiguredPairingPublicUrl(";
+const readCall = /publicUrl:\s*resolveConfiguredPairingPublicUrl\(/g;
 const callFor = (config) => `publicUrl: resolveCloudWorkerGatewayPublicUrl(${config}),`;
 // prepare(): the bootstrap download and the node's WebSocket URL.
-const prepareContext = /(resolvePairingGatewayUrl\(([\w$]+), \{\n\t\t\tenv: process\.env,\n\t\t\tuseLocalGateway: \2\.gateway\?\.mode === "remote",\n\t\t\t)publicUrl: resolveConfiguredPairingPublicUrl\(\2\),(\n\t\t\tpublicOriginPreference: "prefer",\n\t\t\tnetworkInterfaces: os\.networkInterfaces,)/g;
-// begin(): the setup code issued to the node.
-const beginContext = /(resolvePairingSetupFromConfig\(([\w$]+), \{\n\t\t\t\t\t\tenv: process\.env,\n\t\t\t\t\t\tuseLocalGateway: \2\.gateway\?\.mode === "remote",\n\t\t\t\t\t\t)publicUrl: resolveConfiguredPairingPublicUrl\(\2\),(\n\t\t\t\t\t\tpublicOriginPreference: "prefer",\n\t\t\t\t\t\tbootstrapProfile: CLOUD_WORKER_PAIRING_SETUP_BOOTSTRAP_PROFILE,)/g;
+const pairingContext = (resolver, following) => new RegExp(
+  `(${resolver}\\(([\\w$]+),\\s*\\{\\s*env:\\s*process\\.env,\\s*useLocalGateway:\\s*\\2\\.gateway\\?\\.mode\\s*===\\s*["\\x60]remote["\\x60],\\s*)` +
+  `publicUrl:\\s*resolveConfiguredPairingPublicUrl\\(\\2\\),(\\s*publicOriginPreference:\\s*["\\x60]prefer["\\x60],\\s*${following},)`, "g");
+const prepareContext = pairingContext("resolvePairingGatewayUrl", "networkInterfaces:\\s*os\\.networkInterfaces");
+const beginContext = pairingContext("resolvePairingSetupFromConfig", "bootstrapProfile:\\s*CLOUD_WORKER_PAIRING_SETUP_BOOTSTRAP_PROFILE");
 const resolverReads = "resolveConfiguredPairingPublicUrl(";
 
 const count = (text, needle) => text.split(needle).length - 1;
 const matches = (text, pattern) => [...text.matchAll(pattern)].length;
 const regionOf = (text) => {
-  const start = text.indexOf(REGION);
-  const end = text.indexOf("//#endregion", start);
-  assert(start >= 0 && end > start, "node-enrollment region not found");
-  return [start, end];
+  const labels = [...text.matchAll(/^\/\/(?:#region |(?:! ?| )(?=\S+\/\S+$))(.+)$/gm)];
+  const targets = labels.filter((label) => label[1] === REGION);
+  if (!targets.length) return;
+  assert.equal(targets.length, 1, "node-enrollment label repeated");
+  const [label] = targets;
+  const next = labels[labels.indexOf(label) + 1]?.index ?? text.length;
+  const closing = text.indexOf("\n//#endregion", label.index + label[0].length);
+  return [label.index, closing >= 0 && closing < next ? closing + 1 : next];
 };
 
 const patchedFiles = [];
@@ -65,9 +71,8 @@ for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")
   const file = path.join(dist, name);
   if (fs.lstatSync(file).isSymbolicLink()) continue;
   const text = fs.readFileSync(file, "utf8");
-  const regions = count(text, REGION);
-  if (regions === 0) continue;
-  assert.equal(regions, 1, `node-enrollment region repeated in ${name}`);
+  const bounds = regionOf(text);
+  if (!bounds) continue;
   assert.equal(count(text, MARKER), 0, `${name} is already patched`);
   assert.equal(count(text, "OPENCLAW_CLOUD_WORKER_GATEWAY_URL"), 0, `${name} already reads OPENCLAW_CLOUD_WORKER_GATEWAY_URL`);
   assert.equal(count(text, "resolveCloudWorkerGatewayPublicUrl"), 0, `${name} already defines resolveCloudWorkerGatewayPublicUrl`);
@@ -76,11 +81,11 @@ for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")
   }
   // The helper calls the resolver by its source name, so the chunk must bind that name
   // at top level (an import alias, or the bundled function itself).
-  assert(/^import \{[^}\n]*\bresolveConfiguredPairingPublicUrl\b[^}\n]*\} from /mu.test(text) || /^function resolveConfiguredPairingPublicUrl\(/mu.test(text), `${name}: resolveConfiguredPairingPublicUrl is not bound at top level`);
-  const [start, end] = regionOf(text);
+  assert(/\bimport\s*\{[^}\n]*\bresolveConfiguredPairingPublicUrl\s*(?:,[^}\n]*)?\}\s*from\s*"/mu.test(text) || /\bfunction resolveConfiguredPairingPublicUrl\(/mu.test(text), `${name}: resolveConfiguredPairingPublicUrl is not bound at top level`);
+  const [start, end] = bounds;
   const region = text.slice(start, end);
-  assert.equal(count(region, readCall), 2, `${name}: expected exactly the prepare and begin call sites in the enrollment region`);
-  assert.equal(count(text, readCall), 2, `${name}: device-pair publicUrl is read by enrollment code outside the region`);
+  assert.equal(matches(region, readCall), 2, `${name}: expected exactly the prepare and begin call sites in the enrollment region`);
+  assert.equal(matches(text, readCall), 2, `${name}: device-pair publicUrl is read by enrollment code outside the region`);
   for (const anchor of [header, prepareContext, beginContext]) assert.equal(matches(region, anchor), 1, `${name}: an enrollment anchor sits outside the region`);
 
   // Function replacements: the helper's regex carries `$`, which a string replacement
@@ -94,7 +99,7 @@ for (const name of fs.readdirSync(dist).filter((entry) => entry.endsWith(".mjs")
   const [newStart, newEnd] = regionOf(patched);
   const newRegion = patched.slice(newStart, newEnd);
   assert.equal(count(newRegion, "publicUrl: resolveCloudWorkerGatewayPublicUrl("), 2, `${name}: enrollment call sites not rewritten`);
-  assert.equal(count(newRegion, readCall), 0, `${name}: an enrollment call site still reads device-pair publicUrl`);
+  assert.equal(matches(newRegion, readCall), 0, `${name}: an enrollment call site still reads device-pair publicUrl`);
   assert.equal(count(newRegion, "return resolveConfiguredPairingPublicUrl(config);"), 1, `${name}: fallback missing from the helper`);
   assert.equal(count(newRegion, resolverReads), 1, `${name}: the helper is not the region's only device-pair publicUrl reader`);
   // Phone pairing (device.pair.setupCode, the device-pair plugin, `openclaw qr`, doctor)

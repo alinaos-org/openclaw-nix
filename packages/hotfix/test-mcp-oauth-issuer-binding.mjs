@@ -134,7 +134,11 @@ const requiredError = importsOf(read(sourceFile)).find(({names}) => names.some((
 const mcpOAuthAuthorizationRequiredError = requiredError && (await import(pathToFileURL(importTarget(sourceFile, requiredError.from)).href))[
   requiredError.names.find(({local}) => local === "mcpOAuthAuthorizationRequiredError").name];
 const sdkAuthFile = pairedSdk(sourceFile, read(sourceFile));
-const {auth} = await import(pathToFileURL(sdkAuthFile).href);
+// A 2.x package may re-export auth under its public name from a private chunk.
+const authImport = read(sourceFile).match(/await\s+import\((["'\x60])(@modelcontextprotocol\/client)\1\)/);
+const publicSdk = authImport ? resolvePackage(sourceFile, authImport[2]) : sdkAuthFile;
+assert.equal(definingFile(publicSdk, "auth"), sdkAuthFile, "SDK entry point resolves a different auth()");
+const {auth} = await import(pathToFileURL(publicSdk).href);
 assert.equal(typeof auth, "function", "the SDK's auth()");
 
 function memoryStore(rows) {
