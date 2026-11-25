@@ -89,11 +89,17 @@
     nixOpenclawChecks = pkgs: let
       release = import ./release.nix;
       source = (import ./releases.nix).${release.current};
+      evidenceZip = ./pins + "/dependency-evidence/openclaw-${release.current}-dependency-evidence.zip";
     in
       lib.mapAttrs' (name: lib.nameValuePair "nix-openclaw-${name}") (nix-openclaw.lib.mkChecks {
         inherit pkgs;
         openclawConfigOptionsFile = self.lib.configOptionsFile;
         runtimePluginLockDir = ./pins/runtime-plugin-locks;
+        allowedEvidenceOverrideHashes = lib.optional (builtins.pathExists evidenceZip) (builtins.convertHash {
+          hash = builtins.hashFile "sha256" evidenceZip;
+          hashAlgo = "sha256";
+          toHashFormat = "sri";
+        });
         # The source the locks were generated from (scripts/generate-plugin-locks.sh).
         openclawSourceInfo = {
           releaseTag = "v${release.current}";

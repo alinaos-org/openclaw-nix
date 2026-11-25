@@ -52,6 +52,11 @@ for key, value in {"releaseTag": f"v{version}", "releaseVersion": version,
 p.write_text(s)
 EOF
 
+evidence_zip="$repo/pins/dependency-evidence/openclaw-$version-dependency-evidence.zip"
+if [[ -f "$evidence_zip" ]]; then
+  export OPENCLAW_RUNTIME_PLUGIN_DEPENDENCY_EVIDENCE_ZIP="$evidence_zip"
+  echo "Using local dependency evidence: $evidence_zip" >&2
+fi
 (cd "$work" && nix develop "path:$work" --command node nix/scripts/update-openclaw-runtime-plugin-locks.mjs)
 
 generated=$work/nix/generated/openclaw-runtime-plugins
