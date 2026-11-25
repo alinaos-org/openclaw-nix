@@ -3,19 +3,20 @@
 // (an Abliteration-only agent that must never reach Anthropic/OpenAI/Google) still
 // summarizes through the shared default model. The embedded-agent-runner's
 // "compactPrepared" model-fallback retry path (resolveEmbeddedCompactionTarget's second call
-// site, compact-*.mjs and its two worker-pool duplicates) also drops the caller's agentId
-// when it rebuilds a fresh params object, so even a config-level per-agent override would
-// not reach it.
+// site in compact-*.mjs, a worker chunk and, through 2026.11.9, sqlite-store.worker.mjs)
+// also drops the caller's agentId when it rebuilds a fresh params object, so even a
+// config-level per-agent override would not reach it.
 //
 // From release 2026.11.5 on, upstream carries its own strict per-agent compaction object,
 // agents.entries.<id>.compaction = { maxSummaryChars }, and has retired
 // compaction.memoryFlush.model outright (memory flushes now use the active session model;
 // the doctor migration deletes agents.defaults.compaction.memoryFlush.model). This patch then
-// adds `model` to upstream's per-agent object, in all three copies of AgentEntryBaseSchema
-// (the shared zod-schema.core chunk, the feishu config-doctor bundle and the inlined copy in
-// sqlite-store.worker.mjs), instead of adding a second `compaction` key that would shadow
-// upstream's and drop maxSummaryChars; resolves it ahead of the shared default in every copy
-// of resolveEmbeddedCompactionTarget; and threads agentId into every copy of the retry call.
+// adds `model` alongside maxSummaryChars in the AgentEntryBaseSchema copies in zod-schema.core
+// and config-doctor/feishu.js and, through 2026.11.9, sqlite-store.worker.mjs. On 2026.11.10
+// the worker pool's only schema copy is fully minified in dist/worker/worker-chunk-*.mjs.
+// It stays unpatched, as did worker-chunk-vlAFN93o.mjs on 2026.11.9.
+// The patch resolves the per-agent model ahead of the shared default in every copy of
+// resolveEmbeddedCompactionTarget and threads agentId into every copy of the retry call.
 // It no longer touches the memory flush: no per-agent memoryFlush field is admitted, so a
 // config still carrying agents.entries.<id>.compaction.memoryFlush fails strict validation.
 //
@@ -361,6 +362,8 @@ for (const file of candidates) {
   if (compact && rel === "worker/sqlite-store.worker.mjs") {
     assert(!/resolveEmbeddedCompactionTarget|AgentEntryBaseSchema|AgentCompactionMaxSummaryCharsSchema|function compactPrepared\(/.test(text),
       "SQLite store worker bundles compaction code again");
+    assert(!/compaction:[\w$]+\(\{maxSummaryChars:[\w$]+\.optional\(\)\}\)\.optional\(\),params:/.test(text),
+      "SQLite store worker bundles the minified per-agent compaction schema again");
   }
   let matched = false;
   for (const anchor of anchors) {

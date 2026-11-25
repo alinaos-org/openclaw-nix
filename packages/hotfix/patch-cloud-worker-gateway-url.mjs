@@ -56,7 +56,7 @@ const resolverReads = "resolveConfiguredPairingPublicUrl(";
 const count = (text, needle) => text.split(needle).length - 1;
 const matches = (text, pattern) => [...text.matchAll(pattern)].length;
 const regionOf = (text) => {
-  const labels = [...text.matchAll(/^\/\/(?:#region |(?:! ?| )(?=\S+\/\S+$))(.+)$/gm)];
+  const labels = [...text.matchAll(/^\/\/(?:#region |! ?(?=\S+\/\S+$))(.+)$/gm)];
   const targets = labels.filter((label) => label[1] === REGION);
   if (!targets.length) return;
   assert.equal(targets.length, 1, "node-enrollment label repeated");

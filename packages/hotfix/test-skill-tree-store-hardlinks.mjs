@@ -13,7 +13,7 @@ const receipt = JSON.parse(fs.readFileSync(path.join(root, ".skill-tree-store-ha
 assert.equal(receipt.id, "openclaw-nix-skill-tree-store-hardlinks-v1");
 const chunk = receipt.patchedFiles.find((name) => name.startsWith("bundle-"));
 const text = fs.readFileSync(path.join(dist, chunk), "utf8");
-const alias = /\breadSkillBundleTree as (\w+)/.exec(/export\s*\{([^}]*)\}/.exec(text)?.[1] ?? "")?.[1];
+const alias = /\breadSkillBundleTree as ([\w$]+)/.exec(/export\s*\{([^}]*)\}/.exec(text)?.[1] ?? "")?.[1];
 assert(alias, "bundle chunk no longer exports readSkillBundleTree");
 assert.equal([...text.matchAll(/hardlinks:\s*isImmutableNixStoreRoot\([\w$]+\.rootReal\) \? "allow" : "reject"/g)].length, 1,
   "skill tree reader does not check the store root");
@@ -28,7 +28,7 @@ function hardlinkedSkill(parent) {
 
 // Outside the store the hardlink is still refused.
 const outside = hardlinkedSkill(os.tmpdir());
-await assert.rejects(readSkillBundleTree(outside), /hardlink/);
+await assert.rejects(readSkillBundleTree(outside), /error=hardlink: hardlinked path not allowed/);
 fs.rmSync(outside, { recursive: true, force: true });
 
 // Inside the package root (a store path while it builds) it is allowed.

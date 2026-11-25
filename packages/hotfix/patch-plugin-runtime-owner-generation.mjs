@@ -175,6 +175,9 @@ replaceExact({
   expectedFiles: 1,
 });
 
+// The compact matcher must capture the map callback's locals independently of
+// the outer input. The spaced 11.5–11.9 anchor uses the bundle's literal names.
+const selectionBindings = compact ? "{ provider: p, runtime: q }" : "{ provider: e, runtime: t }";
 replaceExact({
   id: "workspace-owner-key",
   ...pick(
@@ -187,10 +190,10 @@ replaceExact({
     },
     {
       before: `\t\tallowGatewaySubagentBinding: e.allowGatewaySubagentBinding === true,
-\t\truntimePluginSelections: e.runtimePluginSelections?.map(({ provider: e, runtime: t }) => ({`,
+\t\truntimePluginSelections: e.runtimePluginSelections?.map((${selectionBindings}) => ({`,
       after: `\t\tallowGatewaySubagentBinding: e.allowGatewaySubagentBinding === true,
 \t\truntimePluginOwnerIds: e.runtimePluginOwnerIds,
-\t\truntimePluginSelections: e.runtimePluginSelections?.map(({ provider: e, runtime: t }) => ({`,
+\t\truntimePluginSelections: e.runtimePluginSelections?.map((${selectionBindings}) => ({`,
     },
   ),
   expectedCount: 1,

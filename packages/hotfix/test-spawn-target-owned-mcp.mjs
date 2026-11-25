@@ -80,6 +80,15 @@ const hiddenArgs = /openclawNixTargetOwnedMcpToolPolicy\(([\w$]+), ([\w$]+), ([\
 assert(hiddenArgs, "hidden call arguments");
 const [, hctx, hcfg, hreq, htarget, hprofileCtx] = hiddenArgs;
 if (hprofileCtx !== undefined) assert.equal(hprofileCtx, hctx, "profile read from the spawn context");
+// The line reassigns the spawn context: from 2026.11.5 that is the applySubagentProfile
+// destructure, which the patch turns from const into let. Left a const, every rewrite
+// would throw at run time (a TypeError the module import below cannot catch).
+if (hiddenText.includes("applySubagentProfile(")) {
+  const header = /async function spawnSubagentDirect\([\w$]+,\s*[\w$]+\)\s*\{\s*(const|let)\s*\{[^}]*\bctx:\s*([\w$]+)[^}]*\}\s*=\s*applySubagentProfile\(/.exec(hiddenText);
+  assert(header, "hidden spawn profile destructure");
+  assert.equal(header[2], hctx, "hidden call site rewrites the profile context");
+  assert.equal(header[1], "let", "hidden spawn context is still a const binding");
+}
 // The line runs with the identity carrier the hidden chunk itself imports: both halves
 // must come from one module export pair, or the rewritten context would lose the token.
 const importedFrom = (local) => {

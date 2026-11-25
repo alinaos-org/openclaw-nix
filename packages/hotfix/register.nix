@@ -37,8 +37,9 @@
     '';
     test = null;
     untested = ''
-      The MCP part runs upstream's packaged connectMcpClient (main chunk and both
-      worker copies) in a VM context, with the lazy mcp-error load stubbed from
+      The MCP part runs upstream's packaged connectMcpClient in the main chunk,
+      a worker chunk and, through 2026.11.9, sqlite-store.worker.mjs.
+      Each copy runs in a VM context with the lazy mcp-error load stubbed from
       2026.11.5 on. It asserts that the close rejection is observed, the timeout check
       runs once and close is restored. The Codex stale-registration edit has no test.
     '';
@@ -95,8 +96,9 @@
       Not covered, as before: dist/worker/worker-chunk-*.mjs and
       (through 2026.11.9) sqlite-store.worker.mjs carry a copy of collectRelativeFiles that the
       node bootstrap path does not use (its build chunk imports package-dist-inventory).
-      On 2026.11.10 the compact runtime-files filter selects 55 files. The inventory,
-      managed handoff and update-recovery modules each contain one symlink check.
+      On 2026.11.10 the compact runtime-files filter selects the same 55 files as
+      2026.11.9. The inventory, managed handoff and update-recovery modules each
+      contain one symlink check.
     '';
     test = ./test-node-bootstrap-layout.mjs;
     upstream = null;
@@ -225,7 +227,7 @@
     '';
     test = ./test-plugin-runtime-owner-generation.mjs;
     upstream = "https://github.com/openclaw/openclaw/pull/177903";
-    upstreamStatus = "open (2026-11-17); 2026.11.5 does not carry the owner";
+    upstreamStatus = "open (2026-11-17); 2026.11.10 does not carry the owner";
     removeWhen = "An OpenClaw release carries the authenticated runtime plugin owner into the run-prepared generation.";
   };
 
@@ -238,7 +240,8 @@
       plugin, channel or provider plugin it cannot discover, and writes the package and
       an install record into the state directory, beside the plugins Nix provides (stray
       records broke merlin once). Every caller goes through the two candidate loops of
-      missing-configured-plugin-install (and its two worker copies):
+      missing-configured-plugin-install (also bundled in a worker chunk and,
+      through 2026.11.9, in sqlite-store.worker.mjs):
       - `openclaw doctor --fix`: config repair, plugin convergence before state
         migrations, and the release install backfill. The config overlay runs it, with
         OPENCLAW_NIX_MODE=0, on the first start of each new release;
@@ -271,8 +274,9 @@
       stamps the client information and tokens it saves with their authorization
       server (`issuer`) and discards a stamped value read back for another server, but
       still presents an unstamped one, saved by an earlier SDK, to whichever server
-      discovery names. OpenClaw's provider (dist/mcp-oauth-*.mjs and its two worker
-      copies) handed stored values to the SDK unchanged. Its clientInformation() and
+      discovery names. OpenClaw's provider (dist/mcp-oauth-*.mjs, its worker-chunk
+      copy and, through 2026.11.9, sqlite-store.worker.mjs) handed stored values
+      to the SDK unchanged. Its clientInformation() and
       tokens() now read a value without an issuer as absent: a login registers again
       and stores stamped values (OpenClaw's store keeps the SDK's stamp), and a
       gateway refresh fails with `MCP server "<server>" requires OAuth authorization.
@@ -310,18 +314,19 @@
       (resolveEmbeddedCompactionTarget); there is no per-agent override. An agent
       whose primary model is denylisted to one provider (an Abliteration-only agent)
       therefore still summarizes through the shared default. The compactPrepared
-      model-fallback retry (compact-*.mjs and its sqlite-store.worker.mjs and
-      worker-chunk duplicates) also rebuilds its params without agentId.
+      model-fallback retry also rebuilds its params without agentId in compact-*.mjs,
+      a worker chunk and, through 2026.11.9, sqlite-store.worker.mjs.
 
       From 2026.11.5 on, the patch adds `model` to upstream's own strict per-agent
       compaction object, agents.entries.<id>.compaction {maxSummaryChars}, in the
-      AgentEntryBaseSchema copies the gateway and doctor validate with: zod-schema.core,
-      config-doctor/feishu.js and sqlite-store.worker.mjs. A fourth, fully minified
-      copy in dist/worker/worker-chunk-*.mjs is not patched (2026.11.4's equivalent
-      was not either; nova's paths do not validate the config with it). It adds no
-      second key, so maxSummaryChars survives. It resolves the per-agent model ahead
-      of the shared default in every resolveEmbeddedCompactionTarget copy and threads
-      agentId into every retry copy. It does not touch the memory flush: 11.5 retired
+      AgentEntryBaseSchema copies in zod-schema.core and config-doctor/feishu.js
+      and, through 2026.11.9, sqlite-store.worker.mjs. On 2026.11.10 the worker
+      pool's only schema copy is fully minified in dist/worker/worker-chunk-*.mjs.
+      It stays unpatched, as did worker-chunk-vlAFN93o.mjs on 2026.11.9.
+      Extending the existing object preserves maxSummaryChars. The patch resolves
+      the per-agent model ahead of the shared default in every copy of
+      resolveEmbeddedCompactionTarget and threads agentId into every retry copy.
+      It does not touch the memory flush: 11.5 retired
       compaction.memoryFlush.model, flushes use the active session model, and no
       per-agent memoryFlush is admitted.
 
@@ -407,10 +412,19 @@
       visible path in sessions-spawn-visible-*.mjs; the hidden chunk's import of the
       execution-identity carrier gains its write half (withParentExecutionIdentity). Tool
       inheritance is unchanged upstream.
+
+      From 2026.11.10 the dist is compacted (no whitespace inside code): a compact
+      branch matches the same anchors with every name captured, puts the injected
+      hidden statement and the rewritten visible policy on their own lines, and checks
+      that the visible path's config, requester and target are each declared once before
+      the call site (compacted code reuses short names in inner scopes, so the spaced
+      rebinding check would refuse valid output). The test also checks the hidden
+      path's const-to-let edit, which only fails at run time. 11.10's new independent
+      sessions_create spawn goes through the same visible path.
     '';
     test = ./test-spawn-target-owned-mcp.mjs;
     upstream = null;
-    upstreamStatus = "not reported: upstream keeps a child within its requester by design. 2026.10.10 adds an operator grant, agents.entries.<id>.subagents.delegateToolsTo, that waives the requester's own tools.deny for named native targets, but only for deny-only requesters on a Gateway-native surface (an inherited allowlist refuses the spawn), and it waives the whole local deny, not only the target's MCP servers. 2026.11.5: still inherits ctx.inheritedToolAllowlist/Denylist unchanged (subagent-spawn.ts:247-249, 415-416)";
+    upstreamStatus = "not reported: upstream keeps a child within its requester by design. 2026.10.10 adds an operator grant, agents.entries.<id>.subagents.delegateToolsTo, that waives the requester's own tools.deny for named native targets, but only for deny-only requesters on a Gateway-native surface (an inherited allowlist refuses the spawn), and it waives the whole local deny, not only the target's MCP servers. 2026.11.10: still inherits ctx.inheritedToolAllowlist/Denylist unchanged (subagent-spawn.ts:248-249, 416-417)";
     removeWhen = "Upstream lets a cross-agent child keep the target agent's own scoped MCP servers (or the host moves to delegateToolsTo and its restrictions fit), or nova stops scoping MCP servers to single agents.";
   };
 }

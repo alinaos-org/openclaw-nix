@@ -40,7 +40,9 @@ if (atLeast(version, "2026.11.5")) {
   assert.equal(headers.length, 1, "expected one runAcceptedRequest header");
   const [head] = headers;
   const [, , action, intent] = head;
-  const bodyEnd = source.indexOf("const clearForceExitTimer", head.index);
+  const clearTimer = /\bconst clearForceExitTimer\s*=/g;
+  clearTimer.lastIndex = head.index;
+  const bodyEnd = clearTimer.exec(source)?.index ?? -1;
   assert(bodyEnd > head.index, "stop-budget: clearForceExitTimer not found after runAcceptedRequest");
   const body = source.slice(head.index, bodyEnd);
   const restartDecls = [...body.matchAll(new RegExp(`\\bconst ([\\w$]+)\\s*=\\s*${esc(action)}\\s*!==\\s*["\\x60]stop["\\x60];`, "g"))];
