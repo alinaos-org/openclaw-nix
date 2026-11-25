@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.4.25";
   expectedIntegrity = "";
   packageName = "@openclaw/diagnostics-prometheus";
-  version = "2026.11.7";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/diagnostics-prometheus/-/diagnostics-prometheus-2026.11.7.tgz";
-  npmIntegrity = "sha512-wSpzqp8p2rR3EIHoIgaoSubpA8W552JTS9f7RJkDcO1yztZa7wLKX+rcqSo3iXv4ZpFfwB2b+YlfJb8VyzNA+g==";
-  npmShasum = "7611c3e1e5c73bf7c11e7305b366d05555b90514";
-  nixHash = "sha256-+FnEZmiPiwOIQ32i7fDn/IgNacehGCC1ME8KHnM1XEA=";
+  version = "2026.11.9";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/diagnostics-prometheus/-/diagnostics-prometheus-2026.11.9.tgz";
+  npmIntegrity = "sha512-WnxLuwNJuawQGVf1PGVIPBkCLF3W6kb0o23Mi9yCZUlZFFA6LajhqwFACCmuJoS9UW/Lk4IDpiv5EY9NEnHeWw==";
+  npmShasum = "301b8e8d0206bde37a6d2c8b734a6fda50377ebf";
+  nixHash = "sha256-p0zYzb5Uia7Tptqgoy/Y1scRBKAg+e9x/vUS7VSzDaY=";
   dependencyMode = "none";
   manifestId = "diagnostics-prometheus";
-  openclawCompat = ">=2026.11.7";
-  peerOpenClaw = ">=2026.11.7";
+  openclawCompat = ">=2026.11.9";
+  peerOpenClaw = ">=2026.11.9";
   runtimeExtensions = [
     "./dist/index.js"
   ];

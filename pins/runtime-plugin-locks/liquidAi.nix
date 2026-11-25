@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.10.6";
   expectedIntegrity = "";
   packageName = "@openclaw/liquid-ai-provider";
-  version = "2026.11.7";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/liquid-ai-provider/-/liquid-ai-provider-2026.11.7.tgz";
-  npmIntegrity = "sha512-gGPL4I5+CuNS+Gbu157U9kfsUmhIaHnVwOv3zm3+CleAnYkFWQW5sCW6cX70h+ERIwyI6bkDB4xGL/EJxlzNyg==";
-  npmShasum = "43ad6b30396fa72a3f09986ceb6b08eb7266c781";
-  nixHash = "sha256-wYdOfo2HWQ6DTroO79ydfF430RB/qzuryl8rC8wb8Dw=";
+  version = "2026.11.9";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/liquid-ai-provider/-/liquid-ai-provider-2026.11.9.tgz";
+  npmIntegrity = "sha512-3IWi0A1c/yzsR5yH8KURePYQRdH8XWt8gWaZ3/Dzo/WTMcWYVh6JafNiPxaKjWNp2EHawlJmGTFbl2ZtVlfsmQ==";
+  npmShasum = "55d1e399b3e7af2a78c859906178950e54f37c83";
+  nixHash = "sha256-ieUv1ci0BRVy3smIvCjUnPZcjmVBtlyIRjBZcaJhajE=";
   dependencyMode = "none";
   manifestId = "liquid-ai";
-  openclawCompat = ">=2026.11.7";
-  peerOpenClaw = ">=2026.11.7";
+  openclawCompat = ">=2026.11.9";
+  peerOpenClaw = ">=2026.11.9";
   runtimeExtensions = [
     "./dist/index.js"
   ];

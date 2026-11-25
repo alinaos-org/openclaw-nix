@@ -13,15 +13,15 @@
   minHostVersion = ">=2026.6.8";
   expectedIntegrity = "";
   packageName = "@openclaw/deepseek-provider";
-  version = "2026.11.7";
-  tarballUrl = "https://registry.npmjs.org/@openclaw/deepseek-provider/-/deepseek-provider-2026.11.7.tgz";
-  npmIntegrity = "sha512-1zhob4rJvFwaPRQlQgcBWSPWt2jEZA30GpvzKSNmJCRfW4t7hBsxesdLFAkUfyAjr4ZQTuaP35NDCtHbUBNcew==";
-  npmShasum = "04ca592e33a86441593a3f8b958800184a1fdb59";
-  nixHash = "sha256-bk7+wR9PYCQ6KOSjqaoZ7xBf5tGlx7ueDvDF3l/SXTo=";
+  version = "2026.11.9";
+  tarballUrl = "https://registry.npmjs.org/@openclaw/deepseek-provider/-/deepseek-provider-2026.11.9.tgz";
+  npmIntegrity = "sha512-MVoA00wiX7LObvzC+ZCC/s6WSxmhsUuzwqOwlqQ7koi/1MjdhRDdokmLIG6hDTafdcsBzIap9uIeCve9vw/9JA==";
+  npmShasum = "edfeee74400ce834be18b1e06f0dde40e04ecfb3";
+  nixHash = "sha256-fNy3DiGScGkxhPLobCZ2bWAoMeg7LBhNYsajKVo771M=";
   dependencyMode = "none";
   manifestId = "deepseek";
-  openclawCompat = ">=2026.11.7";
-  peerOpenClaw = ">=2026.11.7";
+  openclawCompat = ">=2026.11.9";
+  peerOpenClaw = ">=2026.11.9";
   runtimeExtensions = [
     "./dist/index.js"
   ];
